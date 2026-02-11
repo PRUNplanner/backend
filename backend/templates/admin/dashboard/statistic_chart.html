@@ -1,0 +1,95 @@
+<div class="w-full grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="border border-solid border-neutral-600 rounded p-3">
+    <div class="h-[350px]">
+      <canvas id="userChart"></canvas>
+    </div>
+  </div>
+  <div class="border border-solid border-neutral-600 rounded p-3">
+    <div class="h-[350px]">
+      <canvas id="planningChart"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // chart_data is passed from the include tag
+    const data = {{ chart_data|safe }};
+    const textColor = '#9ca3af';
+    const gridColor = '#374151';
+
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor } } },
+        scales: {
+            y: { grid: { color: gridColor }, ticks: { color: textColor } },
+            x: { grid: { color: gridColor }, ticks: { color: textColor } }
+        }
+    };
+
+    new Chart(document.getElementById('userChart'), {
+        type: 'line',
+        data: {
+            labels: data.map(row => row.date),
+            datasets: [
+                {
+                    label: 'Total Users',
+                    data: data.map(row => row.user_count),
+                    borderColor: '#3b82f6',
+                    backgroundColor: '#3b82f6',
+                    yAxisID: 'y',
+                    tension: 0.3
+                },
+                {
+                    label: 'Active Today',
+                    data: data.map(row => row.users_active_today),
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    yAxisID: 'y1',
+                    tension: 0.3
+                }
+            ]
+        },
+        options: {
+            ...commonOptions,
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    grid: { color: gridColor },
+                    ticks: { color: textColor },
+                    title: { display: true, text: 'Total Users', color: textColor }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    ticks: { color: textColor },
+                    title: { display: true, text: 'Active Today', color: textColor }
+                },
+                x: {
+                    grid: { color: gridColor },
+                    ticks: { color: textColor }
+                }
+            }
+        }
+    });
+
+    new Chart(document.getElementById('planningChart'), {
+        type: 'line',
+        data: {
+            labels: data.map(row => row.date),
+            datasets: [
+                { label: 'User Delta', data: data.map(row => row.user_count_delta), borderColor: '#8b5cf6', tension: 0.3 },
+                { label: 'Plan Delta', data: data.map(row => row.plan_count_delta), borderColor: '#0ea5e9', tension: 0.3 },
+                { label: 'Empire Delta', data: data.map(row => row.empire_count_delta), borderColor: '#f59e0b', tension: 0.3 },
+                { label: 'CX Delta', data: data.map(row => row.cx_count_delta), borderColor: '#ef4444', tension: 0.3 },
+            ]
+        },
+        options: commonOptions
+    });
+});
+</script>

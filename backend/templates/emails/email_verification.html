@@ -1,0 +1,26 @@
+{% extends "emails/email_base.html" %}
+
+{% block content %}
+<h2 style="color: #ffffff; margin-top: 0; margin-bottom: 15px; font-size: 22px;">Email Verification</h2>
+  <p style="margin-bottom: 25px;">Please confirm your <span style="color: #c0e219;">PRUNplanner</span> email. This greatly helps to keep your account secure. Click the button below to verify.</p>
+
+  <table border="0" cellspacing="0" cellpadding="0" style="margin-bottom: 30px;">
+      <tr>
+          <td align="center" bgcolor="#c0e219" style="border-radius: 2px;">
+              <a href="{{ verification_url }}" target="_blank" style="font-size: 14px; font-weight: bold; color: #000000; text-decoration: none; padding: 12px 25px; display: inline-block;">
+                  VERIFY EMAIL
+              </a>
+          </td>
+      </tr>
+  </table>
+
+  <p style="font-size: 12px; color: #8b949e;">
+      This link expires in <strong>{{verification_expiry}}</strong> minutes.
+  </p>
+  <p style="font-size: 12px; color: #8b949e; word-break: break-all;">
+      Fallback: <a href="{{ verification_url }}" style="color: #6ea8fe; text-decoration: none;">{{ verification_url }}</a>
+  </p>
+  <p style="font-size: 12px; color: #8b949e; word-break: break-all;">
+      PRUNplanner username: {{ username }}
+  </p>
+{% endblock %}

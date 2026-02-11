@@ -1,0 +1,67 @@
+{% extends "admin/change_list.html" %}
+
+{% block content_title %}
+    <h1> Analytics Datapoint Health </h1>
+
+    <div style="display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 100%; height: 300px; background: var(--body-bg); padding: 15px; border: 1px solid var(--border-color); border-radius: 4px;">
+            <canvas id="analyticsChart"></canvas>
+        </div>
+    </div>
+
+    {{ block.super }}
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const data = {{ chart_data|safe }};
+
+    const style = getComputedStyle(document.body);
+    const textColor = style.getPropertyValue('--body-fg') || '#333';
+    const gridColor = style.getPropertyValue('--border-color') || 'rgba(0,0,0,0.1)';
+    const accentColor = style.getPropertyValue('--primary') || '#79aec8';
+
+    const ctx = document.getElementById('analyticsChart');
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(row => row.calendar_date),
+            datasets: [
+                {
+                    label: 'Datapoints',
+                    data: data.map(row => row.y),
+                    backgroundColor: accentColor,
+                    borderColor: accentColor,
+                    borderWidth: 1,
+                    borderRadius: 4,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: gridColor },
+                    ticks: { color: textColor, stepSize: 1 }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: textColor }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

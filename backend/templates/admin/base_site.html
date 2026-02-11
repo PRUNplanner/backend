@@ -1,0 +1,23 @@
+{% extends "admin/base.html" %}
+
+{% block title %}
+  {{ title }} | {{ site_title|default:_("Django site admin") }}
+{% endblock title %}
+{% block extrahead %}
+  {{ block.super }}
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+      tailwind.config = {
+        corePlugins: {
+          preflight: false,
+        }
+      }
+  </script>
+{% endblock extrahead %}
+{% block branding %}
+  <h1 id="site-name">
+    <a href="{% url 'admin:index' %}">{{ site_header|default:_("Django administration") }}</a>
+  </h1>
+{% endblock branding %}
+{% block nav-global %}
+{% endblock nav-global %}

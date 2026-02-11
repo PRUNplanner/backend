@@ -1,0 +1,30 @@
+{% load humanize %}
+
+<table class="table-auto w-full">
+  <tbody>
+    <tr>
+      <th>Active Connections</th>
+      <td>{{ postgres_stats.active_connections }}</td>
+    </tr>
+    <tr>
+      <th>Database Size</th>
+      <td>{{ postgres_stats.db_size }}</td>
+    </tr>
+    <tr>
+      <th>Cache Hit-Rate</th>
+      <td>{{ postgres_stats.cache_hit_rate }}</td>
+    </tr>
+    <tr>
+      <th>Total Commits</th>
+      <td>{{ postgres_stats.total_commits|intcomma }}</td>
+    </tr>
+    <tr>
+      <th>Dead Tuples</th>
+      <td>{{ postgres_stats.dead_tuples|intcomma }}</td>
+    </tr>
+    <tr>
+      <th>Needs Vacuum</th>
+      <td>{{ postgres_stats.needs_vacuum }}</td>
+    </tr>
+  </tbody>
+</table>

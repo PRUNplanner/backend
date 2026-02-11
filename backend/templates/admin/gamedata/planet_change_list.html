@@ -1,0 +1,28 @@
+{% extends "admin/change_list.html" %} {% load i18n %}
+{% block object-tools-items %}
+    {{ block.super }}
+    <li>
+        <a class="button" href="{% url 'admin:fio_import_all_planets' %}" >FIO Import All</a>
+    </li>
+    <li>
+        <form id="custom-action-form" style="display:inline-block;" method="get">
+            <input type="text" id="input-planet" name="input-planet" placeholder="PlanetNaturalId">
+        </form>
+    </li>
+    <li>
+        <a class="button" id="fio-import-planet-button" href="#">Fetch Planet</a>
+    </li>
+{% endblock %}
+{% block extrahead %}
+  {{ block.super }}
+  <script type="text/javascript">
+    document.addEventListener("DOMContentLoaded", function() {
+      document.getElementById("fio-import-planet-button").addEventListener("click", function() {
+        const value = document.getElementById("input-planet").value;
+        fetch("{% url 'admin:fio_import_planet' %}?value=" + encodeURIComponent(value))
+          .then(res => res.json())
+          .then(data => alert("Server responded: " + JSON.stringify(data)));
+      });
+    });
+  </script>
+{% endblock %}

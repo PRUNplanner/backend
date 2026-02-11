@@ -1,0 +1,23 @@
+<div class="flex flex-col grow p-6 relative rounded-default shadow-xs bg-base-900 border-base-800 border">
+  <div>
+    <p class="mb-0 text-sm">{{ label }}</p>
+    <div class="font-semibold text-2xl tracking-tight text-font-important-dark">{{ value }}</div>
+  </div>
+  <div class="border-t flex flex-row justify-between items-center -mb-6 -mx-6 mt-3 pb-2 pt-2 px-6 text-sm border-base-800">
+    {% if variant == "dual" %}
+      <div>
+        <strong>{{ stat1_value }}</strong> {{ stat1_label }}
+      </div>
+      <div>
+        <strong>{{ stat2_value }}</strong> {{ stat2_label }}
+      </div>
+    {% else %}
+      <div>
+        <strong class="{% if delta >= 0 %}text-success-500{% else %}text-danger-500{% endif %}">
+          {{ delta|stringformat:"+d" }}
+        </strong>
+        to yesterday
+      </div>
+    {% endif %}
+  </div>
+</div>

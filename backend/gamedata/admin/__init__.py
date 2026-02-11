@@ -1,0 +1,6 @@
+from .game_building_admin import GameBuildingAdmin
+from .game_exchange_admin import GameExchangeAdmin
+from .game_material_admin import GameMaterialAdmin
+from .game_planet_admin import GamePlanet
+from .game_playerdata_admin import GameFIOPlayerDataAdmin
+from .game_recipe_admin import GameRecipeAdmin

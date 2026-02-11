@@ -1,0 +1,28 @@
+<table class="table-auto w-full">
+  <tbody>
+    <tr>
+      <th>Active Connections</th>
+      <td>{{ redis_stats.active_connections }}</td>
+    </tr>
+    <tr>
+      <th>Usage</th>
+      <td>{{ redis_stats.usage }}</td>
+    </tr>
+    <tr>
+      <th>Hit Rate</th>
+      <td>{{ redis_stats.hit_rate }}</td>
+    </tr>
+    <tr>
+      <th>Blocked Clients</th>
+      <td>{{ redis_stats.blocked_clients }}</td>
+    </tr>
+    <tr>
+      <th>Fragmentation</th>
+      <td>{{ redis_stats.fragmentation }}</td>
+    </tr>
+    <tr>
+      <th>Status</th>
+      <td>{{ redis_stats.status }}</td>
+    </tr>
+  </tbody>
+</table>

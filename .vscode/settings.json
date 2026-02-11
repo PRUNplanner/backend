@@ -1,0 +1,44 @@
+{
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.wordWrap": "off",
+    "editor.rulers": [
+      120
+    ],
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    },
+  },
+  "[html]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[markdown]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.rulers": [
+      120
+    ],
+  },
+  "[django-html]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "monosans.djlint"
+  },
+  "python.languageServer": "Pylance",
+  "ty.disableLanguageServices": true,
+  "ruff.importStrategy": "fromEnvironment",
+  "ruff.configuration": "${workspaceFolder}/pyproject.toml",
+  // testing
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestEnabled": true,
+  "python.testing.cwd": "${workspaceFolder}",
+  "python.testing.pytestArgs": [
+    "-c",
+    "pytest.ini",
+    "--ds=core.config.django.test",
+    "backend",
+    "."
+  ]
+}

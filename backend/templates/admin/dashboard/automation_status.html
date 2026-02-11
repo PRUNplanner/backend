@@ -1,0 +1,26 @@
+{% load humanize %}
+
+<table class="table-auto w-full">
+  <thead>
+    <tr>
+      <th>Object</th>
+      <th>Total</th>
+      <th>Retrying</th>
+      <th>Failed</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Planets</td>
+      <td>{{ automation_status_data.planet.total_count|intcomma }}</td>
+      <td>{{ automation_status_data.planet.retrying_count|intcomma }}</td>
+      <td>{{ automation_status_data.planet.failed_count|intcomma }}</td>
+    </tr>
+    <tr>
+      <td>FIO Userdata</td>
+      <td>{{ automation_status_data.fio_userdata.total_count|intcomma }}</td>
+      <td>{{ automation_status_data.fio_userdata.retrying_count|intcomma }}</td>
+      <td>{{ automation_status_data.fio_userdata.failed_count|intcomma }}</td>
+    </tr>
+  </tbody>
+</table>

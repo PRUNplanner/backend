@@ -1,0 +1,30 @@
+{% load humanize %}
+
+<div class="flex flex-row justify-between pb-3 ">
+  <div>
+    Total Records: <strong>{{ model_counts.total_records|intcomma }}</strong>
+  </div>
+  <div>
+    Total Table Size: <strong>{{ model_counts.total_db_size }}</strong>
+  </div>
+</div>
+<table class="table-auto w-full">
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>App</th>
+      <th>Record Count</th>
+      <th>Table Size</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for model_data in model_counts.models %}
+      <tr>
+        <td>{{ model_data.name }}</td>
+        <td>{{ model_data.app }}</td>
+        <td>{{ model_data.count|intcomma }}</td>
+        <td>{{ model_data.size }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

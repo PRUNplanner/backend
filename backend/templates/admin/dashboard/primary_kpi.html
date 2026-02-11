@@ -1,0 +1,45 @@
+{% load humanize %}
+
+<div>
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="border border-solid border-neutral-600 shadow-lg rounded  p-3">
+      <h2 class="text-xl font-light m-0 pb-1 text-neutral-400">Users</h2>
+      <div class="text-4xl font-bold">{{ kpi_data.user_count|intcomma }}</div>
+      <div class="flex flex-row justify-between pt-3 text-neutral-400">
+        <div class="sub-value">
+          <strong class="text-white">{{ kpi_data.users_active_today }}</strong> Active Today
+        </div>
+        <div class="sub-value">
+          <strong class="text-white">{{ kpi_data.users_active_30d }}</strong> Active 30 Days
+        </div>
+      </div>
+    </div>
+    <div class="border border-solid border-neutral-600 shadow-lg rounded  p-3">
+      <h2 class="text-xl font-light m-0 pb-1 text-neutral-400">Plans</h2>
+      <div class="text-4xl font-bold">{{ kpi_data.plan_count|intcomma }}</div>
+      <div class="flex flex-row justify-between pt-3 text-neutral-400">
+        <div class="sub-value">
+          <strong class="text-white">{{ kpi_data.plan_count_delta|stringformat:"+d" }}</strong> Yesterday
+        </div>
+      </div>
+    </div>
+    <div class="border border-solid border-neutral-600 shadow-lg rounded  p-3">
+      <h2 class="text-xl font-light m-0 pb-1 text-neutral-400">Empires</h2>
+      <div class="text-4xl font-bold">{{ kpi_data.empire_count|intcomma }}</div>
+      <div class="flex flex-row justify-between pt-3 text-neutral-400">
+        <div class="sub-value">
+          <strong class="text-white">{{ kpi_data.empire_count_delta|stringformat:"+d" }}</strong> Yesterday
+        </div>
+      </div>
+    </div>
+    <div class="border border-solid border-neutral-600 shadow-lg rounded  p-3">
+      <h2 class="text-xl font-light m-0 pb-1 text-neutral-400">CX Preferences</h2>
+      <div class="text-4xl font-bold">{{ kpi_data.cx_count|intcomma }}</div>
+      <div class="flex flex-row justify-between pt-3 text-neutral-400">
+        <div class="sub-value">
+          <strong class="text-white">{{ kpi_data.cx_count_delta|stringformat:"+d" }}</strong> Yesterday
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

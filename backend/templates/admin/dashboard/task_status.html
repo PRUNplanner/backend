@@ -1,0 +1,28 @@
+{% load humanize %}
+
+<table class="table-auto w-full">
+  <thead>
+    <tr>
+      <th>Task Name</th>
+      <th>Status</th>
+      <th>Last Run</th>
+      <th>Total Runs</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for task in task_data %}
+      <tr>
+        <td>{{ task.name }}</td>
+        <td class="text-[{{ task.status_color }}]">{{ task.status_label }}</td>
+        <td>
+          {% if task.last_run_at %}
+            {{ task.last_run_at|date:"M d, H:i:s" }}
+          {% else %}
+            Never
+          {% endif %}
+        </td>
+        <td>{{ task.total_run_count|intcomma }}</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

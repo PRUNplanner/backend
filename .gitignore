@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.ruff_cache
+
+*.db
+.env
+.overmind*
+
+# django
+staticfiles/
+
+# Virtual environments
+.venv
+.mypy_cache
+
+# Tests
+.pytest_cache
+.coverage
+.coveragerc
+htmlcov/
+
+# Vector
+vector*.toml

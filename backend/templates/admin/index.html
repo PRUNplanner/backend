@@ -1,0 +1,36 @@
+{% extends "admin/base_site.html" %}
+
+{% load static %}
+
+{% block content %}
+  {% include "admin/dashboard/primary_kpi.html" %}
+  <h1 class="pt-6">App Statistics</h1>
+  {% include "admin/dashboard/statistic_chart.html" with chart_data=chart_data %}
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div>
+          <h1 class="pt-6">Database</h1>
+          {% include "admin/dashboard/postgresql_status.html" with postgres_stats=postgres_stats %}
+        </div>
+        <div>
+          <h1 class="pt-6">Redis</h1>
+          {% include "admin/dashboard/redis_status.html" with redis_stats=redis_stats %}
+        </div>
+      </div>
+      <h1 class="pt-6">Task Status</h1>
+      {% include "admin/dashboard/task_status.html" with task_data=task_data %}
+      <h1 class="pt-6">Automation Status</h1>
+      {% include "admin/dashboard/automation_status.html" with automation_status_data=automation_status_data %}
+    </div>
+    <div>
+      <h1 class="pt-6">Database Models</h1>
+      {% include "admin/dashboard/model_counts.html" with model_counts=model_counts %}
+    </div>
+  </div>
+  {{ block.super }}
+{% endblock content %}
+{% block extrastyle %}
+  {{ block.super }}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock extrastyle %}
