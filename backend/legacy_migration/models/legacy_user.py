@@ -6,7 +6,7 @@ class LegacyUser(models.Model):
     hashed_password = models.CharField(max_length=255)
 
     username = models.CharField(max_length=250)
-    email = models.CharField(max_length=255, blank=True, null=True)
+    email = models.CharField(max_length=255, blank=True, null=True)  # noqa: DJ001
 
     level = models.IntegerField()
 
@@ -16,3 +16,6 @@ class LegacyUser(models.Model):
     class Meta:
         managed = False
         db_table = 'user'
+
+    def __str__(self):
+        return f'Legacy user {self.user_id}'
