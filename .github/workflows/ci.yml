@@ -42,6 +42,9 @@ jobs:
       DATABASE_PASSWORD: postgres
       DATABASE_HOST: localhost
       DATABASE_PORT: 5432
+      CACHE_DEFAULT_LOCATION: foo
+      CELERY_BROKER_URL: foo
+      CELERY_RESULT_BACKEND: foo
     steps:
       - uses: actions/checkout@v4
       - name: Install uv

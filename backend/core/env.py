@@ -43,8 +43,8 @@ class CelerySettings(BaseSettings):
 
 
 class RestFrameworkSettings(BaseSettings):
-    access_token_lifetime: int = Field()
-    refresh_token_lifetime: int = Field()
+    access_token_lifetime: int = Field(default=15)
+    refresh_token_lifetime: int = Field(default=10080)
 
     model_config = SettingsConfigDict(
         extra='ignore', env_file=str(ENV_FILE) if ENV_FILE else None, env_prefix='REST_FRAMEWORK_'
@@ -52,8 +52,8 @@ class RestFrameworkSettings(BaseSettings):
 
 
 class EmailSettings(BaseSettings):
-    resend_api_key: str = Field()
-    from_email: str = Field()
+    resend_api_key: str = Field(default='')
+    from_email: str = Field(default='')
     verification_expiry_minutes: int = Field(default=30)
     password_reset_expiry_minutes: int = Field(default=30)
     model_config = SettingsConfigDict(extra='ignore', env_file=str(ENV_FILE) if ENV_FILE else None, env_prefix='EMAIL_')
@@ -67,8 +67,8 @@ class Settings(BaseSettings):
     database: DatabaseSettings = DatabaseSettings()
     cache: CacheSettings = CacheSettings()
     celery: CelerySettings = CelerySettings()
-    email: EmailSettings = EmailSettings()  # type: ignore
-    rest_framework: RestFrameworkSettings = RestFrameworkSettings()  # type: ignore
+    email: EmailSettings = EmailSettings()
+    rest_framework: RestFrameworkSettings = RestFrameworkSettings()
 
     model_config = SettingsConfigDict(env_file=str(ENV_FILE) if ENV_FILE else None, extra='ignore')
 
