@@ -45,5 +45,5 @@ class UserAPIKeyAuthentication(authentication.BaseAuthentication):
 
             return (api_key.user, None)
 
-        except UserAPIKey.DoesNotExist:
-            raise exceptions.AuthenticationFailed('Invalid API Key')
+        except UserAPIKey.DoesNotExist as exc:
+            raise exceptions.AuthenticationFailed('Invalid API Key') from exc

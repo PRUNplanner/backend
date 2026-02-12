@@ -18,6 +18,9 @@ class LegacyBaseplanner(models.Model):
         managed = False
         db_table = 'user_baseplanner'
 
+    def __str__(self):
+        return f'Legacy plan {self.user_baseplanner_id}'
+
 
 class LegacyEmpire(models.Model):
     user_empire_id = models.BigIntegerField(primary_key=True)
@@ -33,6 +36,9 @@ class LegacyEmpire(models.Model):
         managed = False
         db_table = 'user_empire'
 
+    def __str__(self):
+        return f'Legacy empire {self.user_empire_id}'
+
 
 class LegacyCX(models.Model):
     user_cx_id = models.BigIntegerField(primary_key=True)
@@ -46,6 +52,9 @@ class LegacyCX(models.Model):
         managed = False
         db_table = 'user_cx'
 
+    def __str__(self):
+        return f'Legacy cx {self.user_cx_id}'
+
 
 class LegacyEmpirePlanJunction(models.Model):
     empire_id = models.BigIntegerField()
@@ -54,6 +63,9 @@ class LegacyEmpirePlanJunction(models.Model):
     class Meta:
         managed = False
         db_table = 'jct_user_empire_baseplanner'
+
+    def __str__(self):
+        return f'Legacy empire-plan-jct {self.empire_id} x {self.baseplanner_id}'
 
 
 class LegacyShared(models.Model):
@@ -67,3 +79,6 @@ class LegacyShared(models.Model):
     class Meta:
         managed = False
         db_table = 'shared'
+
+    def __str__(self):
+        return f'Legacy shared {self.share_id}'

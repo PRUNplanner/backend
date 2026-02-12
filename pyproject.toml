@@ -55,6 +55,7 @@ django_settings_module = "core.config.django.local"
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+extend-exclude = ["**migrations/*.py", "__init__.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "Q", "RUF100", "C90", "UP", "I", "DJ"]

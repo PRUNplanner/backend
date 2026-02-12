@@ -7,4 +7,4 @@ class UserConfig(AppConfig):
 
     def ready(self) -> None:
         import user.api.schema
-        import user.signals
+        import user.signals  # noqa: F401

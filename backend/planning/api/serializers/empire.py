@@ -31,7 +31,6 @@ class PlanningEmpireDetailSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        user = self.context['request'].user
 
         instance = super().update(instance, validated_data)
 

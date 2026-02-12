@@ -6,4 +6,4 @@ class GamedataConfig(AppConfig):
     name = 'gamedata'
 
     def ready(self) -> None:
-        import gamedata.signals
+        import gamedata.signals  # noqa: F401
