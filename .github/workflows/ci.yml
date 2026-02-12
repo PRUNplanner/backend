@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install
+      - name: Ruff Check
+        run: uv run ruff check --output-format=github
+      - name: Ruff Format
+        run: uv run ruff format --check
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install
+      - name: Run Ty
+        run: uv run ty check --exclude "**/migrations/*.py"
+  test:
+    name: Pytest
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_NAME: postgres
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_HOST: localhost
+      DATABASE_PORT: 5432
+      CACHE_DEFAULT_LOCATION: foo
+      CELERY_BROKER_URL: foo
+      CELERY_RESULT_BACKEND: foo
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install
+
+      - name: Run Tests
+        run: uv run pytest --cov=. --cov-report=markdown-append:$GITHUB_STEP_SUMMARY

@@ -35,11 +35,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "coverage>=7.13.3",
     "django-stubs>=5.2.5",
     "djlint>=1.36.4",
     "model-bakery>=1.23.2",
     "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
     "pytest-django>=4.11.1",
     "ruff>=0.14.0",
     "ty>=0.0.11",
@@ -70,7 +70,6 @@ combine-as-imports = true
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 known-first-party = ["backend"]
 
-
 [tool.ruff.format]
 quote-style = "single"
 
@@ -82,3 +81,6 @@ blank_line_after_tag = "load,extends"
 format_css = true
 format_js = false
 max_line_length = 120
+
+[tool.coverage.run]
+omit = ["**/migrations/*", "manage.py", "core/config/*"]
