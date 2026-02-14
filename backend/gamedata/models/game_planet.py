@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from core.models import CeleryAutomationModel
-from django.db import models, transaction
-from django.db.models import Manager, QuerySet
+from django.db import models
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from gamedata.models.game_building import GameBuildingExpertiseChoices
@@ -175,17 +175,6 @@ class GamePlanet(CeleryAutomationModel):
         max_length=10, blank=True, null=True, choices=GamePlanetCOGCStatusChoices.choices
     )
 
-    def replace_related(
-        self,
-        related_name: str,
-        model_cls: type[M],
-        new_data: list[dict[str, Any]],
-    ) -> None:
-        with transaction.atomic():
-            manager = cast(Manager[M], getattr(self, related_name))
-            manager.all().delete()
-            model_cls._default_manager.bulk_create([model_cls(parent=self, **data) for data in new_data])
-
     objects: models.Manager[GamePlanet] = models.Manager()
 
     if TYPE_CHECKING:
@@ -222,6 +211,10 @@ class GamePlanetResource(models.Model):
         verbose_name = 'Planet Resource'
         verbose_name_plural = 'Planet Resources'
 
+        constraints = [
+            models.UniqueConstraint(fields=['planet', 'material_id'], name='unique_planet_material_resource')
+        ]
+
     def __str__(self) -> str:
         return f'{self.material_ticker} @ {self.planet}'
 
@@ -255,6 +248,12 @@ class GamePlanetProductionFee(models.Model):
         verbose_name = 'Planet Production Fee'
         verbose_name_plural = 'Planet Production Fees'
 
+        constraints = [
+            models.UniqueConstraint(
+                fields=['planet', 'category', 'workforce_level'], name='unique_planet_fee_category_level'
+            )
+        ]
+
     def __str__(self) -> str:
         return f'{self.category}, {self.workforce_level} @ {self.planet}'
 
@@ -275,6 +274,12 @@ class GamePlanetCOGCProgram(models.Model):
         db_table = 'prunplanner_game_planet_cogc_programs'
         verbose_name = 'Planet COGC Program'
         verbose_name_plural = 'Planet COGC Programs'
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['planet', 'program_type', 'start_epochms', 'end_epochms'], name='unique_planet_cogc_window'
+            )
+        ]
 
     def __str__(self) -> str:
         return f'{self.program_type} ({self.start_epochms}-{self.end_epochms}) @ {self.planet}'
