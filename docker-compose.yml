@@ -1,0 +1,110 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: prunplanner-db
+    restart: always
+    env_file: .env
+    environment:
+      - POSTGRES_DB=${DATABASE_NAME}
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - pp_postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER} -d ${DATABASE_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: prunplanner-redis
+    restart: always
+    command: redis-server --save 60 1 --loglevel warning --appendonly yes
+    volumes:
+      - pp_redis_data:/data
+
+  backend:
+    build: .
+    container_name: prunplanner-backend
+    restart: always
+    command: uv run gunicorn --pythonpath backend core.wsgi:application --bind 0.0.0.0:8000 --preload --workers 3 --threads 2 --access-logfile - --error-logfile -
+    env_file: .env
+    environment:
+      - SERVICE_TYPE=django
+      - DATABASE_HOST=db
+      - CACHE_DEFAULT_LOCATION=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build: .
+    container_name: prunplanner-worker
+    restart: on-failure
+    command: uv run celery -A core worker --concurrency 1 --loglevel=info
+    env_file: .env
+    environment:
+      - SERVICE_TYPE=celery
+      - DATABASE_HOST=db
+      - CACHE_DEFAULT_LOCATION=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      backend:
+        condition: service_started
+
+  beat:
+    build: .
+    container_name: prunplanner-beat
+    restart: on-failure
+    command: uv run celery -A core beat --loglevel=info  --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: .env
+    environment:
+      - SERVICE_TYPE=celery
+      - DATABASE_HOST=db
+      - CACHE_DEFAULT_LOCATION=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      - db
+      - redis
+      - backend
+
+  vector:
+    container_name: prunplanner-vector
+    image: timberio/vector:0.53.0-debian
+    restart: on-failure
+    env_file: .env
+    # vector will only start if VECTOR_ACTIVE == true is provided in .env
+    entrypoint: >
+      sh -c '
+      if [ "$VECTOR_ACTIVE" != "true" ]; then
+        echo "VECTOR_ACTIVE is not true. Skipping log ingestion.";
+        exit 0;
+      fi;
+      echo "VECTOR_ACTIVE is true. Starting Vector...";
+      exec /usr/bin/vector --config /etc/vector/vector.toml
+      '
+    volumes:
+      - ./vector.toml:/etc/vector/vector.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - vector_data:/var/lib/vector
+    depends_on:
+      - backend
+
+volumes:
+  pp_postgres_data:
+  pp_redis_data:
+  vector_data:

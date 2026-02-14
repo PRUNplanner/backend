@@ -48,7 +48,7 @@ def create_materialized_view(apps, schema_editor):
                 sum_volume_30d / NULLIF(sum_traded_30d, 0::numeric) AS vwap_30d
             FROM windowed_stats;
 
-            CREATE UNIQUE INDEX idx_analytics_unique ON prunplanner_game_exchanges_analytics (ticker, exchange_code, date_epoch);
+            CREATE UNIQUE INDEX idx_game_analytics_unique ON prunplanner_game_exchanges_analytics (ticker, exchange_code, date_epoch);
             CLUSTER prunplanner_game_exchanges_analytics USING idx_game_analytics_unique;
             """)
 
