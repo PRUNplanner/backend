@@ -33,13 +33,24 @@ While the [Frontend](https://github.com/PRUNplanner/frontend) handles all your p
 
 ## Docker
 
-to be created.
+You can run the backend locally with Docker / Docker Compose with the `entrypoint.sh` ensuring migrations did run.
+This will start a PostgreSQL database, Redis, the Django backend as well as a Celery worker. There won't be any
+game data, but the admin interface allows to import it easily.
 
-## Running locally
+To create yourself a local superuser for Django, run the following command:
 
-PRUNplanner uses [`uv`](https://docs.astral.sh/uv/) for Python `3.12` package and virtual environment management. See [uv installation documentation](https://docs.astral.sh/uv/getting-started/installation/) on how to get started.
+```shell
+docker compose exec backend uv run backend/manage.py createsuperuser
+```
 
-Run in terminal if you have PostgreSQL database and Redis instance available and configured in the `.env` file.
+
+## Console
+
+PRUNplanner uses [`uv`](https://docs.astral.sh/uv/) for Python 3.12 package and virtual environment management.
+See [uv installation documentation](https://docs.astral.sh/uv/getting-started/installation/) on how to get started.
+
+Run in terminal if you have PostgreSQL database and Redis instance available and configured in the `.env` file or
+start them separately and point the Django towards it.
 
 ```shell
 # Install packages
@@ -53,9 +64,11 @@ uv run --env-file .env celery -A core --workdir=backend worker -l INFO
 uv run --env-file .env celery -A core --workdir=backend beat -l INFO  --scheduler django_celery_beat.schedulers:DatabaseScheduler
 ```
 
-## Running locally via [`overmind`](https://github.com/DarthSim/overmind) and `Procfile`
+## Via [`overmind`](https://github.com/DarthSim/overmind) and `Procfile`
 
-Packages must be installed and available as `overmind` executes multiple `uv run` command in separate processes. Create yourself a `Procfile` and use the following commands.
+Packages must be installed and available as `overmind` executes multiple `uv run` command in separate processes.
+Create yourself a `Procfile` and use the following commands. Database and Redis must be available and defined in your
+`.env` file.
 
 ```shell
 web: uv run backend/manage.py runserver
