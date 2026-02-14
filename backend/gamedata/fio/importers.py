@@ -1,5 +1,6 @@
-from django.db import transaction
+from django.db import transaction, models
 
+from gamedata.fio.schemas.fio_planet import FIOPlanetCOGCProgramSchema, FIOPlanetProductionFeeSchema, FIOPlanetResourceSchema
 from gamedata.fio.services import get_fio_service
 from gamedata.gamedata_cache_manager import GamedataCacheManager
 from gamedata.models import (
@@ -25,54 +26,138 @@ def import_planet(planet_natural_id: str) -> bool:
     if not data:
         return False
 
+    planet_instance = None
+    import_error = None
+
     with transaction.atomic():
         try:
             # delete existing data, cascades children
-            new_planet, _created = GamePlanet.objects.update_or_create(
+            planet_instance, _created = GamePlanet.objects.update_or_create(
                 planet_natural_id=data.planet_natural_id,
                 defaults=data.model_dump(exclude={'resources', 'cogc_programs', 'production_fees'}),
             )
 
-            # delete related manually, as cascade is not riggered
-            new_planet.resources.all().delete()
-            new_planet.cogc_programs.all().delete()
-            new_planet.production_fees.all().delete()
+            # Get Material ticker map once
+            material_map = GameMaterial.material_id_ticker_map()
 
-            # prepare related objects
-            material_ticker_map = GameMaterial.material_id_ticker_map()
+            # Synchronize all 1:n relationships
+            planet_sync_resources(planet_instance, data.resources, material_map)
+            planet_sync_cogc_programs(planet_instance, data.cogc_programs)
+            planet_sync_production_fees(planet_instance, data.production_fees)
 
-            # cogc programs
-            cogc_programs = [GamePlanetCOGCProgram(planet=new_planet, **p.model_dump()) for p in data.cogc_programs]
-
-            # resources
-            resources = []
-            for p in data.resources:
-                # multiplier logic
-                multiplier = 60.0 if p.resource_type == GamePlanetResourceTypeChoices.Gaseous else 70.0
-
-                resources.append(
-                    GamePlanetResource(
-                        planet=new_planet,
-                        **p.model_dump(),
-                        daily_extraction=p.factor * multiplier,
-                        material_ticker=material_ticker_map.get(p.material_id),
-                    )
-                )
-
-            # fees
-            fees = [GamePlanetProductionFee(planet=new_planet, **p.model_dump()) for p in data.production_fees]
-
-            # bulk inserts
-            GamePlanetCOGCProgram.objects.bulk_create(cogc_programs, ignore_conflicts=True)
-            GamePlanetResource.objects.bulk_create(resources, ignore_conflicts=True)
-            GamePlanetProductionFee.objects.bulk_create(fees, ignore_conflicts=True)
-
-            new_planet.update_refresh_result()
+            planet_instance.update_refresh_result()
 
             return True
+
         except Exception as exc:
-            new_planet.update_refresh_result(error=exc)
-            return True
+            import_error = exc
+
+    if import_error:
+        planet_to_log = GamePlanet.objects.filter(planet_id=data.planet_id).first()
+        if planet_to_log:
+            planet_to_log.update_refresh_result(error=import_error)
+        return False
+
+def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResourceSchema], material_map: dict):
+
+    existing_objs = {r.material_id: r for r in planet.resources.all()}
+
+    seen_material_ids = set()
+    to_create = []
+    to_update = []
+
+    for item in resource_data:
+        m_id = item.material_id
+        seen_material_ids.add(m_id)
+
+        multiplier = 60.0 if item.resource_type == GamePlanetResourceTypeChoices.Gaseous else 70.0
+        daily_ext = item.factor * multiplier
+        ticker = material_map.get(m_id, "")
+
+        if m_id in existing_objs:
+            obj = existing_objs[m_id]
+            obj.factor = item.factor
+            obj.resource_type = item.resource_type
+            obj.daily_extraction = daily_ext
+            obj.material_ticker = ticker
+            to_update.append(obj)
+        else:
+            to_create.append(GamePlanetResource(
+                planet=planet,
+                material_id=m_id,
+                factor=item.factor,
+                resource_type=item.resource_type,
+                daily_extraction=daily_ext,
+                material_ticker=ticker
+            ))
+
+    if to_update:
+        GamePlanetResource.objects.bulk_update(
+            to_update,
+            fields=['factor', 'resource_type', 'daily_extraction', 'material_ticker']
+        )
+
+    if to_create:
+        GamePlanetResource.objects.bulk_create(to_create)
+
+    planet.resources.exclude(material_id__in=seen_material_ids).delete()
+
+def planet_sync_cogc_programs(planet: GamePlanet, cogc_data: list[FIOPlanetCOGCProgramSchema]):
+    existing = {
+        (p.program_type, p.start_epochms, p.end_epochms): p.pk
+        for p in planet.cogc_programs.all()
+    }
+
+    ids_to_keep = []
+    to_create = []
+
+    for item in cogc_data:
+        key = (item.program_type, item.start_epochms, item.end_epochms)
+
+        if key in existing:
+            ids_to_keep.append(existing[key])
+        else:
+            to_create.append(GamePlanetCOGCProgram(planet=planet, **item.model_dump()))
+
+    if to_create:
+        new_objs = GamePlanetCOGCProgram.objects.bulk_create(to_create)
+        ids_to_keep.extend([obj.pk for obj in new_objs])
+
+    if not ids_to_keep:
+        planet.cogc_programs.all().delete()
+    else:
+        planet.cogc_programs.exclude(pk__in=ids_to_keep).delete()
+
+def planet_sync_production_fees(planet: GamePlanet, fee_data: list[FIOPlanetProductionFeeSchema]):
+    existing = {(f.category, f.workforce_level): f for f in planet.production_fees.all()}
+
+    to_create = []
+    to_update = []
+    ids_to_keep = []
+
+    for item in fee_data:
+        key = (item.category, item.workforce_level)
+
+        if key in existing:
+            obj = existing[key]
+            obj.fee_amount = item.fee_amount
+            obj.fee_currency = item.fee_currency
+            to_update.append(obj)
+            ids_to_keep.append(obj.pk)
+        else:
+            to_create.append(GamePlanetProductionFee(planet=planet, **item.model_dump()))
+
+    if to_update:
+        GamePlanetProductionFee.objects.bulk_update(to_update, ['fee_amount', 'fee_currency'])
+
+    if to_create:
+        returned_objs = GamePlanetProductionFee.objects.bulk_create(to_create)
+        ids_to_keep.extend([obj.pk for obj in returned_objs])
+
+    if not ids_to_keep:
+        planet.production_fees.all().delete()
+    else:
+        planet.production_fees.exclude(pk__in=ids_to_keep).delete()
 
 
 def import_all_planets() -> bool:

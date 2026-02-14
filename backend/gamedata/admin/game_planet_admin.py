@@ -18,21 +18,21 @@ def action_refresh_planet(modeladmin: admin.ModelAdmin, request: HttpRequest, qu
 
 class PlanetCOGCProgramInline(admin.TabularInline):
     model = GamePlanetCOGCProgram
-    can_delete = False
+    can_delete = True
     extra = 0
     fk_name = 'planet'
 
 
 class PlanetResourceInline(admin.TabularInline):
     model = GamePlanetResource
-    can_delete = False
+    can_delete = True
     extra = 0
     fk_name = 'planet'
 
 
 class PlanetProductionFeeInline(admin.TabularInline):
     model = GamePlanetProductionFee
-    can_delete = False
+    can_delete = True
     extra = 0
     fk_name = 'planet'
 

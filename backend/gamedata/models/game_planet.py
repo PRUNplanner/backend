@@ -222,6 +222,13 @@ class GamePlanetResource(models.Model):
         verbose_name = 'Planet Resource'
         verbose_name_plural = 'Planet Resources'
 
+        constraints = [
+            models.UniqueConstraint(
+                fields=['planet', 'material_id'],
+                name='unique_planet_material_resource'
+            )
+        ]
+
     def __str__(self) -> str:
         return f'{self.material_ticker} @ {self.planet}'
 
@@ -255,6 +262,13 @@ class GamePlanetProductionFee(models.Model):
         verbose_name = 'Planet Production Fee'
         verbose_name_plural = 'Planet Production Fees'
 
+        constraints = [
+            models.UniqueConstraint(
+                fields=['planet', 'category', 'workforce_level'],
+                name='unique_planet_fee_category_level'
+            )
+        ]
+
     def __str__(self) -> str:
         return f'{self.category}, {self.workforce_level} @ {self.planet}'
 
@@ -275,6 +289,13 @@ class GamePlanetCOGCProgram(models.Model):
         db_table = 'prunplanner_game_planet_cogc_programs'
         verbose_name = 'Planet COGC Program'
         verbose_name_plural = 'Planet COGC Programs'
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=['planet', 'program_type', 'start_epochms', 'end_epochms'],
+                name='unique_planet_cogc_window'
+            )
+        ]
 
     def __str__(self) -> str:
         return f'{self.program_type} ({self.start_epochms}-{self.end_epochms}) @ {self.planet}'
