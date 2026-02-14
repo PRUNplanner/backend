@@ -1,6 +1,10 @@
-from django.db import transaction, models
+from django.db import transaction
 
-from gamedata.fio.schemas.fio_planet import FIOPlanetCOGCProgramSchema, FIOPlanetProductionFeeSchema, FIOPlanetResourceSchema
+from gamedata.fio.schemas.fio_planet import (
+    FIOPlanetCOGCProgramSchema,
+    FIOPlanetProductionFeeSchema,
+    FIOPlanetResourceSchema,
+)
 from gamedata.fio.services import get_fio_service
 from gamedata.gamedata_cache_manager import GamedataCacheManager
 from gamedata.models import (
@@ -56,7 +60,9 @@ def import_planet(planet_natural_id: str) -> bool:
         planet_to_log = GamePlanet.objects.filter(planet_id=data.planet_id).first()
         if planet_to_log:
             planet_to_log.update_refresh_result(error=import_error)
-        return False
+
+    return False
+
 
 def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResourceSchema], material_map: dict):
 
@@ -72,7 +78,7 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
 
         multiplier = 60.0 if item.resource_type == GamePlanetResourceTypeChoices.Gaseous else 70.0
         daily_ext = item.factor * multiplier
-        ticker = material_map.get(m_id, "")
+        ticker = material_map.get(m_id, '')
 
         if m_id in existing_objs:
             obj = existing_objs[m_id]
@@ -82,19 +88,20 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
             obj.material_ticker = ticker
             to_update.append(obj)
         else:
-            to_create.append(GamePlanetResource(
-                planet=planet,
-                material_id=m_id,
-                factor=item.factor,
-                resource_type=item.resource_type,
-                daily_extraction=daily_ext,
-                material_ticker=ticker
-            ))
+            to_create.append(
+                GamePlanetResource(
+                    planet=planet,
+                    material_id=m_id,
+                    factor=item.factor,
+                    resource_type=item.resource_type,
+                    daily_extraction=daily_ext,
+                    material_ticker=ticker,
+                )
+            )
 
     if to_update:
         GamePlanetResource.objects.bulk_update(
-            to_update,
-            fields=['factor', 'resource_type', 'daily_extraction', 'material_ticker']
+            to_update, fields=['factor', 'resource_type', 'daily_extraction', 'material_ticker']
         )
 
     if to_create:
@@ -102,11 +109,9 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
 
     planet.resources.exclude(material_id__in=seen_material_ids).delete()
 
+
 def planet_sync_cogc_programs(planet: GamePlanet, cogc_data: list[FIOPlanetCOGCProgramSchema]):
-    existing = {
-        (p.program_type, p.start_epochms, p.end_epochms): p.pk
-        for p in planet.cogc_programs.all()
-    }
+    existing = {(p.program_type, p.start_epochms, p.end_epochms): p.pk for p in planet.cogc_programs.all()}
 
     ids_to_keep = []
     to_create = []
@@ -127,6 +132,7 @@ def planet_sync_cogc_programs(planet: GamePlanet, cogc_data: list[FIOPlanetCOGCP
         planet.cogc_programs.all().delete()
     else:
         planet.cogc_programs.exclude(pk__in=ids_to_keep).delete()
+
 
 def planet_sync_production_fees(planet: GamePlanet, fee_data: list[FIOPlanetProductionFeeSchema]):
     existing = {(f.category, f.workforce_level): f for f in planet.production_fees.all()}
