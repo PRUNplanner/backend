@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from core.models import CeleryAutomationModel
-from django.db import models, transaction
-from django.db.models import Manager, QuerySet
+from django.db import models
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from gamedata.models.game_building import GameBuildingExpertiseChoices
@@ -175,17 +175,6 @@ class GamePlanet(CeleryAutomationModel):
         max_length=10, blank=True, null=True, choices=GamePlanetCOGCStatusChoices.choices
     )
 
-    def replace_related(
-        self,
-        related_name: str,
-        model_cls: type[M],
-        new_data: list[dict[str, Any]],
-    ) -> None:
-        with transaction.atomic():
-            manager = cast(Manager[M], getattr(self, related_name))
-            manager.all().delete()
-            model_cls._default_manager.bulk_create([model_cls(parent=self, **data) for data in new_data])
-
     objects: models.Manager[GamePlanet] = models.Manager()
 
     if TYPE_CHECKING:
@@ -223,10 +212,7 @@ class GamePlanetResource(models.Model):
         verbose_name_plural = 'Planet Resources'
 
         constraints = [
-            models.UniqueConstraint(
-                fields=['planet', 'material_id'],
-                name='unique_planet_material_resource'
-            )
+            models.UniqueConstraint(fields=['planet', 'material_id'], name='unique_planet_material_resource')
         ]
 
     def __str__(self) -> str:
@@ -264,8 +250,7 @@ class GamePlanetProductionFee(models.Model):
 
         constraints = [
             models.UniqueConstraint(
-                fields=['planet', 'category', 'workforce_level'],
-                name='unique_planet_fee_category_level'
+                fields=['planet', 'category', 'workforce_level'], name='unique_planet_fee_category_level'
             )
         ]
 
@@ -292,8 +277,7 @@ class GamePlanetCOGCProgram(models.Model):
 
         constraints = [
             models.UniqueConstraint(
-                fields=['planet', 'program_type', 'start_epochms', 'end_epochms'],
-                name='unique_planet_cogc_window'
+                fields=['planet', 'program_type', 'start_epochms', 'end_epochms'], name='unique_planet_cogc_window'
             )
         ]
 
