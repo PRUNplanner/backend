@@ -44,6 +44,10 @@ class GamedataCacheManager(CacheManager):
         return cls.make_key('planet', *planet_natural_ids)
 
     @classmethod
+    def key_planet_popr(cls, planet_natural_id: str) -> str:
+        return cls.make_key('planet', 'popr', planet_natural_id)
+
+    @classmethod
     def key_user_storage(cls, user_id: int) -> str:
         return cls.make_key('storage', user_id)
 
@@ -129,3 +133,8 @@ class GamedataCacheManager(CacheManager):
     ) -> Response | HttpResponse:
         key = cls.key_exchange_cxpc_response(ticker, exchange_code)
         return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_3HOURS)
+
+    @classmethod
+    def get_planet_latest_popr(cls, planet_natural_id: str, func: Callable[[], Any]) -> Response | HttpResponse:
+        key = cls.key_planet_popr(planet_natural_id)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)

@@ -181,6 +181,7 @@ class GamePlanet(CeleryAutomationModel):
         resources: models.QuerySet[GamePlanetResource]
         cogc_programs: models.QuerySet[GamePlanetCOGCProgram]
         production_fees: models.QuerySet[GamePlanetProductionFee]
+        popr_reports: models.QuerySet[GamePlanetInfrastructureReport]
 
     # Automation Retry Delay
     RETRY_DELAY_MINUTES = 30
@@ -283,3 +284,68 @@ class GamePlanetCOGCProgram(models.Model):
 
     def __str__(self) -> str:
         return f'{self.program_type} ({self.start_epochms}-{self.end_epochms}) @ {self.planet}'
+
+
+class GamePlanetInfrastructureReport(models.Model):
+    planet = models.ForeignKey(GamePlanet, related_name='popr_reports', on_delete=models.CASCADE)
+
+    infrastructure_report_id = models.CharField(max_length=128, db_index=True)
+    explorers_grace_enabled = models.BooleanField()
+    simulation_period = models.PositiveIntegerField(db_index=True)
+
+    next_population_pioneer = models.IntegerField()
+    next_population_settler = models.IntegerField()
+    next_population_technician = models.IntegerField()
+    next_population_engineer = models.IntegerField()
+    next_population_scientist = models.IntegerField()
+
+    population_difference_pioneer = models.IntegerField()
+    population_difference_settler = models.IntegerField()
+    population_difference_technician = models.IntegerField()
+    population_difference_engineer = models.IntegerField()
+    population_difference_scientist = models.IntegerField()
+
+    unemployment_rate_pioneer = models.FloatField()
+    unemployment_rate_settler = models.FloatField()
+    unemployment_rate_technician = models.FloatField()
+    unemployment_rate_engineer = models.FloatField()
+    unemployment_rate_scientist = models.FloatField()
+
+    open_jobs_pioneer = models.FloatField()
+    open_jobs_settler = models.FloatField()
+    open_jobs_technician = models.FloatField()
+    open_jobs_engineer = models.FloatField()
+    open_jobs_scientist = models.FloatField()
+
+    average_happiness_pioneer = models.FloatField()
+    average_happiness_settler = models.FloatField()
+    average_happiness_technician = models.FloatField()
+    average_happiness_engineer = models.FloatField()
+    average_happiness_scientist = models.FloatField()
+
+    need_fulfillment_life_support = models.FloatField()
+    need_fulfillment_safety = models.FloatField()
+    need_fulfillment_health = models.FloatField()
+    need_fulfillment_comfort = models.FloatField()
+    need_fulfillment_culture = models.FloatField()
+    need_fulfillment_education = models.FloatField()
+
+    free_pioneer = models.IntegerField()
+    free_settler = models.IntegerField()
+    free_technician = models.IntegerField()
+    free_engineer = models.IntegerField()
+    free_scientist = models.IntegerField()
+
+    class Meta:
+        db_table = 'prunplanner_game_planet_popr_reports'
+        verbose_name = 'Planet POPR'
+        verbose_name_plural = 'Planet POPRs'
+
+        ordering = ['-simulation_period']
+
+        constraints = [
+            models.UniqueConstraint(fields=['planet', 'simulation_period'], name='unique_planet_popr_simulation_period')
+        ]
+
+    def __str__(self):
+        return f'Report {self.planet}-{self.simulation_period}'

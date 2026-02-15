@@ -7,3 +7,4 @@ from .fio_ships import *
 from .fio_sites import *
 from .fio_sites_warehouses import *
 from .fio_storage import *
+from .fio_planet_infrastructure import *

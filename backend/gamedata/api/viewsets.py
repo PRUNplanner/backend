@@ -8,6 +8,7 @@ from gamedata.api.serializer import (
     GameExchangeCXPCSerializer,
     GameExchangeSerializer,
     GameMaterialSerializer,
+    GamePlanetInfrastructureReportSerializer,
     GamePlanetSerializer,
     GameRecipeSerializer,
     GameStorageSerializer,
@@ -27,6 +28,7 @@ from gamedata.models import (
     GameExchangeCXPC,
     GameFIOPlayerData,
     GameMaterial,
+    GamePlanet,
     GameRecipe,
     queryset_gameplanet,
 )
@@ -135,6 +137,27 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             return GamePlanetSerializer(result, many=True).data
 
         return GamedataCacheManager.get_planet_search_response(data, lambda: fetch_data(data))
+
+    @extend_schema(
+        auth=[],
+        responses=GamePlanetInfrastructureReportSerializer,
+        summary='Get planets latest population report',
+    )
+    def latest_popr(self, request, planet_natural_id=None):
+
+        planet = get_object_or_404(GamePlanet, planet_natural_id=planet_natural_id)
+
+        def fetch_data(planet: GamePlanet):
+            latest_report = planet.popr_reports.all().first()
+
+            if not latest_report:
+                return Response(
+                    {'detail': 'No infrastructure reports found for this planet'}, status=status.HTTP_404_NOT_FOUND
+                )
+
+            return GamePlanetInfrastructureReportSerializer(latest_report).data
+
+        return GamedataCacheManager.get_planet_latest_popr(planet.planet_natural_id, lambda: fetch_data(planet))
 
 
 class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):

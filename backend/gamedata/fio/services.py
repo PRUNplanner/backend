@@ -12,6 +12,7 @@ from gamedata.fio.schemas import (
     FIOExchangeFullSChema,
     FIOExchangeSchema,
     FIOMaterialSchema,
+    FIOPlanetInfrastructure,
     FIOPlanetSchema,
     FIORecipeSchema,
     FIOUserShipSiteSchema,
@@ -29,6 +30,7 @@ type Endpoint = Literal[
     'cxpc',
     'allplanets',
     'planet',
+    'planet_infrastructure',
     'user_storage',
     'user_sites',
     'user_sites_warehouses',
@@ -48,6 +50,7 @@ class FIOURL:
         'fullexchange': FIO_BASE_URL + 'exchange/full',
         'allplanets': FIO_BASE_URL + 'planet/allplanets/full',
         'planet': FIO_BASE_URL + 'planet/',
+        'planet_infrastructure': FIO_BASE_URL + 'infrastructure/',
         'user_storage': FIO_BASE_URL + 'storage/',
         'user_sites': FIO_BASE_URL + 'sites/',
         'user_sites_warehouses': FIO_BASE_URL + 'sites/warehouses/',
@@ -62,6 +65,7 @@ class FIOURL:
         'fullexchange': 10,
         'allplanets': 10,
         'planet': 3,
+        'planet_infrastructure': 5,
         'cxpc': 3,
         'user_storage': 3,
         'user_sites': 3,
@@ -143,6 +147,11 @@ class FIOService:
 
     def get_all_planets(self) -> list[FIOPlanetSchema]:
         return self._fetch(endpoint='allplanets', schema=list[FIOPlanetSchema])
+
+    def get_planet_infrastructure(self, planet_natural_id: str) -> FIOPlanetInfrastructure:
+        return self._fetch(
+            endpoint='planet_infrastructure', schema=FIOPlanetInfrastructure, path_suffix=planet_natural_id
+        )
 
     def get_all_exchanges(self) -> list[FIOExchangeSchema]:
         return self._fetch(endpoint='allexchange', schema=list[FIOExchangeSchema])

@@ -89,12 +89,12 @@ def user_handle_post_refresh(user_id: int):
         update_last_login(User, user)
 
         if user._has_fio_credentials():
-            from gamedata.tasks import refresh_user_fio_data
+            from gamedata.tasks import gamedata_refresh_user_fiodata
 
-            refresh_user_fio_data.delay(user.id, user.prun_username, user.fio_apikey)
+            gamedata_refresh_user_fiodata.delay(user.id, user.prun_username, user.fio_apikey)
         else:
-            from gamedata.tasks import clean_user_fio_data
+            from gamedata.tasks import gamedata_clean_user_fiodata
 
-            clean_user_fio_data.delay(user.id)
+            gamedata_clean_user_fiodata.delay(user.id)
     except User.DoesNotExist:
         pass

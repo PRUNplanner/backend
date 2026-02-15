@@ -5,7 +5,7 @@ from django_json_widget.widgets import JSONEditorWidget
 from user.models import User
 
 from gamedata.models import GameFIOPlayerData
-from gamedata.tasks import refresh_user_fio_data
+from gamedata.tasks import gamedata_refresh_user_fiodata
 
 
 @admin.action(description='Refresh User FIO')
@@ -16,7 +16,7 @@ def action_user_refresh_fio(modeladmin: admin.ModelAdmin, request: HttpRequest, 
         user: User = fio_storage.user
 
         if user._has_fio_credentials():
-            refresh_user_fio_data(user.id, user.prun_username, user.fio_apikey)
+            gamedata_refresh_user_fiodata(user.id, user.prun_username, user.fio_apikey)
 
 
 @admin.register(GameFIOPlayerData)
