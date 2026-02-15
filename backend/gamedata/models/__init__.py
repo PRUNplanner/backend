@@ -7,6 +7,7 @@ from .game_planet import (
     GamePlanetCOGCProgramChoices,
     GamePlanetCOGCStatusChoices,
     GamePlanetEnvironmentChoices,
+    GamePlanetInfrastructureReport,
     GamePlanetProductionFee,
     GamePlanetResource,
     GamePlanetResourceTypeChoices,

@@ -4,8 +4,14 @@ from django.http import HttpRequest, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import path
 
-from gamedata.fio.importers import import_all_planets, import_planet
-from gamedata.models import GamePlanet, GamePlanetCOGCProgram, GamePlanetProductionFee, GamePlanetResource
+from gamedata.fio.importers import import_all_planets, import_planet, import_planet_infrastructure
+from gamedata.models import (
+    GamePlanet,
+    GamePlanetCOGCProgram,
+    GamePlanetInfrastructureReport,
+    GamePlanetProductionFee,
+    GamePlanetResource,
+)
 
 
 @admin.action(description='Refresh Planet from FIO')
@@ -14,6 +20,16 @@ def action_refresh_planet(modeladmin: admin.ModelAdmin, request: HttpRequest, qu
 
     for planet_natural_id in data:
         import_planet(planet_natural_id)
+
+
+@admin.action(description='Refresh Planet Infrastructure from FIO')
+def action_refresh_planet_infrastructure(
+    modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet
+) -> None:
+    data = queryset.values_list('planet_natural_id', flat=True).all()
+
+    for planet_natural_id in data:
+        import_planet_infrastructure(planet_natural_id)
 
 
 class PlanetCOGCProgramInline(admin.TabularInline):
@@ -37,6 +53,12 @@ class PlanetProductionFeeInline(admin.TabularInline):
     fk_name = 'planet'
 
 
+@admin.register(GamePlanetInfrastructureReport)
+class GamePlanetInfrastructureReportAdmin(admin.ModelAdmin):
+    list_display = ['planet__planet_natural_id', 'simulation_period']
+    search_fields = ['planet__planet_natural_id', 'simulation_period']
+
+
 @admin.register(GamePlanet)
 class GamePlanetAdmin(admin.ModelAdmin):
     change_list_template = 'admin/gamedata/planet_change_list.html'
@@ -57,7 +79,7 @@ class GamePlanetAdmin(admin.ModelAdmin):
         GamePlanet.objects.all().delete()
         self.message_user(request, f'Deleted {count} log entries.', level=messages.SUCCESS)
 
-    actions = [action_refresh_planet, delete_all_planets]
+    actions = [action_refresh_planet, action_refresh_planet_infrastructure, delete_all_planets]
 
     def get_urls(self) -> list:
         urls = super().get_urls()

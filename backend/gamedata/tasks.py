@@ -27,8 +27,23 @@ def refresh_exchanges() -> bool:
         return status
 
 
+@shared_task(name='gamedata_refresh_planet_infrastructure')
+def gamedata_refresh_planet_infrastructure(planet_natural_id: str) -> bool:
+    structlog.contextvars.bind_contextvars(
+        task_category='gamedata_refresh_planet_infrastructure',
+    )
+
+    from gamedata.fio.importers import import_planet_infrastructure
+
+    try:
+        import_planet_infrastructure(planet_natural_id)
+        return True
+    except Exception:
+        return False
+
+
 @shared_task(name='gamedata_refresh_planet')
-def refresh_planet() -> bool:
+def gamedata_refresh_planet() -> bool:
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_refresh_planet',
     )
@@ -51,11 +66,16 @@ def refresh_planet() -> bool:
     if not to_update:
         return False
 
+    # trigger infrastructure refresh
+    gamedata_refresh_planet_infrastructure.delay(to_update.planet_natural_id)
+
     to_update.automation_refresh_status = 'pending'
+    to_update.save()
 
     try:
         import_planet(to_update.planet_natural_id)
         to_update.update_refresh_result()
+
         return True
 
     except Exception as exc:
@@ -65,7 +85,7 @@ def refresh_planet() -> bool:
 
 
 @shared_task(name='gamedata_dispatch_fio_updates')
-def dispatch_fio_updates():
+def gamedata_dispatch_fio_updates():
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_dispatch_fio_updates',
     )
@@ -120,14 +140,14 @@ def dispatch_fio_updates():
         user = storage.user
 
         # Trigger task
-        refresh_user_fio_data.apply_async(args=[user.id, user.prun_username, user.fio_apikey])
+        gamedata_refresh_user_fiodata.apply_async(args=[user.id, user.prun_username, user.fio_apikey])
         dispatched_count += 1
 
     return f'Dispatched {dispatched_count} FIO refresh tasks.'
 
 
 @shared_task(name='gamedata_clean_user_fiodata')
-def clean_user_fio_data(user_id: int) -> None:
+def gamedata_clean_user_fiodata(user_id: int) -> None:
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_clean_user_fiodata',
     )
@@ -138,7 +158,7 @@ def clean_user_fio_data(user_id: int) -> None:
 
 
 @shared_task(name='gamedata_refresh_user_fiodata')
-def refresh_user_fio_data(user_id: int, prun_username: str, fio_apikey: str) -> bool:
+def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: str) -> bool:
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_refresh_user_fiodata',
     )
@@ -195,7 +215,7 @@ def refresh_user_fio_data(user_id: int, prun_username: str, fio_apikey: str) -> 
 
 
 @shared_task(name='gamedata_trigger_refresh_cxpc')
-def start_exchange_cxpc():
+def gamedata_trigger_refresh_cxpc():
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_trigger_refresh_cxpc',
     )
@@ -204,7 +224,7 @@ def start_exchange_cxpc():
         exchanges_all = fio.get_all_exchanges()
 
     # create material ticker + exchange code pairs
-    header = [fetch_exchange_cxpc.s(p.ticker, p.exchange_code) for p in exchanges_all]
+    header = [gamedata_refresh_cxpc.s(p.ticker, p.exchange_code) for p in exchanges_all]
 
     # execute all tasks, then run the materialized view refresh
     callback = refresh_exchange_analytics.si()
@@ -213,7 +233,7 @@ def start_exchange_cxpc():
 
 
 @shared_task(name='gamedata_refresh_cxpc')
-def fetch_exchange_cxpc(ticker, exchange_code):
+def gamedata_refresh_cxpc(ticker, exchange_code):
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_refresh_cxpc',
     )

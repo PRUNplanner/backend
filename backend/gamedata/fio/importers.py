@@ -14,6 +14,7 @@ from gamedata.models import (
     GameMaterial,
     GamePlanet,
     GamePlanetCOGCProgram,
+    GamePlanetInfrastructureReport,
     GamePlanetProductionFee,
     GamePlanetResource,
     GamePlanetResourceTypeChoices,
@@ -224,6 +225,49 @@ def import_all_planets() -> bool:
         GamePlanetCOGCProgram.objects.bulk_create(program_objs, ignore_conflicts=True)
 
     GamedataCacheManager.delete_pattern('*planet*')
+
+    return True
+
+
+def import_planet_infrastructure(planet_natural_id: str) -> bool:
+    with get_fio_service() as fio:
+        data = fio.get_planet_infrastructure(planet_natural_id)
+
+    if not data:
+        return False
+
+    PERIODS_TO_KEEP = 10
+
+    last_periods = sorted(data.infrastructure_reports, key=lambda x: x.simulation_period, reverse=True)[
+        :PERIODS_TO_KEEP
+    ]
+
+    # get planet instance
+    planet: GamePlanet | None = GamePlanet.objects.get(planet_natural_id=planet_natural_id)
+
+    if not planet:
+        return False
+
+    fetched_periods = {r.simulation_period for r in last_periods}
+    existing_periods = set(
+        planet.popr_reports.filter(simulation_period__in=fetched_periods).values_list('simulation_period', flat=True)
+    )
+
+    # create missing reports
+    to_create = []
+    for r in last_periods:
+        if r.simulation_period not in existing_periods:
+            to_create.append(GamePlanetInfrastructureReport(planet=planet, **r.model_dump()))
+
+    if to_create:
+        GamePlanetInfrastructureReport.objects.bulk_create(to_create)
+
+    # cleanup: delete all that are not in our top 10 periods
+    if fetched_periods:
+        min_period = min(fetched_periods)
+        planet.popr_reports.filter(simulation_period__lt=min_period).delete()
+
+    GamedataCacheManager.delete(GamedataCacheManager.key_planet_popr(planet_natural_id))
 
     return True
 

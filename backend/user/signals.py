@@ -10,19 +10,19 @@ from .models import User, VerificationeCodeChoices
 
 @receiver([post_save], sender=User)
 def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
-    from gamedata.tasks import clean_user_fio_data, refresh_user_fio_data
+    from gamedata.tasks import gamedata_clean_user_fiodata, gamedata_refresh_user_fiodata
 
     if instance._has_fio_credentials():
-        refresh_user_fio_data.delay(instance.id, instance.prun_username, instance.fio_apikey)
+        gamedata_refresh_user_fiodata.delay(instance.id, instance.prun_username, instance.fio_apikey)
     else:
-        clean_user_fio_data.delay(instance.id)
+        gamedata_clean_user_fiodata.delay(instance.id)
 
 
 @receiver([post_delete], sender=User)
 def cleanup_fio_on_delete(sender: type[User], instance: User, **kwargs: Any):
-    from gamedata.tasks import clean_user_fio_data
+    from gamedata.tasks import gamedata_clean_user_fiodata
 
-    clean_user_fio_data.delay(instance.id)
+    gamedata_clean_user_fiodata.delay(instance.id)
 
 
 # email verification logics

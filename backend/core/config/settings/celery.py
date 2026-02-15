@@ -52,6 +52,9 @@ CELERY_TASK_ANNOTATIONS = {
         'priority': 4,
         'rate_limit': '1/s',
     },
+    'gamedata_refresh_planet_infrastructure': {
+        'rate_limit': '1/s',
+    },
     'gamedata_dispatch_fio_updates': {'priority': 4},
     'gamedata_refresh_user_fiodata': {
         'priority': 4,

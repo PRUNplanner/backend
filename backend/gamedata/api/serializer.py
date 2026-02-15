@@ -9,6 +9,7 @@ from gamedata.models import (
     GamePlanet,
     GamePlanetCOGCProgram,
     GamePlanetCOGCProgramChoices,
+    GamePlanetInfrastructureReport,
     GamePlanetResource,
     GameRecipe,
     GameRecipeInput,
@@ -195,3 +196,9 @@ class GameExchangeCXPCSerializer(serializers.ModelSerializer):
         model = GameExchangeCXPC
         fields = ['ticker', 'exchange_code', 'date_epoch', 'open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded']
         read_only_fields = fields
+
+
+class GamePlanetInfrastructureReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GamePlanetInfrastructureReport
+        exclude = ['id', 'planet', 'infrastructure_report_id']
