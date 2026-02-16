@@ -9,6 +9,7 @@ from planning.api.serializers import (
     PlanningEmpireJunctionsSerializer,
     PlanningEmpirePlanSyncErrorSerializer,
     PlanningEmpirePlanSyncSuccessSerializer,
+    PlanningPlanListSerializer,
 )
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.planning_cache_manager import PlanningCacheManager
@@ -57,6 +58,16 @@ class EmpireViewSet(
             empire_id=pk,
             func=fetch_data,
         )
+
+    @extend_schema(summary='Get all plans of the users specific empire')
+    def retrieve_plans(self, request, *args, **kwargs) -> Response:
+        pk: UUID = cast(UUID, kwargs.get('pk'))
+        user_id = request.user.id
+
+        def fetch_data():
+            return PlanningPlanListSerializer(get_object_or_404(self.get_queryset(), pk=pk).plans.all(), many=True).data
+
+        return PlanningCacheManager.get_empire_retrieve_plans_response(user_id=user_id, empire_id=pk, func=fetch_data)
 
     @extend_schema(summary='Updates an existing exmpire')
     def update(self, request, *args, **kwargs):

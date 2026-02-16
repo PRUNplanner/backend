@@ -30,6 +30,11 @@ class PlanningCacheManager(CacheManager):
         return cls.make_key(user_id, 'empire', 'retrieve', empire_id)
 
     @classmethod
+    def key_for_empire_retrieve_plans(cls, user_id: int, empire_id: UUID) -> str:
+        return cls.make_key(user_id, 'empire', 'retrieve', 'plans', empire_id)
+
+    ## CX
+    @classmethod
     def key_for_cx_list(cls, user_id: int) -> str:
         return cls.make_key(user_id, 'cx', 'list')
 
@@ -58,6 +63,11 @@ class PlanningCacheManager(CacheManager):
     @classmethod
     def get_empire_retrieve_response(cls, user_id: int, empire_id: UUID, func: Callable[[], Any]):
         key = cls.key_for_empire_retrieve(user_id, empire_id)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+
+    @classmethod
+    def get_empire_retrieve_plans_response(cls, user_id: int, empire_id: UUID, func: Callable[[], Any]):
+        key = cls.key_for_empire_retrieve_plans(user_id, empire_id)
         return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
 
     ## CX

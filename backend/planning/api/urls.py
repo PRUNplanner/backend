@@ -22,6 +22,11 @@ urlpatterns = [
         EmpireViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}),
         name='empire-detail',
     ),
+    path(
+        'empire/<uuid:pk>/plans/',
+        EmpireViewSet.as_view({'get': 'retrieve_plans'}),
+        name='empire-plan-list',
+    ),
     path('cx/', CXViewSet.as_view({'get': 'list', 'post': 'create'}), name='cx'),
     path('cx/junctions/', CXViewSet.as_view({'post': 'sync_junctions'}), name='cx-junctions'),
     path(

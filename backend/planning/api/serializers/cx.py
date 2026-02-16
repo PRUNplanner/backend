@@ -8,7 +8,7 @@ from .empire import PlanningEmpireNestedSerializer
 
 
 class PlanningCXDetailSerializer(serializers.ModelSerializer):
-    empires = PlanningEmpireNestedSerializer(many=True, read_only=True)
+    empires = PlanningEmpireNestedSerializer(source='cxs', many=True, read_only=True)
 
     cx_data = PydanticJSONField(pydantic_model=LATEST_SCHEMA['CX_DATA'])
 

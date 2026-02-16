@@ -69,6 +69,20 @@ class PlanningPlanDetailSerializer(serializers.ModelSerializer):
         PlanningEmpirePlan.objects.update_or_create(user=user, plan=plan, empire=empire)
 
 
+class PlanningPlanListSerializer(PlanningPlanDetailSerializer):
+    class Meta(PlanningPlanDetailSerializer.Meta):
+        fields = [
+            'uuid',
+            'plan_name',
+            'planet_natural_id',
+            'plan_permits_used',
+            'plan_cogc',
+            'plan_corphq',
+            'plan_data',
+            'empire_uuid',
+        ]
+
+
 class PlanningSharedSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanningShared

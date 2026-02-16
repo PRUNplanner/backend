@@ -18,6 +18,7 @@ def invalidate_plan_caches(sender: type[PlanningPlan], instance: PlanningPlan, *
         # lists
         PlanningCacheManager.delete(PlanningCacheManager.key_for_plan_list(user_id))
         PlanningCacheManager.delete(PlanningCacheManager.key_for_empire_list(user_id))
+        PlanningCacheManager.delete_pattern(f'*{user_id}:empire:retrieve*')
 
         # details
         PlanningCacheManager.delete(PlanningCacheManager.key_plan_retrieve(user_id, plan_uuid))
@@ -35,6 +36,7 @@ def invalidate_empire_caches(sender: type[PlanningEmpire], instance: PlanningEmp
         # lists
         PlanningCacheManager.delete(PlanningCacheManager.key_for_plan_list(user_id))
         PlanningCacheManager.delete(PlanningCacheManager.key_for_empire_list(user_id))
+        PlanningCacheManager.delete_pattern(f'*{user_id}:empire:retrieve*')
 
         # details
         PlanningCacheManager.delete(PlanningCacheManager.key_for_empire_retrieve(user_id, empire_uuid))

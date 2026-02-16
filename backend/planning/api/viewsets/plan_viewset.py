@@ -69,7 +69,7 @@ class PlanViewSet(
 
     @extend_schema(summary='Clone an existing plan', request=None, responses={201: PlanningPlanDetailSerializer})
     @action(detail=True, methods=['post'])
-    def clone(self, requset, pk=None):
+    def clone(self, request, pk=None):
         original_plan = self.get_object()
 
         new_plan = original_plan
