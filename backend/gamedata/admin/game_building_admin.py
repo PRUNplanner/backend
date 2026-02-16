@@ -18,7 +18,7 @@ class BuildingCostInline(admin.TabularInline):
 class GameBuildingAdmin(admin.ModelAdmin):
     change_list_template = 'admin/gamedata/building_change_list.html'
 
-    list_display = ['building_ticker', 'building_name', 'expertise']
+    list_display = ['building_ticker', 'building_name', 'expertise', 'building_type']
     search_fields = ['building_ticker', 'building_name', 'expertise']
 
     inlines = [
