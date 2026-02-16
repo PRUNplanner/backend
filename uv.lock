@@ -83,7 +83,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "redis", extra = ["hiredis"] },
-    { name = "requests" },
     { name = "whitenoise" },
 ]
 
@@ -126,7 +125,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.10" },
     { name = "pydantic-settings", specifier = ">=2.11.0" },
     { name = "redis", extras = ["hiredis"], specifier = ">=6.4.0" },
-    { name = "requests", specifier = ">=2.32.5" },
     { name = "whitenoise", specifier = ">=6.11.0" },
 ]
 
