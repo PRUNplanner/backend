@@ -109,9 +109,14 @@ class PlanetIdsSerializer(serializers.ListSerializer):
 
 
 class GameExchangeSerializer(serializers.ModelSerializer):
+    ticker_id = serializers.SerializerMethodField()
+
     class Meta:
         model = GameExchangeAnalytics
         exclude = ['id', 'date_epoch']
+
+    def get_ticker_id(self, obj):
+        return f'{obj.ticker}.{obj.exchange_code}'
 
 
 class PlanetSearchSerializer(serializers.Serializer):
