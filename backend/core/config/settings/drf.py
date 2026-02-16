@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from corsheaders.defaults import default_headers
+
 from core.env import settings
 
 # REST FRAMEWORK
@@ -42,3 +44,5 @@ SIMPLE_JWT = {
 
 DRF_API_KEY_CUSTOM_MODEL = 'user.UserAPIKey'
 CORS_ALLOW_ALL_ORIGINS = True
+
+CORS_ALLOW_HEADERS = (*default_headers, 'cache-control', 'pragma', 'withcredentials', 'expires')
