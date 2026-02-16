@@ -17,6 +17,12 @@ class GameBuildingExpertiseChoices(models.TextChoices):
     FUEL_REFINING = 'FUEL_REFINING'
 
 
+class GameBuildingTypeChoices(models.TextChoices):
+    PLANETARY = 'PLANETARY'
+    INFRASTRUCTURE = 'INFRASTRUCTURE'
+    PRODUCTION = 'PRODUCTION'
+
+
 class GameBuilding(models.Model):
     building_id = models.CharField(primary_key=True, max_length=32)
     building_name = models.CharField(max_length=255)
@@ -35,6 +41,12 @@ class GameBuilding(models.Model):
     engineers = models.PositiveIntegerField()
     scientists = models.PositiveIntegerField()
     area_cost = models.PositiveIntegerField()
+
+    building_type = models.CharField(
+        max_length=50,
+        choices=GameBuildingTypeChoices.choices,
+        default='PRODUCTION',
+    )
 
     class Meta:
         db_table = 'prunplanner_game_buildings'

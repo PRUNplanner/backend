@@ -175,7 +175,7 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['email', 'prun_username', 'fio_apikey']
+        fields = ['id', 'username', 'email', 'prun_username', 'fio_apikey', 'is_email_verified']
 
     def update(self, instance, validated_data):
         # update fields

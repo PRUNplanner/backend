@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class FIOBuildingCostSchema(BaseModel):
@@ -34,3 +34,13 @@ class FIOBuildingSchema(BaseModel):
     area_cost: int = Field(..., ge=0, alias='AreaCost')
 
     building_costs: list[FIOBuildingCostSchema] = Field(..., alias='BuildingCosts')
+
+    @computed_field
+    @property
+    def building_type(self) -> Literal['PLANETARY', 'INFRASTRUCTURE', 'PRODUCTION']:
+        if 'planetaryProject' in self.building_name:
+            return 'PLANETARY'
+        elif self.expertise is None:
+            return 'INFRASTRUCTURE'
+        else:
+            return 'PRODUCTION'
