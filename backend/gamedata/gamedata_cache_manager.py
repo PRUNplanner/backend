@@ -1,3 +1,4 @@
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -38,6 +39,10 @@ class GamedataCacheManager(CacheManager):
     @classmethod
     def key_planet_get(cls, planet_natural_id: str) -> str:
         return cls.make_key('planet', planet_natural_id)
+
+    @classmethod
+    def key_planet_searchterm(cls, search_term: str) -> str:
+        return cls.make_key('planet', 'search_term', search_term)
 
     @classmethod
     def key_planet_multiple(cls, planet_natural_ids: list[str]) -> str:
@@ -122,6 +127,14 @@ class GamedataCacheManager(CacheManager):
         cls, search_request: dict[str, list[str] | bool], func: Callable[[], Any]
     ) -> Response | HttpResponse:
         key = cls.key_planet_search(search_request)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_30MIN)
+
+    @classmethod
+    def get_planet_searchterm(cls, search_term: str, func: Callable[[], Any]) -> Response | HttpResponse:
+
+        safe_term = re.sub(r'[^a-zA-Z0-9]', '_', search_term.strip().lower())
+
+        key = cls.key_planet_searchterm(safe_term)
         return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_30MIN)
 
     @classmethod

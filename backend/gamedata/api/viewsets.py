@@ -33,9 +33,10 @@ from gamedata.models import (
     queryset_gameplanet,
 )
 from gamedata.services.planet_search import GamePlanetSearchService
-from pydantic import TypeAdapter, ValidationError
+from pydantic import TypeAdapter
 from rest_framework import exceptions, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -101,6 +102,19 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             return self.get_serializer(planet).data
 
         return GamedataCacheManager.get_planet_get_response(planet_natural_id, fetch_data)
+
+    @extend_schema(auth=[], summary='Search a single planet by its Planet Natural Id or Name')
+    def search_single(self, request, *args, **kwargs):
+        search_term: str = cast(str, kwargs.get('search_term'))
+
+        if not search_term or len(search_term.strip()) < 3:
+            raise ValidationError({'search_term': 'Search term must be at least 3 characters long.'})
+
+        def fetch_data(search_term: str):
+            result = GamePlanetSearchService.search_by_term(search_term)
+            return self.get_serializer(result, many=True).data
+
+        return GamedataCacheManager.get_planet_searchterm(search_term, lambda: fetch_data(search_term))
 
     @extend_schema(
         auth=[],
