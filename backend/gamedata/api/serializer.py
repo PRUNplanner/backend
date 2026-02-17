@@ -40,9 +40,14 @@ class GameRecipeSerializer(serializers.ModelSerializer):
     inputs = GameRecipeInputSerializer(many=True, read_only=True)
     outputs = GameRecipeOutputSerializer(many=True, read_only=True)
 
+    recipe_id = serializers.SerializerMethodField()
+
     class Meta:
         model = GameRecipe
         fields = '__all__'
+
+    def get_recipe_id(self, obj: GameRecipe):
+        return f'{obj.building_ticker}#{obj.recipe_name}'
 
 
 class GameBuildingCostSerializer(serializers.ModelSerializer):
