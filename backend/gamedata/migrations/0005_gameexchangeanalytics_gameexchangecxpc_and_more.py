@@ -10,43 +10,52 @@ def create_materialized_view(apps, schema_editor):
 
     schema_editor.execute("""
         CREATE MATERIALIZED VIEW prunplanner_game_exchanges_analytics AS
-            WITH base_aggregated AS (
-                    SELECT prunplanner_game_exchanges_cxpc.ticker,
-                        COALESCE(prunplanner_game_exchanges_cxpc.exchange_code, 'UNIVERSE'::character varying) AS exchange_code,
-                        prunplanner_game_exchanges_cxpc.date_epoch,
-                        sum(prunplanner_game_exchanges_cxpc.volume) AS volume,
-                        sum(prunplanner_game_exchanges_cxpc.traded) AS traded
-                    FROM prunplanner_game_exchanges_cxpc
-                    GROUP BY GROUPING SETS ((prunplanner_game_exchanges_cxpc.ticker, prunplanner_game_exchanges_cxpc.exchange_code, prunplanner_game_exchanges_cxpc.date_epoch), (prunplanner_game_exchanges_cxpc.ticker, prunplanner_game_exchanges_cxpc.date_epoch))
-                    ), windowed_stats AS (
-                    SELECT base_aggregated.ticker,
-                        base_aggregated.exchange_code,
-                        base_aggregated.date_epoch,
-                        base_aggregated.volume,
-                        base_aggregated.traded,
-                        sum(base_aggregated.volume) OVER w7 AS sum_volume_7d,
-                        sum(base_aggregated.volume) OVER w30 AS sum_volume_30d,
-                        sum(base_aggregated.traded) OVER w7 AS sum_traded_7d,
-                        sum(base_aggregated.traded) OVER w30 AS sum_traded_30d,
-                        avg(base_aggregated.traded) OVER w7 AS avg_traded_7d,
-                        avg(base_aggregated.traded) OVER w30 AS avg_traded_30d
-                    FROM base_aggregated
-                    WINDOW w7 AS (PARTITION BY base_aggregated.ticker, base_aggregated.exchange_code ORDER BY base_aggregated.date_epoch RANGE BETWEEN 518400000 PRECEDING AND CURRENT ROW), w30 AS (PARTITION BY base_aggregated.ticker, base_aggregated.exchange_code ORDER BY base_aggregated.date_epoch RANGE BETWEEN '2505600000'::bigint PRECEDING AND CURRENT ROW)
-                    )
-            SELECT row_number() OVER () AS id,
-                ticker,
-                exchange_code,
-                date_epoch,
-                to_timestamp((date_epoch / 1000)::double precision)::date AS calendar_date,
-                traded AS traded_daily,
-                volume / NULLIF(traded, 0::numeric) AS vwap_daily,
-                sum_traded_7d,
-                avg_traded_7d,
-                sum_volume_7d / NULLIF(sum_traded_7d, 0::numeric) AS vwap_7d,
-                sum_traded_30d,
-                avg_traded_30d,
-                sum_volume_30d / NULLIF(sum_traded_30d, 0::numeric) AS vwap_30d
-            FROM windowed_stats;
+         WITH exchanges AS (
+            SELECT unnest(ARRAY['AI1'::text, 'IC1'::text, 'NC1'::text, 'CI1'::text, 'UNIVERSE'::text])::character varying AS exchange_code
+            ), base_aggregated AS (
+        SELECT prunplanner_game_exchanges_cxpc.ticker,
+                COALESCE(prunplanner_game_exchanges_cxpc.exchange_code, 'UNIVERSE'::character varying) AS exchange_code,
+                prunplanner_game_exchanges_cxpc.date_epoch,
+                sum(prunplanner_game_exchanges_cxpc.volume) AS volume,
+                sum(prunplanner_game_exchanges_cxpc.traded) AS traded
+            FROM prunplanner_game_exchanges_cxpc
+            GROUP BY GROUPING SETS ((prunplanner_game_exchanges_cxpc.ticker, prunplanner_game_exchanges_cxpc.exchange_code, prunplanner_game_exchanges_cxpc.date_epoch), (prunplanner_game_exchanges_cxpc.ticker, prunplanner_game_exchanges_cxpc.date_epoch))
+            ), windowed_stats AS (
+            SELECT base_aggregated.ticker,
+                base_aggregated.exchange_code,
+                base_aggregated.date_epoch,
+                base_aggregated.volume,
+                base_aggregated.traded,
+                sum(base_aggregated.volume) OVER w7 AS sum_volume_7d,
+                sum(base_aggregated.volume) OVER w30 AS sum_volume_30d,
+                sum(base_aggregated.traded) OVER w7 AS sum_traded_7d,
+                sum(base_aggregated.traded) OVER w30 AS sum_traded_30d,
+                avg(base_aggregated.traded) OVER w7 AS avg_traded_7d,
+                avg(base_aggregated.traded) OVER w30 AS avg_traded_30d
+            FROM base_aggregated
+            WINDOW w7 AS (PARTITION BY base_aggregated.ticker, base_aggregated.exchange_code ORDER BY base_aggregated.date_epoch RANGE BETWEEN 518400000 PRECEDING AND CURRENT ROW), w30 AS (PARTITION BY base_aggregated.ticker, base_aggregated.exchange_code ORDER BY base_aggregated.date_epoch RANGE BETWEEN '2505600000'::bigint PRECEDING AND CURRENT ROW)
+            ), ticker_universe AS (
+            SELECT m.ticker,
+                e.exchange_code,
+                (EXTRACT(epoch FROM date_trunc('day'::text, now())) * 1000::numeric)::bigint AS current_epoch
+            FROM prunplanner_game_materials m
+                CROSS JOIN exchanges e
+            )
+        SELECT row_number() OVER () AS id,
+            COALESCE(w.ticker, t.ticker) AS ticker,
+            COALESCE(w.exchange_code, t.exchange_code) AS exchange_code,
+            COALESCE(w.date_epoch, t.current_epoch) AS date_epoch,
+            to_timestamp((COALESCE(w.date_epoch, t.current_epoch) / 1000)::double precision)::date AS calendar_date,
+            COALESCE(w.traded, 0::numeric) AS traded_daily,
+            COALESCE(w.volume / NULLIF(w.traded, 0::numeric), 0::numeric) AS vwap_daily,
+            COALESCE(w.sum_traded_7d, 0::numeric) AS sum_traded_7d,
+            COALESCE(w.avg_traded_7d, 0::numeric) AS avg_traded_7d,
+            COALESCE(w.sum_volume_7d / NULLIF(w.sum_traded_7d, 0::numeric), 0::numeric) AS vwap_7d,
+            COALESCE(w.sum_traded_30d, 0::numeric) AS sum_traded_30d,
+            COALESCE(w.avg_traded_30d, 0::numeric) AS avg_traded_30d,
+            COALESCE(w.sum_volume_30d / NULLIF(w.sum_traded_30d, 0::numeric), 0::numeric) AS vwap_30d
+        FROM windowed_stats w
+        FULL JOIN ticker_universe t ON w.ticker::text = t.ticker::text AND w.exchange_code::text = t.exchange_code::text AND w.date_epoch = t.current_epoch;
 
             CREATE UNIQUE INDEX idx_game_analytics_unique ON prunplanner_game_exchanges_analytics (ticker, exchange_code, date_epoch);
             CLUSTER prunplanner_game_exchanges_analytics USING idx_game_analytics_unique;
