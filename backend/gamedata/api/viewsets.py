@@ -36,7 +36,7 @@ from gamedata.services.planet_search import GamePlanetSearchService
 from pydantic import TypeAdapter
 from rest_framework import exceptions, mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -165,9 +165,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             latest_report = planet.popr_reports.all().first()
 
             if not latest_report:
-                return Response(
-                    {'detail': 'No infrastructure reports found for this planet'}, status=status.HTTP_404_NOT_FOUND
-                )
+                raise NotFound('No infrastructure reports found for this planet')
 
             return GamePlanetInfrastructureReportSerializer(latest_report).data
 
