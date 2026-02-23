@@ -71,7 +71,7 @@ class GameBuildingSerializer(serializers.ModelSerializer):
 class GamePlanetResourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = GamePlanetResource
-        fields = ['resource_type', 'factor', 'daily_extraction', 'material_ticker']
+        fields = ['resource_type', 'factor', 'daily_extraction', 'material_ticker', 'max_daily_extraction']
 
 
 class GamePlanetCOGCProgramSerializer(serializers.ModelSerializer):
