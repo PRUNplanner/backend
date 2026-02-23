@@ -133,6 +133,7 @@ def deep_merge(base, overrides):
 
 DEFAULT_PREFERENCES = {
     'default_empire_uuid': None,
+    'default_cx_uuid': None,
     'default_buy_items_from_cx': True,
     'burn_days_red': 5,
     'burn_days_yellow': 10,
@@ -155,6 +156,7 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     # Frontend JSON: camelCase, variable name
     # Backend JSON: snake_case, source
     defaultEmpireUuid = serializers.UUIDField(source='default_empire_uuid', allow_null=True, required=False)
+    defaultCXUuid = serializers.UUIDField(source='default_cx_uuid', allow_null=True, required=False)
     defaultBuyItemsFromCX = serializers.BooleanField(source='default_buy_items_from_cx', required=False)
     burnDaysRed = serializers.IntegerField(source='burn_days_red', min_value=0, default=5, required=False)
     burnDaysYellow = serializers.IntegerField(source='burn_days_yellow', min_value=0, default=10, required=False)
