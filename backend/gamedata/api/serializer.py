@@ -184,7 +184,10 @@ class GameStorageSerializer(serializers.Serializer):
         items = obj.get('pydantic_storage_data', [])
 
         return {
-            site_lookup.get(str(getattr(m, id_field)), f'Unknown_Site_{getattr(m, id_field)}'): m.to_game_storage_dict()
+            site_lookup.get(str(getattr(m, id_field)), f'Unknown_Site_{getattr(m, id_field)}'): {
+                **m.to_game_storage_dict(),
+                'Identifier': site_lookup.get(str(getattr(m, id_field)), f'Unknown_Site_{getattr(m, id_field)}'),
+            }
             for m in items
             if m.Type == storage_type
         }

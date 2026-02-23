@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from drf_spectacular.utils import inline_serializer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from rest_framework import serializers
 
 
@@ -18,11 +18,20 @@ class FIOUserSiteBuildingSchema(BaseModel):
     BuildingCreated: int
     BuildingName: str
     BuildingTicker: str = Field(..., min_length=2, max_length=3)
-    BuildingLastRepair: int | None = Field(default=None)
+    BuildingLastRepair: datetime | None = Field(default=None)
     Condition: float = Field(ge=0.0)
 
     ReclaimableMaterials: list[FIOUserSiteBuildingMaterial] | None = Field(default=None)
     RepairMaterials: list[FIOUserSiteBuildingMaterial] | None = Field(default=None)
+
+    @computed_field
+    @property
+    def AgeDays(self) -> int | None:
+        if self.BuildingLastRepair is None:
+            return None
+
+        delta = datetime.now(UTC) - self.BuildingLastRepair
+        return delta.days
 
 
 class FIOUserSiteSchema(BaseModel):
