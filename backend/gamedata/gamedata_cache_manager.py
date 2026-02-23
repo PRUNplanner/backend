@@ -98,7 +98,7 @@ class GamedataCacheManager(CacheManager):
     @classmethod
     def get_exchange_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
         key = cls.key_exchange_list()
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
 
     @classmethod
     def get_planet_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
