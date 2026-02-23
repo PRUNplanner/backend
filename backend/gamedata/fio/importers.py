@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Max
 
 from gamedata.fio.schemas.fio_planet import (
     FIOPlanetCOGCProgramSchema,
@@ -73,6 +74,16 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
     to_create = []
     to_update = []
 
+    # find maximum factor and calculate max daily extraction
+    incoming_material_ids = [item.material_id for item in resource_data]
+
+    global_max = dict(
+        GamePlanetResource.objects.filter(material_id__in=incoming_material_ids)
+        .values('material_id')
+        .annotate(max_val=Max('daily_extraction'))
+        .values_list('material_id', 'max_val')
+    )
+
     for item in resource_data:
         m_id = item.material_id
         seen_material_ids.add(m_id)
@@ -81,11 +92,15 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
         daily_ext = item.factor * multiplier
         ticker = material_map.get(m_id, '')
 
+        current_global_max = global_max.get(m_id, 0)
+        max_val = max(daily_ext, current_global_max)
+
         if m_id in existing_objs:
             obj = existing_objs[m_id]
             obj.factor = item.factor
             obj.resource_type = item.resource_type
             obj.daily_extraction = daily_ext
+            obj.max_daily_extraction = max_val
             obj.material_ticker = ticker
             to_update.append(obj)
         else:
@@ -96,13 +111,14 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
                     factor=item.factor,
                     resource_type=item.resource_type,
                     daily_extraction=daily_ext,
+                    max_daily_extraction=max_val,
                     material_ticker=ticker,
                 )
             )
 
     if to_update:
         GamePlanetResource.objects.bulk_update(
-            to_update, fields=['factor', 'resource_type', 'daily_extraction', 'material_ticker']
+            to_update, fields=['factor', 'resource_type', 'daily_extraction', 'material_ticker', 'max_daily_extraction']
         )
 
     if to_create:

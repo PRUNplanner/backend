@@ -204,6 +204,7 @@ class GamePlanetResource(models.Model):
     factor = models.FloatField()
     daily_extraction = models.FloatField(default=0)
     material_ticker = models.CharField(default=None, blank=True, max_length=3, db_index=True)
+    max_daily_extraction = models.FloatField(default=0)
 
     objects: models.Manager[GamePlanetResource] = models.Manager()
 
