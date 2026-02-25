@@ -67,7 +67,7 @@ class CXViewSet(
     @extend_schema(
         request=PlanningCXJunctionUpdateSerializer,
         responses={
-            200: PlanningCXDetailSerializer,
+            200: PlanningCXDetailSerializer(many=True),
             400: PlanningCXJunctionsSyncErrorSerializer,
             403: PlanningCXJunctionsSyncErrorSerializer,
         },
