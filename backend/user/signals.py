@@ -1,5 +1,6 @@
 from typing import Any
 
+from django.db import transaction
 from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
@@ -13,16 +14,19 @@ def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
     from gamedata.tasks import gamedata_clean_user_fiodata, gamedata_refresh_user_fiodata
 
     if instance._has_fio_credentials():
-        gamedata_refresh_user_fiodata.delay(instance.id, instance.prun_username, instance.fio_apikey)
+        transaction.on_commit(
+            lambda: gamedata_refresh_user_fiodata.delay(instance.id, instance.prun_username, instance.fio_apikey)
+        )
+
     else:
-        gamedata_clean_user_fiodata.delay(instance.id)
+        transaction.on_commit(lambda: gamedata_clean_user_fiodata.delay(instance.id))
 
 
 @receiver([post_delete], sender=User)
 def cleanup_fio_on_delete(sender: type[User], instance: User, **kwargs: Any):
     from gamedata.tasks import gamedata_clean_user_fiodata
 
-    gamedata_clean_user_fiodata.delay(instance.id)
+    transaction.on_commit(lambda: gamedata_clean_user_fiodata.delay(instance.id))
 
 
 # email verification logics

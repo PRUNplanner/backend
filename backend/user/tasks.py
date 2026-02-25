@@ -77,7 +77,7 @@ def send_password_reset_code(user_id: int, user_username: str, user_email: str, 
         return False
 
 
-@shared_task(name='user_handle_post_refresh')
+@shared_task(name='user_handle_post_refresh', ignore_result=True)
 def user_handle_post_refresh(user_id: int):
     structlog.contextvars.bind_contextvars(
         task_category='user_handle_post_refresh',
