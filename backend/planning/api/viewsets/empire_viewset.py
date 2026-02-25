@@ -8,7 +8,6 @@ from planning.api.serializers import (
     PlanningEmpireDetailSerializer,
     PlanningEmpireJunctionsSerializer,
     PlanningEmpirePlanSyncErrorSerializer,
-    PlanningEmpirePlanSyncSuccessSerializer,
     PlanningPlanListSerializer,
 )
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
@@ -82,8 +81,8 @@ class EmpireViewSet(
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(
-        request=PlanningEmpireJunctionsSerializer,
-        responses={200: PlanningEmpirePlanSyncSuccessSerializer, 403: PlanningEmpirePlanSyncErrorSerializer},
+        request=PlanningEmpireJunctionsSerializer(many=True),
+        responses={200: PlanningEmpireDetailSerializer(many=True), 403: PlanningEmpirePlanSyncErrorSerializer},
         summary='Update empire-plan junctions',
     )
     @action(detail=False, methods=['post'], url_path='empire-junctions')
@@ -122,17 +121,16 @@ class EmpireViewSet(
             )
 
         # desired state pairs
-        desired_pairs = set()
-        for item in payload:
-            e_id = item['empire_uuid']
-            for plan in item['baseplanners']:
-                p_id = plan['baseplanner_uuid']
-                desired_pairs.add((e_id, p_id))
+        desired_pairs = {
+            (item['empire_uuid'], plan['baseplanner_uuid']) for item in payload for plan in item['baseplanners']
+        }
 
         # database sync
         with transaction.atomic():
             # already existing links
-            existing_links = PlanningEmpirePlan.objects.filter(user=user).values_list('uuid', 'empire_id', 'plan_id')
+            existing_links = PlanningEmpirePlan.objects.filter(user=user, empire_id__in=req_empire_uuids).values_list(
+                'uuid', 'empire_id', 'plan_id'
+            )
 
             # mapping (empire_id, plan_id) -> junction_uuid
             existing_map = {(e_id, p_id): jct_uuid for jct_uuid, e_id, p_id in existing_links}
@@ -153,7 +151,7 @@ class EmpireViewSet(
         if to_delete_uuids or to_create_pairs:
             PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
 
-        return Response({'status': 'Empire-Plan junctions updated'}, status=status.HTTP_200_OK)
+        return self.list(request)
 
     def perform_update(self, serializer):
         serializer.save()
