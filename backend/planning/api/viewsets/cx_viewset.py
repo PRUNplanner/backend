@@ -7,7 +7,6 @@ from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
     PlanningCXDetailSerializer,
     PlanningCXJunctionsSyncErrorSerializer,
-    PlanningCXJunctionsSyncSuccessSerializer,
     PlanningCXJunctionUpdateSerializer,
 )
 from planning.models import PlanningCX, PlanningEmpire
@@ -68,7 +67,7 @@ class CXViewSet(
     @extend_schema(
         request=PlanningCXJunctionUpdateSerializer,
         responses={
-            200: PlanningCXJunctionsSyncSuccessSerializer,
+            200: PlanningCXDetailSerializer,
             400: PlanningCXJunctionsSyncErrorSerializer,
             403: PlanningCXJunctionsSyncErrorSerializer,
         },
@@ -112,4 +111,6 @@ class CXViewSet(
                 if emp_ids:
                     PlanningEmpire.objects.filter(uuid__in=emp_ids).update(cx_id=cx_id)
 
-        return Response({'status': 'CX-Empire junctions updated'})
+            PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
+
+        return self.list(request)
