@@ -17,7 +17,7 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
     ],
-    'DEFAULT_THROTTLE_RATES': {'anon': '30/minute'},
+    'DEFAULT_THROTTLE_RATES': {'anon': '60/minute', 'user': '2000/day'},
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
