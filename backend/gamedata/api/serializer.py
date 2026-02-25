@@ -114,8 +114,8 @@ class PlanetIdsSerializer(serializers.ListSerializer):
 
 
 class GameExchangeSerializer(serializers.ModelSerializer):
-    ticker_id = serializers.CharField(source='annotated_ticker_id', read_only=True)
-    exchange_status = serializers.CharField(source='annotated_status', read_only=True)
+    ticker_id = serializers.CharField(read_only=True)
+    exchange_status = serializers.CharField(read_only=True)
 
     class Meta:
         model = GameExchangeAnalytics

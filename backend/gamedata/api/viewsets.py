@@ -187,10 +187,8 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         return (
             GameExchangeAnalytics.objects.filter(exchange_code__in=target_exchanges)
             .annotate(
-                # SQL-level string concatenation
-                annotated_ticker_id=Concat(F('ticker'), Value('.'), F('exchange_code'), output_field=CharField()),
-                # SQL-level conditional logic
-                annotated_status=Case(
+                ticker_id=Concat(F('ticker'), Value('.'), F('exchange_code'), output_field=CharField()),
+                exchange_status=Case(
                     When(calendar_date__lt=two_days_ago, then=Value('STALE')),
                     When(Q(vwap_7d__gt=0) & Q(avg_traded_7d__gt=0), then=Value('ACTIVE')),
                     default=Value('INACTIVE'),
@@ -219,8 +217,8 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
                     'sum_traded_30d',
                     'avg_traded_30d',
                     'vwap_30d',
-                    'annotated_ticker_id',
-                    'annotated_status',
+                    'ticker_id',
+                    'exchange_status',
                 )
             )
 
