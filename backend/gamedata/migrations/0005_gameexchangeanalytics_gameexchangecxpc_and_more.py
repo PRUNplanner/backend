@@ -74,6 +74,7 @@ def create_materialized_view(apps, schema_editor):
             FROM windowed_stats;
 
             CREATE UNIQUE INDEX idx_game_analytics_unique ON prunplanner_game_exchanges_analytics (ticker, exchange_code, date_epoch);
+            CREATE INDEX idx_game_analytics_perf ON prunplanner_game_exchanges_analytics (ticker, exchange_code, date_epoch DESC);
             CLUSTER prunplanner_game_exchanges_analytics USING idx_game_analytics_unique;
             """)
 

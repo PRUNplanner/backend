@@ -1,6 +1,3 @@
-from datetime import timedelta
-
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from gamedata.fio.schemas import drf_sites_schema
 from gamedata.models import (
@@ -117,27 +114,12 @@ class PlanetIdsSerializer(serializers.ListSerializer):
 
 
 class GameExchangeSerializer(serializers.ModelSerializer):
-    ticker_id = serializers.SerializerMethodField()
-    exchange_status = serializers.SerializerMethodField()
+    ticker_id = serializers.CharField(source='annotated_ticker_id', read_only=True)
+    exchange_status = serializers.CharField(source='annotated_status', read_only=True)
 
     class Meta:
         model = GameExchangeAnalytics
         exclude = ['id', 'date_epoch']
-
-    def get_ticker_id(self, obj):
-        return f'{obj.ticker}.{obj.exchange_code}'
-
-    def get_exchange_status(self, obj):
-        today = timezone.now().date()
-        two_days_ago = today - timedelta(days=2)
-
-        if obj.calendar_date < two_days_ago:
-            return 'STALE'
-
-        if obj.vwap_7d > 0 and obj.avg_traded_7d > 0:
-            return 'ACTIVE'
-
-        return 'INACTIVE'
 
 
 class PlanetSearchSerializer(serializers.Serializer):

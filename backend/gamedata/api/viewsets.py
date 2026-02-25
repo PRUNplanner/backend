@@ -1,7 +1,11 @@
+from datetime import timedelta
 from itertools import chain
 from typing import Any, cast
 
+from django.db.models import Case, CharField, F, Q, Value, When
+from django.db.models.functions import Concat
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from gamedata.api.serializer import (
     GameBuildingSerializer,
@@ -176,18 +180,49 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     serializer_class = GameExchangeSerializer
     permission_classes = [AllowAny]
 
-    @extend_schema(auth=[], summary='List all exchanges')
-    def list(self, request, *args, **kwargs):
+    def get_queryset(self):
         target_exchanges = ['AI1', 'NC1', 'CI1', 'IC1', 'UNIVERSE']
+        two_days_ago = timezone.now().date() - timedelta(days=2)
 
-        latest_analytics = (
+        return (
             GameExchangeAnalytics.objects.filter(exchange_code__in=target_exchanges)
+            .annotate(
+                # SQL-level string concatenation
+                annotated_ticker_id=Concat(F('ticker'), Value('.'), F('exchange_code'), output_field=CharField()),
+                # SQL-level conditional logic
+                annotated_status=Case(
+                    When(calendar_date__lt=two_days_ago, then=Value('STALE')),
+                    When(Q(vwap_7d__gt=0) & Q(avg_traded_7d__gt=0), then=Value('ACTIVE')),
+                    default=Value('INACTIVE'),
+                    output_field=CharField(),
+                ),
+            )
             .order_by('ticker', 'exchange_code', '-date_epoch')
             .distinct('ticker', 'exchange_code')
         )
 
+    @extend_schema(auth=[], summary='List all exchanges')
+    def list(self, request, *args, **kwargs):
+
         def fetch_data() -> Any:
-            return self.get_serializer(latest_analytics, many=True).data
+            return list(
+                self.get_queryset().values(
+                    'ticker',
+                    'exchange_code',
+                    'date_epoch',
+                    'calendar_date',
+                    'traded_daily',
+                    'vwap_daily',
+                    'sum_traded_7d',
+                    'avg_traded_7d',
+                    'vwap_7d',
+                    'sum_traded_30d',
+                    'avg_traded_30d',
+                    'vwap_30d',
+                    'annotated_ticker_id',
+                    'annotated_status',
+                )
+            )
 
         return GamedataCacheManager.get_exchange_list_response(fetch_data)
 
