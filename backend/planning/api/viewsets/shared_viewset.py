@@ -14,7 +14,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 
-@extend_schema(tags=['planning : plans'])
+@extend_schema(tags=['planning : shared'])
 class SharedViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
