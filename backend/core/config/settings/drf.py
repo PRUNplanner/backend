@@ -46,3 +46,4 @@ DRF_API_KEY_CUSTOM_MODEL = 'user.UserAPIKey'
 CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_HEADERS = (*default_headers, 'cache-control', 'pragma', 'withcredentials', 'expires')
+CORS_PREFLIGHT_MAX_AGE = 86400
