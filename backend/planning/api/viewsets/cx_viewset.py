@@ -2,6 +2,7 @@ from typing import cast
 from uuid import UUID
 
 from django.db import transaction
+from django.db.models import Case, Value, When
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
@@ -65,7 +66,7 @@ class CXViewSet(
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(
-        request=PlanningCXJunctionUpdateSerializer,
+        request=PlanningCXJunctionUpdateSerializer(many=True),
         responses={
             200: PlanningCXDetailSerializer(many=True),
             400: PlanningCXJunctionsSyncErrorSerializer,
@@ -98,19 +99,17 @@ class CXViewSet(
         if len(all_emp_list) != len(set(all_emp_list)):
             return Response({'error': 'Duplicate empire assignment in request.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # build the update conditions
+        update_conditions = []
+        for item in payload:
+            cx_uuid = item['cx_uuid']
+            for emp in item['empires']:
+                update_conditions.append(When(uuid=emp['empire_uuid'], then=Value(cx_uuid)))
+
         # apply changes
         with transaction.atomic():
-            # set all cx assignments to None
-            PlanningEmpire.objects.filter(user=user).update(cx=None)
+            PlanningEmpire.objects.filter(user=user).update(cx_id=Case(*update_conditions, default=None))
 
-            # bulk assign for the empires in the payload
-            for item in payload:
-                cx_id = item['cx_uuid']
-                emp_ids = [e['empire_uuid'] for e in item['empires']]
-
-                if emp_ids:
-                    PlanningEmpire.objects.filter(uuid__in=emp_ids).update(cx_id=cx_id)
-
-            PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
+        PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
 
         return self.list(request)
