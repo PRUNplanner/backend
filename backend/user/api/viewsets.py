@@ -68,7 +68,6 @@ class UserRegisterViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
 
         return Response(
             {
-                'detail': 'User registered successfully.',
                 'username': serializer.data['username'],
             },
             status=status.HTTP_201_CREATED,
