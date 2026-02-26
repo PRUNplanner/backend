@@ -68,8 +68,7 @@ class UserRegisterViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
 
         return Response(
             {
-                'status': 'success',
-                'message': 'User registered successfully.',
+                'detail': 'User registered successfully.',
                 'username': serializer.data['username'],
             },
             status=status.HTTP_201_CREATED,
@@ -155,7 +154,7 @@ class UserEmailVerificationViewSet(viewsets.ViewSet):
             if success:
                 return Response({'detail': message}, status=status.HTTP_200_OK)
 
-            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': message}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -253,7 +252,7 @@ class UserProfileViewSet(viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        return Response({'status': 'Success', 'message': 'Profile updated', 'data': serializer.data})
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(summary='Change password')
     @action(detail=False, methods=['post'], url_path='change_password')
@@ -266,7 +265,7 @@ class UserProfileViewSet(viewsets.GenericViewSet):
         user.set_password(serializer.validated_data['new_password'])
         user.save()
 
-        return Response({'status': 'Success', 'message': 'Password updated successfully'}, status=status.HTTP_200_OK)
+        return Response({'detail': 'Password updated successfully'}, status=status.HTTP_200_OK)
 
     @extend_schema(summary='Get profile password')
     def retrieve(self, request, *args, **kwargs):
