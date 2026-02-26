@@ -282,7 +282,7 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
 
             return list(
                 qs.order_by('-date_epoch').values(
-                    'ticker', 'exchange_code', 'date_epoch', 'open_p', 'close_p', 'high_p', 'low_p', 'volume'
+                    'ticker', 'exchange_code', 'date_epoch', 'open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded'
                 )
             )
 
