@@ -28,12 +28,12 @@ urlpatterns = [
     path('planets/', GamePlanetViewSet.as_view({'get': 'list'}), name='planet-list'),
     path('exchanges/', GameExchangeViewSet.as_view({'get': 'list'}), name='exchange-list'),
     path(
-        'cxpc/<str:ticker>/<str:exchange_code>/',
+        'cxpc/<str:ticker>/<str:exchange_code>',
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_exchange_data'}),
         name='cxpc-market-data-full',
     ),
     path(
-        'cxpc/<str:ticker>/',
+        'cxpc/<str:ticker>',
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_ticker_data'}),
         name='cxpc-market-data-ticker',
     ),

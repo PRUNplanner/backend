@@ -6,7 +6,7 @@ app_name = 'planning'
 urlpatterns = [
     path('plan/', PlanViewSet.as_view({'get': 'list', 'post': 'create'}), name='plan'),
     path(
-        'plan/<uuid:pk>/',
+        'plan/<uuid:pk>',
         PlanViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}),
         name='plan-detail',
     ),
@@ -18,19 +18,19 @@ urlpatterns = [
     path('empire/', EmpireViewSet.as_view({'get': 'list', 'post': 'create'}), name='empire'),
     path('empire/junctions/', EmpireViewSet.as_view({'post': 'sync_junctions'}), name='empire-junctions'),
     path(
-        'empire/<uuid:pk>/',
+        'empire/<uuid:pk>',
         EmpireViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}),
         name='empire-detail',
     ),
     path(
-        'empire/<uuid:pk>/plans/',
+        'empire/<uuid:pk>/plans',
         EmpireViewSet.as_view({'get': 'retrieve_plans'}),
         name='empire-plan-list',
     ),
     path('cx/', CXViewSet.as_view({'get': 'list', 'post': 'create'}), name='cx'),
     path('cx/junctions/', CXViewSet.as_view({'post': 'sync_junctions'}), name='cx-junctions'),
     path(
-        'cx/<uuid:pk>/',
+        'cx/<uuid:pk>',
         CXViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}),
         name='cx-detail',
     ),
