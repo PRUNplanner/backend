@@ -44,7 +44,7 @@ class GameRecipeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GameRecipe
-        fields = '__all__'
+        exclude = ['standard_recipe_name']
 
     def get_recipe_id(self, obj: GameRecipe):
         return f'{obj.building_ticker}#{obj.recipe_name}'
@@ -62,7 +62,7 @@ class GameBuildingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GameBuilding
-        fields = '__all__'
+        exclude = ['building_id']
 
 
 class GamePlanetResourceSerializer(serializers.ModelSerializer):
