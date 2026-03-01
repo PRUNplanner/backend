@@ -43,6 +43,32 @@ To create yourself a local superuser for Django, run the following command:
 docker compose exec backend uv run backend/manage.py createsuperuser
 ```
 
+## Docker Packages
+
+PRUNplanner provides pre-built Docker images for **AMD64** and **ARM64** (Apple Silicon/Ampere) based on the latest releases. You can find them here: [PRUNplanner Backend Packages](https://github.com/PRUNplanner/backend/pkgs/container/prunplanner-backend).
+
+You can use the same image to run the Django backend, Celery worker, and Celery beat by overriding the `command` in your `docker-compose.yml`. Please make sure to pass your .env file or environment variables directly to the services.
+
+```yaml
+services:
+  # Django + DRF Backend
+  backend:
+    image: ghcr.io/prunplanner/prunplanner-backend:latest
+    container_name: prunplanner-backend
+    command: uv run gunicorn --pythonpath backend core.wsgi:application --bind 0.0.0.0:8000 --preload --workers 3 --threads 2 --access-logfile - --error-logfile -
+
+  # Celery Beat
+  beat:
+    image: ghcr.io/prunplanner/prunplanner-backend:latest
+    container_name: prunplanner-beat
+    command: uv run celery -A core beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+
+  # Celery Worker
+  worker:
+    image: ghcr.io/prunplanner/prunplanner-backend:latest
+    container_name: prunplanner-worker
+    command: uv run celery -A core worker --concurrency 1 --loglevel=info
+```
 
 ## Console
 
