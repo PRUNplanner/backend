@@ -65,6 +65,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.TimeStamper(fmt='iso'),
+        structlog.processors.CallsiteParameterAdder({structlog.processors.CallsiteParameter.PROCESS}),
         structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ],
     logger_factory=structlog.stdlib.LoggerFactory(),
