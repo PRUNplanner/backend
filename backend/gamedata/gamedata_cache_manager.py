@@ -29,8 +29,8 @@ class GamedataCacheManager(CacheManager):
         return cls.make_key('building', 'list')
 
     @classmethod
-    def key_exchange_list(cls) -> str:
-        return cls.make_key('exchange', 'list')
+    def key_exchange_list(cls, fmt: str = 'json') -> str:
+        return cls.make_key('exchange', 'list', fmt)
 
     @classmethod
     def key_planet_list(cls) -> str:
@@ -96,9 +96,9 @@ class GamedataCacheManager(CacheManager):
         return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
 
     @classmethod
-    def get_exchange_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_exchange_list()
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
+    def get_exchange_list_response(cls, func: Callable[[], Any], fmt: str = 'json') -> Response | HttpResponse:
+        key = cls.key_exchange_list(fmt)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY, fmt=fmt)
 
     @classmethod
     def get_planet_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:

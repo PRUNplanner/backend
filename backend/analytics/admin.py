@@ -37,7 +37,7 @@ def dashboard_index(request, extra_context=None):
         )
 
     chart_data = list(
-        AppStatistic.objects.order_by('date')[:30].values(
+        AppStatistic.objects.order_by('-date')[:30].values(
             'date',
             'user_count',
             'users_active_today',
@@ -47,6 +47,7 @@ def dashboard_index(request, extra_context=None):
             'cx_count_delta',
         )
     )
+    chart_data.reverse()
 
     def automation_status_data():
 

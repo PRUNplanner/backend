@@ -65,6 +65,23 @@ class GameBuildingSerializer(serializers.ModelSerializer):
         exclude = ['building_id']
 
 
+class GameBuildingCSVSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GameBuilding
+        fields = [
+            'building_ticker',
+            'building_name',
+            'building_type',
+            'expertise',
+            'pioneers',
+            'settlers',
+            'technicians',
+            'engineers',
+            'scientists',
+            'area_cost',
+        ]
+
+
 class GamePlanetResourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = GamePlanetResource
