@@ -292,7 +292,8 @@ def refresh_exchange_analytics():
     with connection.cursor() as cursor:
         cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY prunplanner_game_exchanges_analytics;')
 
-    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list())
+    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='json'))
+    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='csv'))
     GamedataCacheManager.delete_pattern('*cxpc*')
 
     return True

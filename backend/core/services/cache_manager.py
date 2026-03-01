@@ -64,27 +64,32 @@ class CacheManager:
         return response
 
     @classmethod
-    def get_or_set_response(cls, key: str, func: Callable[[], Any], timeout: int = 300) -> HttpResponse:
+    def get_or_set_response(
+        cls, key: str, func: Callable[[], Any], timeout: int = 300, fmt: str = 'json'
+    ) -> HttpResponse:
         cached_data = cls.get(key)
 
         if cached_data:
-            # cached_data: bytes from orjson
-            response = HttpResponse(cached_data, content_type='application/json')
-            response['X-Cache-Hit'] = '1'
+            data_to_return = cached_data
         else:
-            data = func()
-
-            # orjson -> dump to bytes.
-            json_bytes = orjson.dumps(
-                data,
+            raw_data = func()
+            data_to_return = orjson.dumps(
+                raw_data,
                 default=lambda obj: (
                     float(obj) if isinstance(obj, decimal.Decimal) else str(obj) if isinstance(obj, UUID) else None
                 ),
             )
+            cls.set(key, data_to_return, timeout)
 
-            cls.set(key, json_bytes, timeout)
-            response = HttpResponse(json_bytes, content_type='application/json')
-            response['X-Cache-Hit'] = '0'
+        # csv data
+        if fmt == 'csv':
+            decoded_data = orjson.loads(data_to_return)
+            response = Response(decoded_data)
+            response['Content-Type'] = 'text/csv; charset=utf-8'
+        else:
+            response = HttpResponse(data_to_return, content_type='application/json')
 
+        # standard json, return pre-rendered orjson bytes directly
+        response['X-Cache-Hit'] = '1' if cached_data else '0'
         patch_cache_control(response, public=True, max_age=timeout)
         return response

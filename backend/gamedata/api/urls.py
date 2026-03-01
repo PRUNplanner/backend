@@ -1,8 +1,8 @@
 from django.urls import path
-
-from .viewsets import (
+from gamedata.api.viewsets import (
     ExchangeCXPCViewSet,
     GameBuildingViewSet,
+    GameExchangeCSVViewSet,
     GameExchangeViewSet,
     GameMaterialViewSet,
     GamePlanetViewSet,
@@ -14,6 +14,12 @@ app_name = 'data'
 
 urlpatterns = [
     path('materials/', GameMaterialViewSet.as_view(actions={'get': 'list'}), name='material-list'),
+    path('exchanges/', GameExchangeViewSet.as_view({'get': 'list'}), name='exchange-list'),
+    path(
+        'exchanges/csv/',
+        GameExchangeCSVViewSet.as_view(actions={'get': 'list'}),
+        name='exchanges-list-csv',
+    ),
     path('recipes/', GameRecipeViewSet.as_view(actions={'get': 'list'}), name='recipe-list'),
     path('buildings/', GameBuildingViewSet.as_view(actions={'get': 'list'}), name='building-list'),
     path('planets/multiple', GamePlanetViewSet.as_view({'post': 'multiple'}), name='planet-multiple'),
@@ -26,7 +32,6 @@ urlpatterns = [
     path('planet/<str:planet_natural_id>', GamePlanetViewSet.as_view({'get': 'retrieve'}), name='planet-detail'),
     path('planets/<str:search_term>', GamePlanetViewSet.as_view({'get': 'search_single'}), name='planet-search-single'),
     path('planets/', GamePlanetViewSet.as_view({'get': 'list'}), name='planet-list'),
-    path('exchanges/', GameExchangeViewSet.as_view({'get': 'list'}), name='exchange-list'),
     path(
         'cxpc/<str:ticker>/<str:exchange_code>',
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_exchange_data'}),
