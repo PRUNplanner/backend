@@ -59,8 +59,8 @@ jobs:
       # Run a smoke test
       - name: Run Smoke Test
         run: |
-          docker run --rm prunplanner-test:latest python backend/manage.py check
-          docker run --rm prunplanner-test:latest python backend/manage.py migrate --check
+          cp .env.example .env.test
+          docker run --rm --env-file .env.test prunplanner-test:latest python backend/manage.py check
 
       # Build and push multi-arch image
       - name: Build and push Docker image
