@@ -21,7 +21,6 @@ staticfiles/
 # Tests
 .pytest_cache
 .coverage
-.coveragerc
 htmlcov/
 
 # Vector

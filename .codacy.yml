@@ -1,0 +1,6 @@
+exclude_paths:
+  - "**/test_*"
+  - "**/tests/**"
+  - "**/migrations/**"
+  - ".github/**"
+  - '**/settings/**'
