@@ -1,5 +1,4 @@
 import decimal
-import uuid
 
 import orjson
 from rest_framework.renderers import JSONRenderer
@@ -13,8 +12,6 @@ class OrjsonRenderer(JSONRenderer):
         def default(obj):
             if isinstance(obj, decimal.Decimal):
                 return float(obj)
-            if isinstance(obj, uuid.UUID):
-                return str(obj)
             raise TypeError(f'Object of type {obj.__class__.__name__} is not JSON serializable')
 
         return orjson.dumps(

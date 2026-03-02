@@ -1,6 +1,8 @@
 import pytest
 from django.urls import reverse
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.mark.django_db
 def test_list_recipes(api_client, recipe_factory):

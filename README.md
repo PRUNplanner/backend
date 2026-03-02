@@ -112,3 +112,21 @@ overmind start -l web,worker,beat
 # to restart, send from another terminal in that folder
 overmind restart
 ```
+
+## Linting, Type Checks and Tests
+
+Lint & format, type checks and tests are handled as Github action. You can also execute them individually during development.
+
+```shell
+# linting
+uv run ruff check
+
+# type checks (excluding migration files)
+uv run ty check --exclude "**/migrations/*.py"
+
+# tests
+uv run pytest
+
+# coverage (output to html)
+uv run pytest --cov=. --cov-report=html
+```
