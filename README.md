@@ -115,6 +115,8 @@ overmind restart
 
 ## Linting, Type Checks and Tests
 
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/d1e84c37ed4048bca3c72de0253055c8)](https://app.codacy.com/gh/PRUNplanner/backend/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade) [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/d1e84c37ed4048bca3c72de0253055c8)](https://app.codacy.com/gh/PRUNplanner/backend/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
+
 Lint & format, type checks and tests are handled as Github action. You can also execute them individually during development.
 
 ```shell

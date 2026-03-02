@@ -172,9 +172,6 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
 
         to_update, _created = GameFIOPlayerData.objects.get_or_create(user_id=user_id)
 
-        if not to_update:
-            return False
-
         try:
             with get_fio_service() as fio:
                 storage_data = fio.get_user_storage(prun_username, fio_apikey)
