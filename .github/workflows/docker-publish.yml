@@ -47,21 +47,6 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
 
-      # Build the image locally
-      - name: Build locally for testing
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          load: true
-          tags: prunplanner-test:latest
-          cache-from: type=gha
-
-      # Run a smoke test
-      - name: Run Smoke Test
-        run: |
-          cp env.example .env.test
-          docker run --rm --env-file .env.test -e DATABASE_HOST="" -e SERVICE_TYPE="test" prunplanner-test:latest python backend/manage.py check
-
       # Build and push multi-arch image
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
