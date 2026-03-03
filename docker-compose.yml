@@ -29,7 +29,7 @@ services:
     build: .
     container_name: prunplanner-backend
     restart: always
-    command: uv run gunicorn --pythonpath backend core.wsgi:application --bind 0.0.0.0:8000 --preload --workers 3 --threads 2 --access-logfile - --error-logfile -
+    command: gunicorn -c backend/gunicorn.conf.py
     env_file: .env
     environment:
       - SERVICE_TYPE=django
@@ -49,7 +49,7 @@ services:
     build: .
     container_name: prunplanner-worker
     restart: on-failure
-    command: uv run celery -A core worker --concurrency 1 --loglevel=info
+    command: celery -A core worker --concurrency 1 --loglevel=info
     env_file: .env
     environment:
       - SERVICE_TYPE=celery
@@ -69,7 +69,7 @@ services:
     build: .
     container_name: prunplanner-beat
     restart: on-failure
-    command: uv run celery -A core beat --loglevel=info  --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A core beat --loglevel=info  --scheduler django_celery_beat.schedulers:DatabaseScheduler
     env_file: .env
     environment:
       - SERVICE_TYPE=celery
