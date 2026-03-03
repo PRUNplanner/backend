@@ -1,0 +1,37 @@
+plan_data_vallis = {
+    'experts': [
+        {'type': 'Agriculture', 'amount': 0},
+        {'type': 'Chemistry', 'amount': 0},
+        {'type': 'Construction', 'amount': 0},
+        {'type': 'Electronics', 'amount': 0},
+        {'type': 'Food_Industries', 'amount': 0},
+        {'type': 'Fuel_Refining', 'amount': 0},
+        {'type': 'Manufacturing', 'amount': 0},
+        {'type': 'Metallurgy', 'amount': 3},
+        {'type': 'Resource_Extraction', 'amount': 3},
+    ],
+    'buildings': [
+        {'name': 'COL', 'amount': 2, 'active_recipes': [{'amount': 1, 'recipeid': 'COL#O'}]},
+        {'name': 'EXT', 'amount': 3, 'active_recipes': [{'amount': 1, 'recipeid': 'EXT#FEO'}]},
+        {'name': 'SME', 'amount': 5, 'active_recipes': [{'amount': 1, 'recipeid': 'SME#6xFEO 1xC 1xO=>3xFE'}]},
+    ],
+    'workforce': [
+        {'lux1': True, 'lux2': False, 'type': 'pioneer'},
+        {'lux1': True, 'lux2': False, 'type': 'settler'},
+        {'lux1': False, 'lux2': False, 'type': 'technician'},
+        {'lux1': False, 'lux2': False, 'type': 'engineer'},
+        {'lux1': False, 'lux2': False, 'type': 'scientist'},
+    ],
+    'infrastructure': [
+        {'amount': 3, 'building': 'HB1'},
+        {'amount': 0, 'building': 'HB2'},
+        {'amount': 0, 'building': 'HB3'},
+        {'amount': 0, 'building': 'HB4'},
+        {'amount': 0, 'building': 'HB5'},
+        {'amount': 0, 'building': 'HBB'},
+        {'amount': 0, 'building': 'HBC'},
+        {'amount': 0, 'building': 'HBM'},
+        {'amount': 0, 'building': 'HBL'},
+        {'amount': 0, 'building': 'STO'},
+    ],
+}

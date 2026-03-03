@@ -202,7 +202,7 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         )
 
         # DISTINCT_ON is only supported by postgresql
-        if connection.vendor == 'postgresql':
+        if connection.vendor == 'postgresql':  # pragma: no cover
             qs = qs.distinct('ticker', 'exchange_code')
 
         return qs

@@ -177,7 +177,7 @@ class GamePlanet(CeleryAutomationModel):
 
     objects: models.Manager[GamePlanet] = models.Manager()
 
-    if TYPE_CHECKING:
+    if TYPE_CHECKING:  # pragma: no cover
         resources: models.QuerySet[GamePlanetResource]
         cogc_programs: models.QuerySet[GamePlanetCOGCProgram]
         production_fees: models.QuerySet[GamePlanetProductionFee]

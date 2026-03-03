@@ -6,6 +6,8 @@ omit =
     **/__init__.py
     **/signals.py
     */schemas/*
+    **/admin/**
+    admin.py
     manage.py
 
 [report]

@@ -1,0 +1,520 @@
+{
+    "Resources": [
+        {
+            "MaterialId": "ec8dbb1d3f51d89c61b6f58fdd64a7f0",
+            "ResourceType": "LIQUID",
+            "Factor": 0.10999999940395355
+        },
+        {
+            "MaterialId": "6e16dbf050b98d9c4fc9c615b3367a0f",
+            "ResourceType": "GASEOUS",
+            "Factor": 0.17000000178813934
+        },
+        {
+            "MaterialId": "1f9a0293d9ba9bf519f71432e695edeb",
+            "ResourceType": "MINERAL",
+            "Factor": 0.28999999165534973
+        },
+        {
+            "MaterialId": "b9640b0d66e7d0ca7e4d3132711c97fc",
+            "ResourceType": "MINERAL",
+            "Factor": 0.20999999344348907
+        }
+    ],
+    "BuildRequirements": [
+        {
+            "MaterialName": "lightweightStructuralElements",
+            "MaterialId": "8d4e0986419d2769fe50ac6497be6b7e",
+            "MaterialTicker": "LSE",
+            "MaterialCategory": "ef423f673d9e8c82043b4c5c63f6b55e",
+            "MaterialAmount": 4,
+            "MaterialWeight": 0.30000001192092896,
+            "MaterialVolume": 1.2000000476837158
+        },
+        {
+            "MaterialName": "truss",
+            "MaterialId": "ec53c7423b75ca0d868f9580ae921561",
+            "MaterialTicker": "TRU",
+            "MaterialCategory": "f8aebc7dd84ce14fae131aa0203d4498",
+            "MaterialAmount": 8,
+            "MaterialWeight": 0.10000000149011612,
+            "MaterialVolume": 1.5
+        },
+        {
+            "MaterialName": "largePlasticsBoard",
+            "MaterialId": "db4fbfd5c434a3952e7e1d37ae36158f",
+            "MaterialTicker": "PSL",
+            "MaterialCategory": "6316282906a9f68b0c7bb4396a26aa95",
+            "MaterialAmount": 12,
+            "MaterialWeight": 0.07999999821186066,
+            "MaterialVolume": 0.800000011920929
+        },
+        {
+            "MaterialName": "lightweightDeckElements",
+            "MaterialId": "3010d90fde69729f4754b092fdcda826",
+            "MaterialTicker": "LDE",
+            "MaterialCategory": "ef423f673d9e8c82043b4c5c63f6b55e",
+            "MaterialAmount": 4,
+            "MaterialWeight": 0.10000000149011612,
+            "MaterialVolume": 1.2000000476837158
+        },
+        {
+            "MaterialName": "lightweightWindow",
+            "MaterialId": "b29a0e901300857a8672f0643f7d796a",
+            "MaterialTicker": "LTA",
+            "MaterialCategory": "ef423f673d9e8c82043b4c5c63f6b55e",
+            "MaterialAmount": 4,
+            "MaterialWeight": 0.30000001192092896,
+            "MaterialVolume": 0.5
+        },
+        {
+            "MaterialName": "mineralConstructionGranulate",
+            "MaterialId": "cc5fb1618f0506e80bfbcee9ae2605ab",
+            "MaterialTicker": "MCG",
+            "MaterialCategory": "156bbcce730fba6169338d560f05fd26",
+            "MaterialAmount": 100,
+            "MaterialWeight": 0.23999999463558197,
+            "MaterialVolume": 0.10000000149011612
+        }
+    ],
+    "ProductionFees": [
+        {
+            "Category": "AGRICULTURE",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FUEL_REFINING",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FUEL_REFINING",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "MANUFACTURING",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "MANUFACTURING",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "MANUFACTURING",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "MANUFACTURING",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "MANUFACTURING",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "METALLURGY",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "METALLURGY",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "METALLURGY",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "METALLURGY",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "METALLURGY",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "RESOURCE_EXTRACTION",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "RESOURCE_EXTRACTION",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "RESOURCE_EXTRACTION",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "RESOURCE_EXTRACTION",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "RESOURCE_EXTRACTION",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "AGRICULTURE",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "AGRICULTURE",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FUEL_REFINING",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "AGRICULTURE",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FUEL_REFINING",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FOOD_INDUSTRIES",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CHEMISTRY",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CHEMISTRY",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CHEMISTRY",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CHEMISTRY",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CHEMISTRY",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CONSTRUCTION",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CONSTRUCTION",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CONSTRUCTION",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CONSTRUCTION",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "CONSTRUCTION",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "ELECTRONICS",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "ELECTRONICS",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "ELECTRONICS",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "ELECTRONICS",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "ELECTRONICS",
+            "WorkforceLevel": "SCIENTIST",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FOOD_INDUSTRIES",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "AGRICULTURE",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FOOD_INDUSTRIES",
+            "WorkforceLevel": "TECHNICIAN",
+            "FeeAmount": 133.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FOOD_INDUSTRIES",
+            "WorkforceLevel": "ENGINEER",
+            "FeeAmount": 385.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FUEL_REFINING",
+            "WorkforceLevel": "PIONEER",
+            "FeeAmount": 25.0,
+            "FeeCurrency": "NCC"
+        },
+        {
+            "Category": "FOOD_INDUSTRIES",
+            "WorkforceLevel": "SETTLER",
+            "FeeAmount": 59.0,
+            "FeeCurrency": "NCC"
+        }
+    ],
+    "COGCPrograms": [
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1772648976669,
+            "EndEpochMs": 1773253776669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1772044176669,
+            "EndEpochMs": 1772648976669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1771439376669,
+            "EndEpochMs": 1772044176669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1770834576669,
+            "EndEpochMs": 1771439376669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1770229776669,
+            "EndEpochMs": 1770834576669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1769624976669,
+            "EndEpochMs": 1770229776669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1769020176669,
+            "EndEpochMs": 1769624976669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1768415376669,
+            "EndEpochMs": 1769020176669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1767810576669,
+            "EndEpochMs": 1768415376669
+        },
+        {
+            "ProgramType": "ADVERTISING_CHEMISTRY",
+            "StartEpochMs": 1767205776669,
+            "EndEpochMs": 1767810576669
+        }
+    ],
+    "COGCVotes": [
+        {
+            "CompanyName": "Kodiak Industries",
+            "CompanyCode": "KI",
+            "Influence": 2567.5,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772045419137
+        },
+        {
+            "CompanyName": "Waffles.inc",
+            "CompanyCode": "WINC",
+            "Influence": 1575.0,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772046210181
+        },
+        {
+            "CompanyName": "Mountain Wolf Industries",
+            "CompanyCode": "MWI",
+            "Influence": 1321.25,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772048933558
+        },
+        {
+            "CompanyName": "Procur",
+            "CompanyCode": "PR0",
+            "Influence": 1783.75,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772048946504
+        },
+        {
+            "CompanyName": "Knott-Stone-Davis Cooperative",
+            "CompanyCode": "KSDC",
+            "Influence": 1306.25,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772050727018
+        },
+        {
+            "CompanyName": "Nosirrath",
+            "CompanyCode": "NOS",
+            "Influence": 2880.0,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772054401409
+        },
+        {
+            "CompanyName": "Divide",
+            "CompanyCode": "DIV",
+            "Influence": 2220.0,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772057121027
+        },
+        {
+            "CompanyName": "Lumerz LLP",
+            "CompanyCode": "LUME",
+            "Influence": 837.5,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772058019858
+        },
+        {
+            "CompanyName": "Amp Partners",
+            "CompanyCode": "AMP",
+            "Influence": 990.0,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772083417363
+        },
+        {
+            "CompanyName": "Aerotec",
+            "CompanyCode": "AER",
+            "Influence": 3380.0,
+            "VoteType": "ADVERTISING_CHEMISTRY",
+            "VoteTimeEpochMs": 1772271069870
+        }
+    ],
+    "COGCUpkeep": [],
+    "PlanetId": "7f1135f5d7792a058c8be66e7cbcb536",
+    "PlanetNaturalId": "OT-580b",
+    "PlanetName": "Montem",
+    "Namer": null,
+    "NamingDataEpochMs": 0,
+    "Nameable": false,
+    "SystemId": "49b6615d39ccba05752b3be77b2ebf36",
+    "Gravity": 0.922335147857666,
+    "MagneticField": 0.7182995080947876,
+    "Mass": 7.797300945837227E+24,
+    "MassEarth": 1.3056432008743286,
+    "OrbitSemiMajorAxis": 139417977000.0,
+    "OrbitEccentricity": 0.03147958219051361,
+    "OrbitInclination": 0.04501096159219742,
+    "OrbitRightAscension": 0.0,
+    "OrbitPeriapsis": 0.0,
+    "OrbitIndex": 2,
+    "Pressure": 0.9165661931037903,
+    "Radiation": 1.4921821515009263E-23,
+    "Radius": 7584996.5,
+    "Sunlight": 1621.1890869140625,
+    "Surface": true,
+    "Temperature": 3.772547960281372,
+    "Fertility": -0.19999998807907104,
+    "HasLocalMarket": true,
+    "HasChamberOfCommerce": true,
+    "HasWarehouse": true,
+    "HasAdministrationCenter": true,
+    "HasShipyard": true,
+    "FactionCode": "NC",
+    "FactionName": "NEO Charter Exploration",
+    "GoverningEntity": "f13aa1e0a90f4a9c972ac479115406e9",
+    "CurrencyName": "NCE Coupons",
+    "CurrencyCode": "NCC",
+    "BaseLocalMarketFee": 0.0,
+    "LocalMarketFeeFactor": 3.0,
+    "WarehouseFee": 100.0,
+    "EstablishmentFee": 0.0,
+    "PopulationId": "a6f1ef590c2110aa3195e97ef931d122",
+    "COGCProgramStatus": "ACTIVE",
+    "PlanetTier": 0,
+    "UserNameSubmitted": "RETREAD",
+    "Timestamp": "2025-06-17T02:06:59.928389Z"
+}

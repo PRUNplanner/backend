@@ -9,6 +9,11 @@ def user(db):
 
 
 @pytest.fixture
+def user_factory(**kwargs):
+    return lambda **kwargs: baker.make('user.User', **kwargs)
+
+
+@pytest.fixture
 def verification_code_factory(db):
     def _make_code(user, purpose=VerificationeCodeChoices.EMAIL_VERIFICATION, **kwargs):
 

@@ -28,9 +28,14 @@ class SharedViewSet(
     lookup_url_kwarg = 'pk'
 
     def get_queryset(self):
-        if self.action == 'retrieve' or self.action == 'clone':
+        if self.action in ['retrieve', 'clone']:
             return PlanningShared.objects.all()
-        return PlanningShared.objects.filter(user=self.request.user)
+
+        user = self.request.user
+        if user.is_authenticated:
+            return PlanningShared.objects.filter(user=user)
+
+        return PlanningShared.objects.none()  # pragma: no cover
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
