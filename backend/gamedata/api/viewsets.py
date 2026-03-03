@@ -2,6 +2,7 @@ from datetime import timedelta
 from itertools import chain
 from typing import Any, cast
 
+from django.db import connection
 from django.db.models import Case, CharField, F, Q, Value, When
 from django.db.models.functions import Concat
 from django.shortcuts import get_object_or_404
@@ -38,7 +39,7 @@ from gamedata.models import (
     queryset_gameplanet,
 )
 from gamedata.services.planet_search import GamePlanetSearchService
-from pydantic import TypeAdapter
+from pydantic import TypeAdapter, ValidationError as PydanticValidationError
 from rest_framework import exceptions, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
@@ -186,7 +187,7 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         target_exchanges = ['AI1', 'NC1', 'CI1', 'IC1', 'UNIVERSE']
         two_days_ago = timezone.now().date() - timedelta(days=2)
 
-        return (
+        qs = (
             GameExchangeAnalytics.objects.filter(exchange_code__in=target_exchanges)
             .annotate(
                 ticker_id=Concat(F('ticker'), Value('.'), F('exchange_code'), output_field=CharField()),
@@ -198,8 +199,13 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
                 ),
             )
             .order_by('ticker', 'exchange_code', '-date_epoch')
-            .distinct('ticker', 'exchange_code')
         )
+
+        # DISTINCT_ON is only supported by postgresql
+        if connection.vendor == 'postgresql':
+            qs = qs.distinct('ticker', 'exchange_code')
+
+        return qs
 
     @extend_schema(auth=[], summary='List all exchanges')
     def list(self, request, *args, **kwargs):
@@ -294,7 +300,7 @@ class GameStorageViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
 
             # user must have data
             if not data_object:
-                return Response(status=status.HTTP_404_NOT_FOUND)
+                raise NotFound(detail='No storage data available.')
 
             # validate schemas of stored data
             try:
@@ -304,8 +310,8 @@ class GameStorageViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
                     data_object.warehouse_data
                 )
                 ship_data = TypeAdapter(list[FIOUserShipSiteSchema]).validate_python(data_object.ship_data)
-            except ValidationError as err:
-                raise exceptions.ValidationError() from err
+            except PydanticValidationError as err:
+                raise exceptions.ValidationError(detail=err.errors()) from err
 
             response_data = {
                 'site_map': _build_site_map(sites_data, warehouse_data, ship_data),
