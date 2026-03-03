@@ -32,7 +32,11 @@ class EmpireViewSet(
     serializer_class = PlanningEmpireDetailSerializer
 
     def get_queryset(self):
-        return PlanningEmpire.objects.filter(user=self.request.user).prefetch_related('plans', 'cx').all()
+        return (
+            PlanningEmpire.objects.filter(user=self.request.user)
+            .prefetch_related('plans', 'cx')
+            .order_by('empire_name')
+        )
 
     @extend_schema(summary='List all users empires')
     def list(self, request, *args, **kwargs) -> Response:

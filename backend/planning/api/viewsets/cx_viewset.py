@@ -32,7 +32,7 @@ class CXViewSet(
     serializer_class = PlanningCXDetailSerializer
 
     def get_queryset(self):
-        return PlanningCX.objects.filter(user=self.request.user).prefetch_related('cxs').all()
+        return PlanningCX.objects.filter(user=self.request.user).prefetch_related('cxs').order_by('cx_name')
 
     @extend_schema(summary='List all cx preferences')
     def list(self, request, *args, **kwargs) -> Response:

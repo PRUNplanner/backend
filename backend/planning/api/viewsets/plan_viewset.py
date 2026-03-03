@@ -26,7 +26,7 @@ class PlanViewSet(
     serializer_class = PlanningPlanDetailSerializer
 
     def get_queryset(self):
-        return PlanningPlan.objects.filter(user=self.request.user).prefetch_related('empires').all()
+        return PlanningPlan.objects.filter(user=self.request.user).prefetch_related('empires').order_by('plan_name')
 
     @extend_schema(summary='List all users plans')
     def list(self, request, *args, **kwargs):
