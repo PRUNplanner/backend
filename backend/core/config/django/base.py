@@ -21,7 +21,7 @@ SECRET_KEY = settings.django_secret_key
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS: list[str] = []
+ALLOWED_HOSTS = settings.django_allowed_hosts.split(',')
 
 
 # Application definition
