@@ -91,6 +91,6 @@ def add_request_duration(request, logger, response, **kwargs):
     if request.resolver_match:
         view_name = request.resolver_match.view_name
         structlog.contextvars.bind_contextvars(route=view_name)
-    else:
+    else:  # pragma: no cover
         # Fallback for 404s or static files where no name exists
         structlog.contextvars.bind_contextvars(route='unknown')

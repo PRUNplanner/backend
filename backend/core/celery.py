@@ -14,7 +14,7 @@ app.config_from_object('django.conf:settings', namespace='CELERY')
 
 
 @setup_logging.connect
-def config_loggers(*args, **kwargs):
+def config_loggers(*args, **kwargs):  # pragma: no cover
     from django.conf import settings
 
     logging.config.dictConfig(settings.LOGGING)
@@ -24,12 +24,12 @@ logger = structlog.get_logger()
 
 
 @worker_process_init.connect
-def log_new_process(**kwargs):
+def log_new_process(**kwargs):  # pragma: no cover
     logger.info('worker_child_process_spawned')
 
 
 @worker_process_shutdown.connect
-def log_shutdown_process(**kwargs):
+def log_shutdown_process(**kwargs):  # pragma: no cover
     logger.info('worker_child_process_shutdown')
 
 

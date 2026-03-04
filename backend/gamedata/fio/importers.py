@@ -29,9 +29,6 @@ def import_planet(planet_natural_id: str) -> bool:
     with get_fio_service() as fio:
         data = fio.get_planet(planet_natural_id)
 
-    if not data:
-        return False
-
     planet_instance = None
     import_error = None
 
