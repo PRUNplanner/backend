@@ -1,7 +1,8 @@
 from typing import Any
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.core.management.color import no_style
+from django.db import connection, transaction
 from legacy_migration.models.legacy_user import LegacyUser
 from user.models.user import User
 
@@ -51,3 +52,13 @@ class Command(BaseCommand):
                 )
 
         self.stdout.write(self.style.SUCCESS(f' {len(legacy_users)} Legacy users migrated successfully'))
+
+        self.stdout.write('Resetting ID sequences...')
+
+        sequence_sql = connection.ops.sequence_reset_sql(no_style(), [User])
+
+        with connection.cursor() as cursor:
+            for sql in sequence_sql:
+                cursor.execute(sql)
+
+        self.stdout.write(self.style.SUCCESS('Successfully reset sequences.'))
