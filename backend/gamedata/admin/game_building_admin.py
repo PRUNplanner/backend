@@ -2,9 +2,12 @@ from django.contrib import admin, messages
 from django.http import HttpRequest, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import path
+from structlog import get_logger
 
 from gamedata.fio.importers import import_all_buildings
 from gamedata.models import GameBuilding, GameBuildingCost
+
+logger = get_logger(__name__)
 
 
 class BuildingCostInline(admin.TabularInline):
@@ -46,6 +49,6 @@ class GameBuildingAdmin(admin.ModelAdmin):
             )
         except Exception as exc:
             self.message_user(request, 'Failed to sync buildings from FIO', messages.ERROR)
-            print(exc)
+            logger.error('Failed to sync buildings from FIO', exc_info=exc)
 
         return redirect('../')

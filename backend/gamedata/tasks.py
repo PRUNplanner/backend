@@ -163,6 +163,8 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
         task_category='gamedata_refresh_user_fiodata',
     )
 
+    log = logger.bind(name='gamedata_refresh_user_fiodata', user=user_id, prun_username=prun_username)
+
     from user.models import User
 
     from gamedata.models import GameFIOPlayerData
@@ -171,6 +173,8 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
         _user = User.objects.get(id=user_id)
 
         to_update, _created = GameFIOPlayerData.objects.get_or_create(user_id=user_id)
+
+        log.info('Update GameFIOPlayerData', uuid=to_update.uuid)
 
         try:
             with get_fio_service() as fio:
@@ -203,11 +207,12 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
             return True
 
         except Exception as exc:
-            print(exc)
+            log.error('Exception in update', exc_info=exc)
             to_update.update_refresh_result(error=exc)
             return False
 
     except User.DoesNotExist:
+        log.error('User not found')
         return False
 
 

@@ -3,6 +3,7 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.shortcuts import redirect
 from django.urls import path
+from structlog import get_logger
 
 from gamedata.fio.importers import import_all_planets, import_planet, import_planet_infrastructure
 from gamedata.models import (
@@ -13,12 +14,15 @@ from gamedata.models import (
     GamePlanetResource,
 )
 
+logger = get_logger(__name__)
+
 
 @admin.action(description='Refresh Planet from FIO')
 def action_refresh_planet(modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet) -> None:
     data = queryset.values_list('planet_natural_id', flat=True).all()
 
     for planet_natural_id in data:
+        logger.info('Admin refresh planet', planet_natural_id=planet_natural_id)
         import_planet(planet_natural_id)
 
 
@@ -29,6 +33,7 @@ def action_refresh_planet_infrastructure(
     data = queryset.values_list('planet_natural_id', flat=True).all()
 
     for planet_natural_id in data:
+        logger.info('Admin refresh planet infrastructure', planet_natural_id=planet_natural_id)
         import_planet_infrastructure(planet_natural_id)
 
 
@@ -77,6 +82,9 @@ class GamePlanetAdmin(admin.ModelAdmin):
     def delete_all_planets(self, request: HttpRequest, queryset: QuerySet | None = None) -> None:
         count = GamePlanet.objects.count()
         GamePlanet.objects.all().delete()
+
+        logger.info('Admin delete all planets', count=count)
+
         self.message_user(request, f'Deleted {count} log entries.', level=messages.SUCCESS)
 
     actions = [action_refresh_planet, action_refresh_planet_infrastructure, delete_all_planets]
@@ -111,7 +119,6 @@ class GamePlanetAdmin(admin.ModelAdmin):
         return redirect('../')
 
     def fio_import_all_planets(self, request: HttpRequest) -> HttpResponseRedirect:
-        print('fetch all')
 
         import_all_planets()
 
