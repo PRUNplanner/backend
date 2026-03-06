@@ -35,7 +35,7 @@ class FIOUserStorageSchema(BaseModel):
     StorageItems: list[FIOUserStorageItemSchema] | None = Field(None)
 
     def to_game_storage_dict(self):
-        return self.model_dump(
+        data = self.model_dump(
             exclude={
                 'StorageId': True,
                 'AddressableId': True,
@@ -59,3 +59,9 @@ class FIOUserStorageSchema(BaseModel):
             },
             exclude_none=True,
         )
+
+        # exclude non MaterialTicker as they refer to BLOCKED materials from contracts
+        if data.get('StorageItems'):
+            data['StorageItems'] = [item for item in data['StorageItems'] if item.get('MaterialTicker') is not None]
+
+        return data
