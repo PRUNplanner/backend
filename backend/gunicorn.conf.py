@@ -9,7 +9,7 @@ wsgi_app = 'core.wsgi:application'
 workers = int(os.getenv('GUNICORN_WORKERS', 3))
 threads = int(os.getenv('GUNICORN_THREADS', 2))
 worker_class = 'gthread'
-prelead_app = True
+preload_app = True
 
 # restart logic
 max_requests = 1000
