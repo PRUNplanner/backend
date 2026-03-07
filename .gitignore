@@ -8,7 +8,7 @@ wheels/
 .ruff_cache
 
 *.db
-.env
+*.env*
 .overmind*
 
 # django
