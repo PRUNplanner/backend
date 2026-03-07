@@ -286,32 +286,38 @@ def import_planet_infrastructure(planet_natural_id: str) -> bool:
 
 
 def import_all_exchanges() -> bool:
-    with get_fio_service() as fio:
-        exchanges = fio.get_all_exchanges()
 
-    with transaction.atomic():
-        exchange_objs = [GameExchange(**e.model_dump()) for e in exchanges]
+    try:
+        with get_fio_service() as fio:
+            exchanges = fio.get_all_exchanges()
 
-        GameExchange.objects.bulk_create(
-            exchange_objs,
-            update_conflicts=True,
-            unique_fields=['ticker_id'],
-            update_fields=[
-                'mm_buy',
-                'mm_sell',
-                'price_average',
-                'ask',
-                'bid',
-                'ask_count',
-                'bid_count',
-                'supply',
-                'demand',
-            ],
-        )
+        with transaction.atomic():
+            exchange_objs = [GameExchange(**e.model_dump()) for e in exchanges]
 
-    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list())
+            GameExchange.objects.bulk_create(
+                exchange_objs,
+                update_conflicts=True,
+                unique_fields=['ticker_id'],
+                update_fields=[
+                    'mm_buy',
+                    'mm_sell',
+                    'price_average',
+                    'ask',
+                    'bid',
+                    'ask_count',
+                    'bid_count',
+                    'supply',
+                    'demand',
+                ],
+            )
 
-    return True
+        # clear cache as live data changes
+        GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='json'))
+        GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='csv'))
+        return True
+
+    except Exception:
+        return False
 
 
 def import_all_recipes() -> tuple[int, int, int]:
