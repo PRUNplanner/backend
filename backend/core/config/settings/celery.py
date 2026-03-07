@@ -45,22 +45,23 @@ CELERY_TASK_DEFAULT_PRIORITY = 5
 CELERY_TASK_ANNOTATIONS = {
     # user
     'user_send_email_verification_code': {
-        'priority': 10,
+        'priority': 1,
     },
-    'user_send_password_reset_code': {'priority': 10},
+    'user_send_password_reset_code': {'priority': 1},
     # game data
     'gamedata_refresh_planet': {
-        'priority': 4,
-        'rate_limit': '1/s',
+        'priority': 5,
+        'rate_limit': '2/s',
     },
     'gamedata_refresh_planet_infrastructure': {
-        'rate_limit': '1/s',
+        'priority': 5,
+        'rate_limit': '2/s',
     },
     'gamedata_dispatch_fio_updates': {'priority': 4},
     'gamedata_refresh_user_fiodata': {
         'priority': 4,
         'rate_limit': '10/s',
     },
-    'gamedata_refresh_cxpc': {'priority': 9, 'rate_limit': '5/s', 'acks_late': True, 'ignore_results': False},
+    'gamedata_refresh_cxpc': {'priority': 9, 'rate_limit': '10/s', 'acks_late': True, 'ignore_results': False},
     'gamedata_refresh_exchange_analytics': {'priority': 9},
 }
