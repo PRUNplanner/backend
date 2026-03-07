@@ -1,5 +1,6 @@
 from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import F, JSONField, QuerySet
 from django.http import HttpRequest
 from django_json_widget.widgets import JSONEditorWidget
@@ -20,10 +21,15 @@ class UserPreferenceAdmin(admin.ModelAdmin):
 
 
 @admin.register(User)
-class UserAdmin(admin.ModelAdmin):
+class UserAdmin(BaseUserAdmin):
     list_display = ['username', 'id', 'email', 'last_login', 'prun_username']
     search_fields = ['username', 'email', 'id', 'prun_username']
     ordering = [F('last_login').desc(nulls_last=True)]
+
+    fieldsets = (
+        (None, {'fields': ('username', 'password', 'email', 'prun_username', 'fio_apikey', 'is_email_verified')}),
+        ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
+    )
 
 
 @admin.register(LogEntry)
