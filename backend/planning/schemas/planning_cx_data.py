@@ -5,7 +5,24 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 CX_TYPES = Literal['BUY', 'SELL', 'BOTH']
 
 CX_EXCHANGES = Literal[
-    'AI1_7D', 'NC1_7D', 'CI1_7D', 'IC1_7D', 'UNIVERSE_7D', 'AI1_30D', 'NC1_30D', 'CI1_30D', 'IC1_30D', 'UNIVERSE_30D'
+    'AI1_7D',
+    'NC1_7D',
+    'CI1_7D',
+    'IC1_7D',
+    'UNIVERSE_7D',
+    'AI1_30D',
+    'NC1_30D',
+    'CI1_30D',
+    'IC1_30D',
+    'UNIVERSE_30D',
+    'AI1_ASK',
+    'AI1_BID',
+    'NC1_ASK',
+    'NC1_BID',
+    'CI1_ASK',
+    'CI1_BID',
+    'IC1_ASK',
+    'IC1_BID',
 ]
 
 
@@ -73,7 +90,7 @@ class CXTickerPreference_V1(BaseModel):
 
 class CXExchangePreference_V1(BaseModel):
     type: CX_TYPES
-    exchange: str
+    exchange: CX_EXCHANGES
 
 
 class CXExchangeTickerPreferences_V1(BaseModel):

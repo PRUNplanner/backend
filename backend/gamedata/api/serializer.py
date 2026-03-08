@@ -134,9 +134,34 @@ class GameExchangeSerializer(serializers.ModelSerializer):
     ticker_id = serializers.CharField(read_only=True)
     exchange_status = serializers.CharField(read_only=True)
 
+    # live data fields
+
+    ask = serializers.FloatField(read_only=True, allow_null=True)
+    bid = serializers.FloatField(read_only=True, allow_null=True)
+    supply = serializers.FloatField(read_only=True, allow_null=True)
+    demand = serializers.FloatField(read_only=True, allow_null=True)
+
     class Meta:
         model = GameExchangeAnalytics
-        exclude = ['id', 'date_epoch']
+        fields = [
+            'ticker',
+            'exchange_code',
+            'calendar_date',
+            'ticker_id',
+            'exchange_status',
+            'traded_daily',
+            'vwap_daily',
+            'sum_traded_7d',
+            'avg_traded_7d',
+            'vwap_7d',
+            'sum_traded_30d',
+            'avg_traded_30d',
+            'vwap_30d',
+            'ask',
+            'bid',
+            'supply',
+            'demand',
+        ]
 
 
 class PlanetSearchSerializer(serializers.Serializer):

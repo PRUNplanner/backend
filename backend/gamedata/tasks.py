@@ -19,12 +19,7 @@ def refresh_exchanges() -> bool:
     )
     from gamedata.fio.importers import import_all_exchanges
 
-    status = import_all_exchanges()
-
-    if status:
-        return status
-    else:
-        return status
+    return import_all_exchanges()
 
 
 @shared_task(name='gamedata_refresh_planet_infrastructure')

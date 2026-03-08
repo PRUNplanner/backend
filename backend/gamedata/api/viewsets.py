@@ -30,6 +30,7 @@ from gamedata.fio.schemas import (
 from gamedata.gamedata_cache_manager import GamedataCacheManager
 from gamedata.models import (
     GameBuilding,
+    GameExchange,
     GameExchangeAnalytics,
     GameExchangeCXPC,
     GameFIOPlayerData,
@@ -183,38 +184,34 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     serializer_class = GameExchangeSerializer
     permission_classes = [AllowAny]
 
-    def get_queryset(self):
-        target_exchanges = ['AI1', 'NC1', 'CI1', 'IC1', 'UNIVERSE']
-        two_days_ago = timezone.now().date() - timedelta(days=2)
-
-        qs = (
-            GameExchangeAnalytics.objects.filter(exchange_code__in=target_exchanges)
-            .annotate(
-                ticker_id=Concat(F('ticker'), Value('.'), F('exchange_code'), output_field=CharField()),
-                exchange_status=Case(
-                    When(calendar_date__lt=two_days_ago, then=Value('STALE')),
-                    When(Q(vwap_7d__gt=0) & Q(avg_traded_7d__gt=0), then=Value('ACTIVE')),
-                    default=Value('INACTIVE'),
-                    output_field=CharField(),
-                ),
-            )
-            .order_by('ticker', 'exchange_code', '-date_epoch')
-        )
-
-        # DISTINCT_ON is only supported by postgresql
-        if connection.vendor == 'postgresql':  # pragma: no cover
-            qs = qs.distinct('ticker', 'exchange_code')
-
-        return qs
-
     @extend_schema(auth=[], summary='List all exchanges')
     def list(self, request, *args, **kwargs):
 
         fmt = getattr(request.accepted_renderer, 'format', 'json')
 
-        def fetch_data() -> Any:
-            return list(
-                self.get_queryset().values(
+        def fetch_data():
+            target_exchanges = ['AI1', 'NC1', 'CI1', 'IC1', 'UNIVERSE']
+            two_days_ago = timezone.now().date() - timedelta(days=2)
+
+            qs = (
+                GameExchangeAnalytics.objects.filter(exchange_code__in=target_exchanges)
+                .annotate(
+                    ticker_id=Concat(F('ticker'), Value('.'), F('exchange_code'), output_field=CharField()),
+                    exchange_status=Case(
+                        When(calendar_date__lt=two_days_ago, then=Value('STALE')),
+                        When(Q(vwap_7d__gt=0) & Q(avg_traded_7d__gt=0), then=Value('ACTIVE')),
+                        default=Value('INACTIVE'),
+                        output_field=CharField(),
+                    ),
+                )
+                .order_by('ticker', 'exchange_code', '-date_epoch')
+            )
+
+            if connection.vendor == 'postgresql':
+                qs = qs.distinct('ticker', 'exchange_code')
+
+            analytics_list = list(
+                qs.values(
                     'ticker',
                     'exchange_code',
                     'date_epoch',
@@ -232,6 +229,32 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
                 )
             )
 
+            live_exchanges = ['AI1', 'NC1', 'CI1', 'IC1']
+            live_data = GameExchange.objects.filter(exchange_code__in=live_exchanges).values(
+                'ticker', 'exchange_code', 'ask', 'bid', 'supply', 'demand'
+            )
+
+            live_map = {}
+            for item in live_data:
+                t = item['ticker']
+                ec = item['exchange_code']
+                if t not in live_map:
+                    live_map[t] = {}
+                live_map[t][ec] = item
+
+            for row in analytics_list:
+                ticker = row['ticker']
+                exchange_code = row['exchange_code']
+                ticker_live_data = live_map.get(ticker, {})
+
+                ext = ticker_live_data.get(exchange_code, {})
+                row['ask'] = ext.get('ask') or 0.0
+                row['bid'] = ext.get('bid') or 0.0
+                row['supply'] = ext.get('supply') or 0.0
+                row['demand'] = ext.get('demand') or 0.0
+
+            return analytics_list
+
         return GamedataCacheManager.get_exchange_list_response(fetch_data, fmt)
 
 
@@ -247,13 +270,13 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
             summary='Example of the CSV output',
             value=(
                 'ticker,exchange_code,ticker_id,date_epoch,calendar_date,exchange_status,vwap_daily,vwap_7d,vwap_30d,'
-                'traded_daily,sum_traded_7d,sum_traded_30d,avg_traded_7d,avg_traded_30d\n'
+                'traded_daily,sum_traded_7d,sum_traded_30d,avg_traded_7d,avg_traded_30d,ask,bid,supply,demand\n'
                 'AAR,AI1,AAR.AI1,1772323200000,2026-03-01,ACTIVE,0.0,16100.0,16077.0,0.0,16.0,200.0,'
-                '2.6666666666666665,11.764705882352942\n'
+                '2.6666666666666665,11.764705882352942,500,200,5,42\n'
                 'BBH,NC1,BBH.NC1,1772323200000,2026-03-01,ACTIVE,2900.0,2891.514476614699,2215.1506948034653,63.0,'
-                '898.0,63831.0,128.28571428571428,2127.7\n'
+                '898.0,63831.0,128.28571428571428,2127.7,500,200,5,42\n'
                 'OVE,AI1,OVE.AI1,1772323200000,2026-03-01,ACTIVE,128.66921119592877,128.372457796092,'
-                '127.6020758545341,1572.0,7523.0,51256.0,1074.7142857142858,1708.5333333333333\n'
+                '127.6020758545341,1572.0,7523.0,51256.0,1074.7142857142858,1708.5333333333333,500,200,5,42\n'
             ),
             media_type='text/csv',
         )
@@ -277,6 +300,10 @@ class GameExchangeCSVViewSet(GameExchangeViewSet):
         'sum_traded_30d',
         'avg_traded_7d',
         'avg_traded_30d',
+        'ask',
+        'bid',
+        'supply',
+        'demand',
     ]
 
     # override viewsets header order with header variable
