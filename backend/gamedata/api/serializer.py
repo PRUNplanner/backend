@@ -138,6 +138,8 @@ class GameExchangeSerializer(serializers.ModelSerializer):
 
     ask = serializers.FloatField(read_only=True, allow_null=True)
     bid = serializers.FloatField(read_only=True, allow_null=True)
+    supply = serializers.FloatField(read_only=True, allow_null=True)
+    demand = serializers.FloatField(read_only=True, allow_null=True)
 
     class Meta:
         model = GameExchangeAnalytics
