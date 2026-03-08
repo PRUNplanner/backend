@@ -14,3 +14,6 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
     }
 }
+
+WHITENOISE_KEEP_ONLY_HASHED_FILES = True
+WHITENOISE_AUTOREFRESH = True
