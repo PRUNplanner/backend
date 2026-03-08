@@ -64,6 +64,10 @@ class GamedataCacheManager(CacheManager):
             return cls.make_key('exchange', 'cxpc', ticker)
 
     @classmethod
+    def key_user_fio_lock(cls, user_id: int) -> str:
+        return cls.make_key('task', 'fio_refresh_lock', user_id)
+
+    @classmethod
     def key_planet_search(cls, search_request: dict[str, list[str] | bool]) -> str:
         parts = []
         for key in sorted(search_request.keys()):
@@ -80,6 +84,14 @@ class GamedataCacheManager(CacheManager):
         return cls.make_key('planet', 'search', *parts)
 
     # Operations
+    @classmethod
+    def set_fio_refresh_lock(cls, user_id: int) -> bool:
+        return cls.add(cls.key_user_fio_lock(user_id), 'fio_storage_refresh_locked', 60 * 5)
+
+    @classmethod
+    def delete_fio_refresh_lock(cls, user_id: int) -> None:
+        return cls.delete(cls.key_user_fio_lock(user_id))
+
     @classmethod
     def get_material_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
         key = cls.key_material_list()
