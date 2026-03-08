@@ -247,12 +247,11 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
                 exchange_code = row['exchange_code']
                 ticker_live_data = live_map.get(ticker, {})
 
-                if exchange_code in ['AI1', 'NC1', 'CI1', 'IC1']:
-                    ext = ticker_live_data.get(exchange_code, {})
-                    row['ask'] = ext.get('ask') or 0.0
-                    row['bid'] = ext.get('bid') or 0.0
-                    row['supply'] = ext.get('supply') or 0.0
-                    row['demand'] = ext.get('demand') or 0.0
+                ext = ticker_live_data.get(exchange_code, {})
+                row['ask'] = ext.get('ask') or 0.0
+                row['bid'] = ext.get('bid') or 0.0
+                row['supply'] = ext.get('supply') or 0.0
+                row['demand'] = ext.get('demand') or 0.0
 
             return analytics_list
 
