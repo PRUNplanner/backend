@@ -28,7 +28,7 @@ logger = structlog.get_logger(__name__)
 @shared_task(name='update_daily_stats')
 def update_daily_stats():
     structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_exchanges',
+        task_category='update_daily_stats',
     )
 
     now = timezone.now()

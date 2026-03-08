@@ -160,14 +160,25 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
 
     log = logger.bind(name='gamedata_refresh_user_fiodata', user=user_id, prun_username=prun_username)
 
+    # SUBSEQUENT REFRESH LOCK
+    if not GamedataCacheManager.set_fio_refresh_lock(user_id):
+        log.info('Skip user fio refresh, still within cooldown period')
+        return False
+
+    # STORAGE REFRESH LOGIC
+
     from user.models import User
 
     from gamedata.models import GameFIOPlayerData
 
     try:
-        _user = User.objects.get(id=user_id)
+        if not User.objects.filter(id=user_id).exists():
+            # user does not exist anymore, clean up lock key and return
+            GamedataCacheManager.delete_fio_refresh_lock(user_id)
+            log.info('Skip user fio refresh, user does not exist anymore')
+            return False
 
-        to_update, _created = GameFIOPlayerData.objects.get_or_create(user_id=user_id)
+        to_update, _ = GameFIOPlayerData.objects.get_or_create(user_id=user_id)
 
         log.info('Update GameFIOPlayerData', uuid=to_update.uuid)
 
@@ -204,10 +215,16 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
         except Exception as exc:
             log.error('Exception in update', exc_info=exc)
             to_update.update_refresh_result(error=exc)
+            # remove lock key, so retry is possible
+            GamedataCacheManager.delete_fio_refresh_lock(user_id)
+
             return False
 
     except User.DoesNotExist:
+        # remove lock key, so retry is possible
+        GamedataCacheManager.delete_fio_refresh_lock(user_id)
         log.error('User not found')
+
         return False
 
 

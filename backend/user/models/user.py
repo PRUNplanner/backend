@@ -22,7 +22,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     REQUIRED_FIELDS = []
 
     def _has_fio_credentials(self) -> bool:
-        return bool(self.prun_username) and bool(self.fio_apikey)
+        # .strip() to remove " " and "\n"
+        prun = (self.prun_username or '').strip()
+        apikey = (self.fio_apikey or '').strip()
+
+        return bool(prun) and bool(apikey)
 
     def __str__(self) -> str:
         return f'{self.username} ({self.id})'

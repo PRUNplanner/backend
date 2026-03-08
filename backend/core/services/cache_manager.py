@@ -41,6 +41,10 @@ class CacheManager:
         logger.info('cache_pattern_purged', pattern=pattern)
         cache.delete_pattern(pattern)
 
+    @classmethod
+    def add(cls, key: str, content: Any, timeout: int) -> bool:
+        return cache.add(key, content, timeout=timeout)
+
     # Response handling
     @classmethod
     def get_response(cls, key: str, timeout: int = 300) -> HttpResponse | None:
