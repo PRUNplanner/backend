@@ -36,16 +36,20 @@ class PlanningPlanAdmin(admin.ModelAdmin):
 
 @admin.register(PlanningEmpire)
 class PlanningEmpireAdmin(admin.ModelAdmin):
-    list_display = ['uuid', 'user', 'empire_name']
+    list_display = ['uuid', 'user', 'empire_name', 'created_at', 'modified_at']
     search_fields = ['uuid', 'empire_name', 'user__username']
     ordering = ['-modified_at']
 
     inlines = [PlanningEmpirePlanInline]
 
+    formfield_overrides = {
+        JSONField: {'widget': JSONEditorWidget},
+    }
+
 
 @admin.register(PlanningCX)
 class PlanningCXAdmin(admin.ModelAdmin):
-    list_display = ['uuid', 'user', 'cx_name']
+    list_display = ['uuid', 'user', 'cx_name', 'created_at', 'modified_at']
     search_fields = ['uuid', 'cx_name', 'user__username']
     ordering = ['-modified_at']
 
@@ -64,6 +68,6 @@ class PlanningEmpirePlanAdmin(admin.ModelAdmin):
 
 @admin.register(PlanningShared)
 class PlanningSharedAdmin(admin.ModelAdmin):
-    list_display = ['uuid', 'user', 'plan', 'view_count']
+    list_display = ['uuid', 'user', 'plan', 'view_count', 'created_at', 'modified_at']
     search_fields = ['uuid', 'user__username', 'plan__plan_name']
     ordering = ['-view_count']

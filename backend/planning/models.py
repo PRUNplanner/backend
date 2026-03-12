@@ -79,6 +79,8 @@ class PlanningEmpire(UUIDModel, ChangeTrackedModel):
     empire_permits_used = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     empire_permits_total = models.PositiveIntegerField(validators=[MinValueValidator(2)])
 
+    empire_state = models.JSONField(default=dict, blank=True)
+
     def __str__(self) -> str:
         return f'{self.empire_name} ({self.uuid})'
 
@@ -86,6 +88,10 @@ class PlanningEmpire(UUIDModel, ChangeTrackedModel):
         db_table = 'prunplanner_planning_empires'
         verbose_name = 'Empire'
         verbose_name_plural = 'Empires'
+
+        # Note, on Postgres there are two GIN indexes generated:
+        # idx_gin_empire_total -> gin (((empire_state -> \'empire_total\')) jsonb_path_ops)
+        # idx_gin_plan_details -> gin ((empire_state -> \'plan_details\'))
 
 
 class PlanningEmpirePlan(UUIDModel):

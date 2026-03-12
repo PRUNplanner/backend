@@ -10,6 +10,7 @@ from planning.api.serializers import (
     PlanningEmpirePlanSyncErrorSerializer,
     PlanningPlanListSerializer,
 )
+from planning.api.serializers.empire import PlanningEmpireStateUpdateSerializer
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.planning_cache_manager import PlanningCacheManager
 from rest_framework import mixins, status, viewsets
@@ -37,6 +38,11 @@ class EmpireViewSet(
             .prefetch_related('plans', 'cx')
             .order_by('empire_name')
         )
+
+    def get_serializer_class(self):
+        if self.action == 'sync_state':
+            return PlanningEmpireStateUpdateSerializer
+        return super().get_serializer_class()
 
     @extend_schema(summary='List all users empires')
     def list(self, request, *args, **kwargs) -> Response:
@@ -156,6 +162,24 @@ class EmpireViewSet(
             PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
 
         return self.list(request)
+
+    @extend_schema(
+        summary='Sync empire state (empire material i/o, plan material i/o and metadata)',
+        request=PlanningEmpireStateUpdateSerializer,
+        responses={200: PlanningEmpireDetailSerializer},
+    )
+    @action(detail=True, methods=['patch'], url_path='empire-sync-state')
+    def sync_state(self, request, pk=None):
+
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with transaction.atomic():
+            self.perform_update(serializer)
+            PlanningCacheManager.delete_pattern(f'*PLANNING:{request.user.id}:*')
+
+        return Response(PlanningEmpireDetailSerializer(instance).data)
 
     def perform_update(self, serializer):
         serializer.save()
