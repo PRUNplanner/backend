@@ -2,7 +2,7 @@ from datetime import timedelta
 
 import structlog
 from celery import chord, shared_task
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
@@ -256,42 +256,46 @@ def gamedata_refresh_cxpc(ticker, exchange_code):
 
     log = logger.bind(name='fetch_create_exchange_cxpc', ticker=ticker, exchange_code=exchange_code)
 
-    count_before = GameExchangeCXPC.objects.filter(ticker=ticker, exchange_code=exchange_code).count()
-
     try:
         with get_fio_service() as fio:
             cxpc_data = fio.get_cxpc(ticker, exchange_code)
 
-        objs = []
-
-        for item in cxpc_data:
-            if item.interval == 'DAY_ONE':
-                objs.append(
-                    GameExchangeCXPC(
-                        ticker=ticker,
-                        exchange_code=exchange_code,
-                        date_epoch=item.date_epoch,
-                        open_p=item.open,
-                        close_p=item.close,
-                        high_p=item.high,
-                        low_p=item.low,
-                        volume=item.volume,
-                        traded=item.traded,
-                    )
+        objs = [
+            (
+                GameExchangeCXPC(
+                    ticker=ticker,
+                    exchange_code=exchange_code,
+                    date_epoch=item.date_epoch,
+                    open_p=item.open,
+                    close_p=item.close,
+                    high_p=item.high,
+                    low_p=item.low,
+                    volume=item.volume,
+                    traded=item.traded,
                 )
+            )
+            for item in cxpc_data
+            if item.interval == 'DAY_ONE'
+        ]
 
-        # bulk insert
-        if objs:
-            GameExchangeCXPC.objects.bulk_create(objs, ignore_conflicts=True)
-            log.info('objects_bulk', objs=len(objs))
+        if not objs:
+            log.info('no_data_to_process')
+            return True
+
+        # UPSERT
+        with transaction.atomic():
+            _result = GameExchangeCXPC.objects.bulk_create(
+                objs,
+                update_conflicts=True,
+                unique_fields=['ticker', 'exchange_code', 'date_epoch'],
+                update_fields=['open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded'],
+                batch_size=1000,
+            )
+            log.info('objects_processes', objs=len(objs))
 
     except Exception as exc:
         log.error('exception', exc_info=exc)
         return False
-
-    count_after = GameExchangeCXPC.objects.filter(ticker=ticker, exchange_code=exchange_code).count()
-
-    log.info('objects_created', created=(count_before - count_after))
 
     return True
 
