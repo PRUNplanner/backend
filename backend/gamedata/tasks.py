@@ -229,7 +229,7 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
 
 
 @shared_task(name='gamedata_trigger_refresh_cxpc')
-def gamedata_trigger_refresh_cxpc():
+def gamedata_trigger_refresh_cxpc(full: bool = False):
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_trigger_refresh_cxpc',
     )
@@ -238,7 +238,7 @@ def gamedata_trigger_refresh_cxpc():
         exchanges_all = fio.get_all_exchanges()
 
     # create material ticker + exchange code pairs
-    header = [gamedata_refresh_cxpc.s(p.ticker, p.exchange_code) for p in exchanges_all]
+    header = [gamedata_refresh_cxpc.s(p.ticker, p.exchange_code, full=full) for p in exchanges_all]
 
     # execute all tasks, then run the materialized view refresh
     callback = refresh_exchange_analytics.si()
@@ -247,7 +247,7 @@ def gamedata_trigger_refresh_cxpc():
 
 
 @shared_task(name='gamedata_refresh_cxpc')
-def gamedata_refresh_cxpc(ticker, exchange_code):
+def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_refresh_cxpc',
     )
@@ -282,16 +282,55 @@ def gamedata_refresh_cxpc(ticker, exchange_code):
             log.info('no_data_to_process')
             return True
 
-        # UPSERT
+        update_fields = ['open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded']
+        unique_fields = ['ticker', 'exchange_code', 'date_epoch']
+
         with transaction.atomic():
-            _result = GameExchangeCXPC.objects.bulk_create(
-                objs,
-                update_conflicts=True,
-                unique_fields=['ticker', 'exchange_code', 'date_epoch'],
-                update_fields=['open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded'],
-                batch_size=1000,
-            )
-            log.info('objects_processes', objs=len(objs))
+            # full refresh, upsert everything
+            if full:
+                GameExchangeCXPC.objects.bulk_create(
+                    objs,
+                    update_conflicts=True,
+                    unique_fields=unique_fields,
+                    update_fields=update_fields,
+                    batch_size=1000,
+                )
+                log.info('objects_processed_full_update', objs=len(objs))
+
+            # optimized refresh, only upsert 3 days ago
+            else:
+                # Calculate threshold for 3 days ago
+                now = timezone.now()
+                today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                three_days_ago = today_midnight - timedelta(days=3)
+                three_days_ago_ms = int(three_days_ago.timestamp() * 1000)
+
+                recent_objs = [o for o in objs if o.date_epoch >= three_days_ago_ms]
+                historical_objs = [o for o in objs if o.date_epoch < three_days_ago_ms]
+
+                # Process Historical: Ignore Conflicts
+                if historical_objs:
+                    GameExchangeCXPC.objects.bulk_create(
+                        historical_objs,
+                        ignore_conflicts=True,
+                        batch_size=1000,
+                    )
+
+                # Process Recent: UPSERT
+                if recent_objs:
+                    GameExchangeCXPC.objects.bulk_create(
+                        recent_objs,
+                        update_conflicts=True,
+                        unique_fields=unique_fields,
+                        update_fields=update_fields,
+                        batch_size=1000,
+                    )
+                log.info(
+                    'objects_processed_optimized',
+                    total=len(objs),
+                    recent=len(recent_objs),
+                    historical=len(historical_objs),
+                )
 
     except Exception as exc:
         log.error('exception', exc_info=exc)
