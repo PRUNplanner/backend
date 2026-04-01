@@ -81,9 +81,9 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         fields = ('username', 'password', 'email', 'planet_id', 'planet_input')
 
     def validate_username(self, value):
-        if User.objects.filter(username=value).exists():
+        if User.objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError('This username is already taken.')
-        return value
+        return value.lower()
 
     def validate_email(self, value):
         # Only check uniqueness if an email was actually provided
