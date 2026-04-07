@@ -13,8 +13,10 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_THROTTLE_CLASSES': [],
-    'DEFAULT_THROTTLE_RATES': {},
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {'webhook_inbound': '1/sec'},
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',

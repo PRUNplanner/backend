@@ -10,7 +10,7 @@ ENV_FILE = next((p for p in [BASE_DIR / '.env', BASE_DIR.parent / '.env'] if p.e
 
 class CacheSettings(BaseSettings):
     default_location: str = Field(...)
-    max_connections: int = Field(default=20)
+    max_connections: int = Field(default=200)
 
     model_config = SettingsConfigDict(extra='ignore', env_file=str(ENV_FILE) if ENV_FILE else None, env_prefix='CACHE_')
 

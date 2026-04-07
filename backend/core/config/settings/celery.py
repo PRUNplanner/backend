@@ -57,9 +57,10 @@ CELERY_TASK_ANNOTATIONS = {
         'priority': 5,
         'rate_limit': '2/s',
     },
-    'gamedata_dispatch_fio_updates': {'priority': 4},
+    'gamedata_process_fio_webhook': {'priority': 4},
+    'gamedata_dispatch_fio_updates': {'priority': 3},
     'gamedata_refresh_user_fiodata': {
-        'priority': 4,
+        'priority': 3,
         'rate_limit': '10/s',
     },
     'gamedata_refresh_cxpc': {'priority': 9, 'rate_limit': '10/s', 'acks_late': True, 'ignore_results': False},

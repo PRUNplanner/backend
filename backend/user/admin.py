@@ -7,7 +7,12 @@ from django_json_widget.widgets import JSONEditorWidget
 from rest_framework_api_key.admin import APIKeyAdmin
 from rest_framework_api_key.models import APIKey
 
-from user.models import User, UserAPIKey, UserPreference, VerificationCode
+from user.models import GlobalConfigWebhook, User, UserAPIKey, UserPreference, VerificationCode
+
+
+@admin.register(GlobalConfigWebhook)
+class GlobalConfigWebhookAdmin(admin.ModelAdmin):
+    list_display = ['path', 'sender', 'is_active', 'total_calls', 'last_received_at']
 
 
 @admin.register(UserPreference)

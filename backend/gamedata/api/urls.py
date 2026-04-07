@@ -1,6 +1,8 @@
 from django.urls import path
+from gamedata.api.sse import sse_stream_view
 from gamedata.api.viewsets import (
     ExchangeCXPCViewSet,
+    FIOWebhookIngest,
     GameBuildingViewSet,
     GameExchangeCSVViewSet,
     GameExchangeViewSet,
@@ -45,4 +47,6 @@ urlpatterns = [
         name='cxpc-market-data-ticker',
     ),
     path('storage/', GameStorageViewSet.as_view(actions={'get': 'retrieve'}), name='storage-retrieve'),
+    path('ingest/<uuid:token>', FIOWebhookIngest.as_view(), name='fio-webhook-ingest'),
+    path('stream/', sse_stream_view, name='data-stream'),
 ]
