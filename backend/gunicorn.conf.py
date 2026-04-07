@@ -3,12 +3,12 @@ import os
 # basic
 bind = '0.0.0.0:8000'
 pythonpath = 'backend'
-wsgi_app = 'core.wsgi:application'
+wsgi_app = 'core.asgi:application'
 
 # worker
 workers = int(os.getenv('GUNICORN_WORKERS', 3))
 threads = int(os.getenv('GUNICORN_THREADS', 2))
-worker_class = 'gthread'
+worker_class = 'uvicorn.workers.UvicornWorker'
 preload_app = True
 
 # restart logic
