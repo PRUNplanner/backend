@@ -2,13 +2,14 @@ from datetime import timedelta
 from itertools import chain
 from typing import Any, cast
 
+import structlog
 from django.db import connection
 from django.db.models import Case, CharField, F, Q, Value, When
 from django.db.models.functions import Concat
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from gamedata.api.serializer import (
     GameBuildingSerializer,
     GameExchangeCXPCSerializer,
@@ -26,6 +27,7 @@ from gamedata.fio.schemas import (
     FIOUserSiteSchema,
     FIOUserSiteWarehouseSchema,
     FIOUserStorageSchema,
+    FIOWebhookRootSchema,
 )
 from gamedata.gamedata_cache_manager import GamedataCacheManager
 from gamedata.models import (
@@ -40,6 +42,7 @@ from gamedata.models import (
     queryset_gameplanet,
 )
 from gamedata.services.planet_search import GamePlanetSearchService
+from gamedata.tasks import gamedata_process_fio_webhook
 from pydantic import TypeAdapter, ValidationError as PydanticValidationError
 from rest_framework import exceptions, mixins, status, viewsets
 from rest_framework.decorators import action
@@ -47,7 +50,11 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_csv.renderers import CSVRenderer
+from user.models import GlobalConfigWebhook, WebhookSenderChoices
+
+logger = structlog.get_logger(__name__)
 
 
 class GameRecipeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
@@ -400,3 +407,39 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return self._get_cxpc_response(ticker, exchange_code)
+
+
+class FIOWebhookIngest(APIView):
+    permission_classes = [AllowAny]
+    throttle_scope = 'webhook_inbound'
+
+    @extend_schema(
+        auth=[],
+        summary='Webhook Ingest',
+        operation_id='webhook_ingest',
+        request={'application/json': {}},
+        responses={
+            202: OpenApiResponse(description='Payload accepted and queued for processing'),
+            400: OpenApiResponse(description='Invalid JSON structure received'),
+            404: OpenApiResponse(description='Invalid or revoked webhook token'),
+        },
+    )
+    def post(self, request, token):
+        config = get_object_or_404(GlobalConfigWebhook, path=token, is_active=True, sender=WebhookSenderChoices.FIOAPI)
+
+        # pydantic validation
+        try:
+            FIOWebhookRootSchema.model_validate(request.data)
+        except Exception as err:
+            logger.error('fio_webhook_ingest_failed', exc_info=err)
+            return Response(status=400)
+
+        # update webhook config stats
+        config.total_calls += 1
+        config.last_received_at = timezone.now()
+        config.save(update_fields=['total_calls', 'last_received_at'])
+
+        # handoff to celery
+        gamedata_process_fio_webhook.delay(request.data)
+
+        return Response(status=202)

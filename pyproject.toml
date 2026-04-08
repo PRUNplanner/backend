@@ -30,6 +30,7 @@ dependencies = [
     "pydantic>=2.11.10",
     "pydantic-settings>=2.11.0",
     "redis[hiredis]>=6.4.0",
+    "uvicorn[standard]>=0.44.0",
     "whitenoise>=6.11.0",
 ]
 
