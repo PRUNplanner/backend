@@ -361,6 +361,9 @@ def refresh_exchange_analytics():
 
 @shared_task(name='gamedata_process_fio_webhook')
 def gamedata_process_fio_webhook(payload):
+    structlog.contextvars.bind_contextvars(
+        task_category='gamedata_process_fio_webhook',
+    )
 
     log = logger.bind(name='gamedata_process_fio_webhook')
 
