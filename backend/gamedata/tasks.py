@@ -367,9 +367,12 @@ def gamedata_process_fio_webhook(payload):
 
     log = logger.bind(name='gamedata_process_fio_webhook')
 
+    STREAM_MAX_LEN = 500
+
     try:
         # validate data
         validated_data = FIOWebhookRootSchema.model_validate(payload)
+
         # get redis connection
         r = get_redis_connection('default')
 
@@ -380,16 +383,14 @@ def gamedata_process_fio_webhook(payload):
             for msg in validated_data.Data:
                 if msg.Endpoint == '/cx':
                     for cx_info in msg.Data:
-                        payload = orjson.dumps(cx_info.pubsub_dump(worker_timestamp=timezone.now()))
+                        # prepare data
+                        data_payload = cx_info.pubsub_dump(worker_timestamp=timezone.now())
+                        entry = {'payload': orjson.dumps(data_payload)}
 
-                        # generic channel
-                        pipe.publish('cx', payload)
+                        # xadd(name, fields, id='*', maxlen=N, approximate=True)
+                        pipe.xadd('stream:cx', entry, maxlen=STREAM_MAX_LEN, approximate=True)
 
-                        # specific channels
-                        pipe.publish(f'cx:{cx_info.material_ticker}', payload)
-                        pipe.publish(f'cx:{cx_info.exchange_code}', payload)
-
-                        published_count += 3
+                        published_count += 1
 
             # execute batch
             if published_count > 0:

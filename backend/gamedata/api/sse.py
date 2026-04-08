@@ -21,6 +21,17 @@ async def sse_stream_view(request):
     raw_channels = request.GET.get('channels', 'beat')
     channels = [c.strip() for c in raw_channels.split(',') if c.strip()]
 
+    header_id = request.headers.get('Last-Event-ID')
+
+    if header_id:
+        # catch up to browsers last id
+        last_id = header_id
+    else:
+        # get existing history
+        last_id = '0'
+
+    redis_keys = {f'stream:{c}': last_id for c in channels}
+
     redis_url = settings.CACHES['default']['LOCATION']
 
     async def event_generator():
@@ -37,15 +48,19 @@ async def sse_stream_view(request):
         # loop
         try:
             while True:
-                # timeout will yield loop
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
+                # XREAD expects a dict with { key: last_id }
+                events = await redis.xread(redis_keys, count=1, block=5000)
 
-                if message:
-                    total_sent_count += 1
-                    data = message['data'].decode('utf-8')
-                    yield f'data: {data}\n\n'
+                if events:
+                    for stream_name, messages in events:
+                        for message_id, data in messages:
+                            last_id = message_id.decode('utf-8')
+
+                            redis_keys[stream_name.decode('utf-8')] = last_id
+
+                            payload = data[b'payload'].decode('utf-8')
+                            yield f'id: {last_id}\ndata: {payload}\n\n'
                 else:
-                    # ping empty to keep connection alive
                     yield ': \n\n'
 
         # user left stream
