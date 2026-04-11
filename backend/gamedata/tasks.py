@@ -407,6 +407,7 @@ def gamedata_process_fio_webhook(payload):
     log = logger.bind(name='gamedata_process_fio_webhook')
 
     sync_fields = ['mm_buy', 'mm_sell', 'price_average', 'ask', 'bid', 'ask_count', 'bid_count', 'supply', 'demand']
+    STREAM_ALLOWED_EXCHANGES = {'AI1', 'NC1', 'IC1', 'CI1'}
 
     try:
         # validate data
@@ -438,7 +439,9 @@ def gamedata_process_fio_webhook(payload):
             if _merge_and_enrich(db_obj, incoming, sync_fields):
                 to_update_db.append(db_obj)
 
-            redis_payloads.append(incoming.pubsub_dump(worker_timestamp=timezone.now().isoformat()))
+            # only allow the main exchanges
+            if incoming.exchange_code in STREAM_ALLOWED_EXCHANGES:
+                redis_payloads.append(incoming.pubsub_dump(worker_timestamp=timezone.now().isoformat()))
 
         # execute databse update
         if to_update_db:
