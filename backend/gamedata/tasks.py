@@ -9,8 +9,10 @@ from django.utils import timezone
 from django_redis import get_redis_connection
 
 from gamedata.fio.schemas import FIOWebhookRootSchema
+from gamedata.fio.schemas.fio_webhook import FIOWebhookExchangeEndpointSchema
 from gamedata.fio.services import get_fio_service
 from gamedata.gamedata_cache_manager import GamedataCacheManager
+from gamedata.models.game_exchange import GameExchange
 
 logger = structlog.get_logger(__name__)
 
@@ -359,6 +361,43 @@ def refresh_exchange_analytics():
     return True
 
 
+def _extract_unique_updates(validated_data: FIOWebhookRootSchema) -> dict[str, FIOWebhookExchangeEndpointSchema]:
+
+    updates = {}
+    for msg in validated_data.Data:
+        if msg.Endpoint == '/cx':
+            for cx_info in msg.Data:
+                t_id = f'{cx_info.material_ticker}.{cx_info.exchange_code}'
+                updates[t_id] = cx_info
+    return updates
+
+
+def _merge_and_enrich(db_obj: GameExchange, incoming: FIOWebhookExchangeEndpointSchema, fields: list[str]) -> bool:
+    changed = False
+
+    for field in fields:
+        incoming_val = getattr(incoming, field, None)
+        existing_val = getattr(db_obj, field, None)
+
+        if incoming_val is not None:
+            if existing_val != incoming_val:
+                setattr(db_obj, field, incoming_val)
+                changed = True
+        elif existing_val is not None:
+            setattr(incoming, field, existing_val)
+    return changed
+
+
+def _push_to_redis_stream(payloads: list[dict]):
+    STREAM_MAX_LEN = 500
+
+    r = get_redis_connection('default')
+    with r.pipeline(transaction=False) as pipe:
+        for p in payloads:
+            pipe.xadd('stream:cx', {'payload': orjson.dumps(p)}, maxlen=STREAM_MAX_LEN, approximate=True)
+        pipe.execute()
+
+
 @shared_task(name='gamedata_process_fio_webhook')
 def gamedata_process_fio_webhook(payload):
     structlog.contextvars.bind_contextvars(
@@ -367,35 +406,49 @@ def gamedata_process_fio_webhook(payload):
 
     log = logger.bind(name='gamedata_process_fio_webhook')
 
-    STREAM_MAX_LEN = 500
+    sync_fields = ['mm_buy', 'mm_sell', 'price_average', 'ask', 'bid', 'ask_count', 'bid_count', 'supply', 'demand']
 
     try:
         # validate data
         validated_data = FIOWebhookRootSchema.model_validate(payload)
 
-        # get redis connection
-        r = get_redis_connection('default')
+        # deduplicate, only process one update per ticker in the payload batch
+        updates_by_ticker = _extract_unique_updates(validated_data)
 
-        # pipeline
-        with r.pipeline(transaction=False) as pipe:
-            published_count = 0
+        # no cx updates received, return
+        if not updates_by_ticker:
+            return
 
-            for msg in validated_data.Data:
-                if msg.Endpoint == '/cx':
-                    for cx_info in msg.Data:
-                        # prepare data
-                        data_payload = cx_info.pubsub_dump(worker_timestamp=timezone.now())
-                        entry = {'payload': orjson.dumps(data_payload)}
+        # bulk fetch existing GameExchange records
+        ticker_ids = list(updates_by_ticker.keys())
+        existing_records = {obj.ticker_id: obj for obj in GameExchange.objects.filter(ticker_id__in=ticker_ids)}
 
-                        # xadd(name, fields, id='*', maxlen=N, approximate=True)
-                        pipe.xadd('stream:cx', entry, maxlen=STREAM_MAX_LEN, approximate=True)
+        if not existing_records:
+            log.info('no_existing_tickers_found', count=len(ticker_ids))
+            return
 
-                        published_count += 1
+        # keep track of updates and redis pushes
+        to_update_db = []
+        redis_payloads = []
 
-            # execute batch
-            if published_count > 0:
-                pipe.execute()
-                log.info('published_updates', count=published_count)
+        # intersect: only iterate over tickers that exist in database
+        for t_id, db_obj in existing_records.items():
+            incoming = updates_by_ticker[t_id]
+
+            if _merge_and_enrich(db_obj, incoming, sync_fields):
+                to_update_db.append(db_obj)
+
+            redis_payloads.append(incoming.pubsub_dump(worker_timestamp=timezone.now().isoformat()))
+
+        # execute databse update
+        if to_update_db:
+            GameExchange.objects.bulk_update(to_update_db, fields=sync_fields)
+
+        # execute redis push
+        if redis_payloads:
+            _push_to_redis_stream(redis_payloads)
+
+        log.info('sync_complete', db_updated=len(to_update_db), stream_pushed=len(redis_payloads))
 
     except Exception as exc:
         log.error('exception', exc_info=exc)
