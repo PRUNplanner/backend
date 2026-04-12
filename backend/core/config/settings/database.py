@@ -17,11 +17,10 @@ DATABASES = {
         'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
             'pool': {
-                # leanest RAM per worker
-                'min_size': 1,
-                'max_size': 2,
+                'min_size': 3,
+                'max_size': 10,
                 'timeout': 10,
-                'max_waiting': 10,
+                'max_waiting': 50,
             }
         },
     }

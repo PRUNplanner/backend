@@ -3,6 +3,7 @@ from typing import TypedDict, cast
 
 import structlog
 from django.db.models import Count, Q
+
 from gamedata.models import GamePlanet, GamePlanetCOGCStatusChoices, GamePlanetEnvironmentChoices, queryset_gameplanet
 
 logger = structlog.get_logger(__name__)

@@ -16,7 +16,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_CLASSES': [
         'rest_framework.throttling.ScopedRateThrottle',
     ],
-    'DEFAULT_THROTTLE_RATES': {'webhook_inbound': '1/sec'},
+    'DEFAULT_THROTTLE_RATES': {'webhook_inbound': '3/sec'},
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',

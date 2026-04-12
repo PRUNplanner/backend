@@ -1,12 +1,10 @@
 from datetime import timedelta
 
-import orjson
 import structlog
 from celery import chord, shared_task
 from django.db import connection, transaction
 from django.db.models import F, Q
 from django.utils import timezone
-from django_redis import get_redis_connection
 
 from gamedata.fio.schemas import FIOWebhookRootSchema
 from gamedata.fio.services import get_fio_service
@@ -365,36 +363,16 @@ def gamedata_process_fio_webhook(payload):
         task_category='gamedata_process_fio_webhook',
     )
 
+    from gamedata.services.fio_webhook_dispatcher import FIOWebhookDispatcher
+
     log = logger.bind(name='gamedata_process_fio_webhook')
 
     try:
         # validate data
         validated_data = FIOWebhookRootSchema.model_validate(payload)
-        # get redis connection
-        r = get_redis_connection('default')
 
-        # pipeline
-        with r.pipeline(transaction=False) as pipe:
-            published_count = 0
-
-            for msg in validated_data.Data:
-                if msg.Endpoint == '/cx':
-                    for cx_info in msg.Data:
-                        payload = orjson.dumps(cx_info.pubsub_dump(worker_timestamp=timezone.now()))
-
-                        # generic channel
-                        pipe.publish('cx', payload)
-
-                        # specific channels
-                        pipe.publish(f'cx:{cx_info.material_ticker}', payload)
-                        pipe.publish(f'cx:{cx_info.exchange_code}', payload)
-
-                        published_count += 3
-
-            # execute batch
-            if published_count > 0:
-                pipe.execute()
-                log.info('published_updates', count=published_count)
+        # hand-off to webhook dispatcher
+        FIOWebhookDispatcher.dispatch(validated_data)
 
     except Exception as exc:
         log.error('exception', exc_info=exc)
