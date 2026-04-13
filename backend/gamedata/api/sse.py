@@ -1,4 +1,6 @@
 import asyncio
+import time
+import uuid
 
 import structlog
 from django.conf import settings
@@ -18,19 +20,12 @@ logger = structlog.get_logger(__name__)
 )
 @permission_classes([AllowAny])
 async def sse_stream_view(request):
-    raw_channels = request.GET.get('channels', 'beat')
-    channels = [c.strip() for c in raw_channels.split(',') if c.strip()]
+    channels = [c.strip() for c in request.GET.get('channels', 'beat').split(',') if c.strip()]
+    redis_keys = {f'stream:{c}': request.headers.get('Last-Event-ID', '0') for c in channels}
 
-    header_id = request.headers.get('Last-Event-ID')
-
-    if header_id:
-        # catch up to browsers last id
-        last_id = header_id
-    else:
-        # get existing history
-        last_id = '0'
-
-    redis_keys = {f'stream:{c}': last_id for c in channels}
+    # unique connection ID for stats
+    conn_id = str(uuid.uuid4())
+    stats_key = 'stream:active_connections'
 
     redis_url = settings.CACHES['default']['LOCATION']
 
@@ -40,13 +35,14 @@ async def sse_stream_view(request):
 
         # initiate redis, pubsub and subscribe to channels
         redis = await aioredis.from_url(redis_url)
-        pubsub = redis.pubsub()
-        await pubsub.subscribe(*channels)
 
         total_sent_count = 0
 
-        # loop
         try:
+            # register connection with current timestamp
+            await redis.zadd(stats_key, {conn_id: time.time()})
+
+            # loop
             while True:
                 # XREAD expects a dict with { key: last_id }
                 events = await redis.xread(redis_keys, count=1, block=5000)
@@ -61,6 +57,8 @@ async def sse_stream_view(request):
                             payload = data[b'payload'].decode('utf-8')
                             yield f'id: {last_id}\ndata: {payload}\n\n'
                 else:
+                    # keep-alive + heartbeat in redis
+                    await redis.zadd(stats_key, {conn_id: time.time()})
                     yield ': \n\n'
 
         # user left stream
@@ -69,7 +67,12 @@ async def sse_stream_view(request):
 
         # cleanup
         finally:
-            await pubsub.unsubscribe(*channels)
+            # prune this connection
+            await redis.zrem(stats_key, conn_id)
+
+            # prune stale connections (> 30s)
+            await redis.zremrangebyscore(stats_key, 0, time.time() - 30)
+
             await redis.close()
 
             log.info(action='stream_close', messages_sent=total_sent_count)
