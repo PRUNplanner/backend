@@ -1,4 +1,5 @@
 import json
+import time
 
 import redis
 from django.apps import apps
@@ -71,6 +72,13 @@ def dashboard_index(request, extra_context=None):
             r = redis.from_url(settings.CACHES['default']['LOCATION'])
             info = r.info()
 
+            # sse metrics
+            stats_key = 'stream:active_connections'
+            # prune stale sesions
+            r.zremrangebyscore(stats_key, 0, time.time() - 30)
+            # get active users
+            sse_users = r.zcard(stats_key)
+
             hits = info.get('keyspace_hits', 0)
             misses = info.get('keyspace_misses', 0)
             total_reqs = hits + misses
@@ -79,6 +87,7 @@ def dashboard_index(request, extra_context=None):
             return {
                 'usage': info.get('used_memory_human', '0B'),
                 'hit_rate': hit_rate,
+                'active_stream_users': sse_users,
                 'active_connections': info.get('connected_clients', 0),
                 'blocked_clients': info.get('blocked_clients', 0),
                 'fragmentation': info.get('mem_fragmentation_ratio', 0),
