@@ -5,19 +5,18 @@ import redis
 from django.apps import apps
 from django.conf import settings
 from django.contrib import admin
+from django.contrib.humanize.templatetags.humanize import intcomma
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection
 from django.db.models import Count, Q
 from django_celery_beat.models import PeriodicTask
 from gamedata.models import GameFIOPlayerData, GamePlanet
+from unfold.admin import ModelAdmin
 
 from analytics.models import AppStatistic
 
-# Replace /admin index
-original_index = admin.site.index
 
-
-def dashboard_index(request, extra_context=None):
+def dashboard_index(request, context):
 
     def kpi_data():
         return (
@@ -50,7 +49,7 @@ def dashboard_index(request, extra_context=None):
     )
     chart_data.reverse()
 
-    def automation_status_data():
+    def get_automation_status_data():
 
         return {
             'planet': GamePlanet.objects.aggregate(
@@ -164,7 +163,7 @@ def dashboard_index(request, extra_context=None):
         data['models'] = sorted(data['models'], key=lambda x: x['count'], reverse=True)
         return data
 
-    def task_data():
+    def get_task_data():
         tasks = PeriodicTask.objects.all().values('name', 'enabled', 'last_run_at', 'total_run_count')
 
         for task in tasks:
@@ -177,25 +176,76 @@ def dashboard_index(request, extra_context=None):
 
         return tasks
 
+    pg_stats = get_postgres_perf_stats()
+    redis_stats = get_redis_stats()
+    system_stats = get_system_stats()
+    model_rows = [[r['name'], r['app'], intcomma(r['count']), r['size']] for r in system_stats['models']]
+    task_data = get_task_data()
+    automation_status_data = get_automation_status_data()
+
     # combine all datapoints
-    extra_context = extra_context or {}
-    extra_context['kpi_data'] = kpi_data()
-    extra_context['model_counts'] = get_system_stats()
-    extra_context['automation_status_data'] = automation_status_data()
-    extra_context['task_data'] = task_data()
-    extra_context['redis_stats'] = get_redis_stats()
-    extra_context['postgres_stats'] = get_postgres_perf_stats()
-    extra_context['chart_data'] = json.dumps(chart_data, cls=DjangoJSONEncoder)
+    context.update(
+        {
+            'kpi_data': kpi_data(),
+            'model_counts': system_stats,
+            'automation_status_data': automation_status_data,
+            'task_data': task_data,
+            'redis_stats': redis_stats,
+            'postgres_stats': pg_stats,
+            'chart_data': json.dumps(chart_data, cls=DjangoJSONEncoder),
+            'database_table': {
+                'rows': [
+                    ['Active Connections', pg_stats['active_connections']],
+                    ['Database Size', pg_stats['db_size']],
+                    ['Cache Hit-Rate', pg_stats['cache_hit_rate']],
+                    ['Total Commits', intcomma(pg_stats['total_commits'])],
+                    ['Dead Tuples', pg_stats['dead_tuples']],
+                    ['Needs Vacuum', pg_stats['needs_vacuum']],
+                ],
+            },
+            'redis_table': {
+                'rows': [
+                    ['Active Connections', redis_stats['active_connections']],
+                    ['Stream Connections', redis_stats['active_stream_users']],
+                    ['Usage', redis_stats['usage']],
+                    ['Hit Rate', redis_stats['hit_rate']],
+                    ['Blocked Clients', redis_stats['blocked_clients']],
+                    ['Fragmentation', redis_stats['fragmentation']],
+                    ['Status', redis_stats['status']],
+                ],
+            },
+            'models_table': {'headers': ['Model', 'App', 'Record Count', 'Table Size'], 'rows': model_rows},
+            'task_table': {
+                'headers': ['Task Name', 'Status', 'Last Run', 'Total Runs'],
+                'rows': [
+                    [t['name'], t['status_label'], t['last_run_at'], intcomma(t['total_run_count'])] for t in task_data
+                ],
+            },
+            'automation_table': {
+                'headers': ['Model', 'Total', 'Retrying', 'Failed'],
+                'rows': [
+                    [
+                        'Planets',
+                        intcomma(automation_status_data['planet']['total_count']),
+                        intcomma(automation_status_data['planet']['retrying_count']),
+                        intcomma(automation_status_data['planet']['failed_count']),
+                    ],
+                    [
+                        'FIO Userdata',
+                        intcomma(automation_status_data['fio_userdata']['total_count']),
+                        intcomma(automation_status_data['fio_userdata']['retrying_count']),
+                        intcomma(automation_status_data['fio_userdata']['failed_count']),
+                    ],
+                ],
+            },
+        }
+    )
 
-    return original_index(request, extra_context=extra_context)
-
-
-# assign new admin site
-admin.site.index = dashboard_index  # ty:ignore[invalid-assignment]
+    return context
 
 
 @admin.register(AppStatistic)
-class AppStatisticAdmin(admin.ModelAdmin):
+class AppStatisticAdmin(ModelAdmin):
     list_display = [
         'date',
         'user_count',

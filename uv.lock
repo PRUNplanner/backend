@@ -71,6 +71,7 @@ dependencies = [
     { name = "django-prometheus" },
     { name = "django-redis" },
     { name = "django-structlog", extra = ["celery"] },
+    { name = "django-unfold" },
     { name = "djangorestframework" },
     { name = "djangorestframework-api-key" },
     { name = "djangorestframework-csv" },
@@ -116,6 +117,7 @@ requires-dist = [
     { name = "django-prometheus", specifier = ">=2.4.1" },
     { name = "django-redis", specifier = ">=6.0.0" },
     { name = "django-structlog", extras = ["celery"], specifier = ">=9.1.1" },
+    { name = "django-unfold", specifier = ">=0.89.0" },
     { name = "djangorestframework", specifier = ">=3.16.1" },
     { name = "djangorestframework-api-key", specifier = "==3.*" },
     { name = "djangorestframework-csv", specifier = ">=3.0.2" },
@@ -684,6 +686,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/da/05/9b93a66452cdb8a08ab26f08d5766d2332673e659a8b2aeb73f2a904d421/django_timezone_field-7.2.1.tar.gz", hash = "sha256:def846f9e7200b7b8f2a28fcce2b78fb2d470f6a9f272b07c4e014f6ba4c6d2e", size = 13096, upload-time = "2025-12-06T23:50:44.591Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/7f/d885667401515b467f84569c56075bc9add72c9fd425fca51a25f4c997e1/django_timezone_field-7.2.1-py3-none-any.whl", hash = "sha256:276915b72c5816f57c3baf9e43f816c695ef940d1b21f91ebf6203c09bf4ad44", size = 13284, upload-time = "2025-12-06T23:50:43.302Z" },
+]
+
+[[package]]
+name = "django-unfold"
+version = "0.89.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a1/3a/ef60012cc8898a83fd4fd7750c43c8e39043908331ee4be52c965761b30b/django_unfold-0.89.0.tar.gz", hash = "sha256:34a88b6bde940af01f6813f8f9d15684a16b5d7749226a4139367c7f988a62f8", size = 1120117, upload-time = "2026-04-09T11:09:23.603Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/81/1b980f5c86c87fd8a6aad0124894a9d88c72031490a0a401aae788967a32/django_unfold-0.89.0-py3-none-any.whl", hash = "sha256:1ecf73d491f089139ddd0f10aea7680fc6db02ed789db04d8c185be33b581593", size = 1242475, upload-time = "2026-04-09T11:09:22.019Z" },
 ]
 
 [[package]]

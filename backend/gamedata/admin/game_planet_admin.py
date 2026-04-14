@@ -2,8 +2,10 @@ from django.contrib import admin, messages
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponseRedirect
 from django.shortcuts import redirect
-from django.urls import path
+from django.urls import reverse
 from structlog import get_logger
+from unfold.admin import ModelAdmin, StackedInline, TabularInline
+from unfold.decorators import action
 
 from gamedata.fio.importers import import_all_planets, import_planet, import_planet_infrastructure
 from gamedata.models import (
@@ -17,56 +19,40 @@ from gamedata.models import (
 logger = get_logger(__name__)
 
 
-@admin.action(description='Refresh Planet from FIO')
-def action_refresh_planet(modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet) -> None:
-    data = queryset.values_list('planet_natural_id', flat=True).all()
-
-    for planet_natural_id in data:
-        logger.info('Admin refresh planet', planet_natural_id=planet_natural_id)
-        import_planet(planet_natural_id)
-
-
-@admin.action(description='Refresh Planet Infrastructure from FIO')
-def action_refresh_planet_infrastructure(
-    modeladmin: admin.ModelAdmin, request: HttpRequest, queryset: QuerySet
-) -> None:
-    data = queryset.values_list('planet_natural_id', flat=True).all()
-
-    for planet_natural_id in data:
-        logger.info('Admin refresh planet infrastructure', planet_natural_id=planet_natural_id)
-        import_planet_infrastructure(planet_natural_id)
-
-
-class PlanetCOGCProgramInline(admin.TabularInline):
+class PlanetCOGCProgramInline(TabularInline):
     model = GamePlanetCOGCProgram
     can_delete = True
     extra = 0
     fk_name = 'planet'
+    tab = True
 
 
-class PlanetResourceInline(admin.TabularInline):
+class PlanetResourceInline(TabularInline):
     model = GamePlanetResource
     can_delete = True
     extra = 0
     fk_name = 'planet'
+    tab = True
 
 
-class PlanetProductionFeeInline(admin.TabularInline):
+class PlanetProductionFeeInline(TabularInline):
     model = GamePlanetProductionFee
     can_delete = True
     extra = 0
     fk_name = 'planet'
+    tab = True
 
 
-@admin.register(GamePlanetInfrastructureReport)
-class GamePlanetInfrastructureReportAdmin(admin.ModelAdmin):
-    list_display = ['planet__planet_natural_id', 'simulation_period']
-    search_fields = ['planet__planet_natural_id', 'simulation_period']
+class PlanetInfrastructureReportInline(StackedInline):
+    model = GamePlanetInfrastructureReport
+    can_delete = True
+    extra = 0
+    fk_name = 'planet'
+    tab = True
 
 
 @admin.register(GamePlanet)
-class GamePlanetAdmin(admin.ModelAdmin):
-    change_list_template = 'admin/gamedata/planet_change_list.html'
+class GamePlanetAdmin(ModelAdmin):
     list_display = ['planet_natural_id', 'planet_name', 'automation_refresh_status', 'automation_last_refreshed_at']
     search_fields = ['planet_natural_id', 'planet_name']
     list_filter = ['automation_refresh_status']
@@ -76,7 +62,32 @@ class GamePlanetAdmin(admin.ModelAdmin):
         PlanetResourceInline,
         PlanetCOGCProgramInline,
         PlanetProductionFeeInline,
+        PlanetInfrastructureReportInline,
     ]
+
+    actions_list = ['action_fio_import_all_planet', 'action_fio_delete_all_planet']
+    actions_row = ['action_delete_planet', 'action_refresh_planet', 'action_refresh_planet_infrastructure']
+
+    @action(description='Import from FIO', url_path='changelist-fio-import-all-planet')
+    def action_fio_import_all_planet(self, request: HttpRequest):
+        try:
+            import_all_planets()
+            self.message_user(request, 'All Planets imported from FIO.', messages.SUCCESS)
+        except Exception:
+            self.message_user(request, 'Failed to import all Planets from FIO', messages.ERROR)
+
+        return redirect('../')
+
+    @action(description='Delete All Planets', url_path='changelist-fio-delete-all-planet')
+    def action_fio_delete_all_planet(self, request: HttpRequest):
+        try:
+            count = GamePlanet.objects.count()
+            GamePlanet.objects.all().delete()
+            self.message_user(request, f'Deleted {count} planets.', messages.SUCCESS)
+        except Exception:
+            self.message_user(request, 'Failed to delete all planets.', messages.ERROR)
+
+        return redirect('../')
 
     @admin.action(description='Delete all planets')
     def delete_all_planets(self, request: HttpRequest, queryset: QuerySet | None = None) -> None:
@@ -87,39 +98,44 @@ class GamePlanetAdmin(admin.ModelAdmin):
 
         self.message_user(request, f'Deleted {count} log entries.', level=messages.SUCCESS)
 
-    actions = [action_refresh_planet, action_refresh_planet_infrastructure, delete_all_planets]
+    @action(description='Delete', url_path='changelist-delete-planet')
+    def action_delete_planet(self, request: HttpRequest, object_id: int):
+        try:
+            GamePlanet.objects.filter(planet_id=object_id).delete()
+            self.message_user(request, 'Planet deleted.', messages.SUCCESS)
+        except Exception:
+            self.message_user(request, 'Failed to delete planet.', messages.ERROR)
 
-    def get_urls(self) -> list:
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                'fio_import_planet/',
-                self.admin_site.admin_view(self.fio_import_planet),
-                name='fio_import_planet',
-            ),
-            path(
-                'fio_import_all_planets/',
-                self.admin_site.admin_view(self.fio_import_all_planets),
-                name='fio_import_all_planets',
-            ),
-        ]
-        return custom_urls + urls
+        opts = self.model._meta
+        changelist_url = reverse(f'admin:{opts.app_label}_{opts.model_name}_changelist')
+        return HttpResponseRedirect(changelist_url)
 
-    def fio_import_planet(self, request: HttpRequest) -> HttpResponseRedirect:
-        value = request.GET.get('value')
+    @action(description='Refresh', url_path='changelist-refresh-planet')
+    def action_refresh_planet(self, request: HttpRequest, object_id: int):
+        try:
+            planet = GamePlanet.objects.filter(planet_id=object_id).first()
+            if planet:
+                import_planet(planet.planet_natural_id)
 
-        if value and isinstance(value, str):
-            status = import_planet(value)
+            self.message_user(request, 'Planet refreshed from FIO.', messages.SUCCESS)
+        except Exception:
+            self.message_user(request, 'Failed to refresh planet.', messages.ERROR)
 
-            if status:
-                self.message_user(request, f'Imported: {value}')
-            else:
-                self.message_user(request, f'Failed: {value}')
+        opts = self.model._meta
+        changelist_url = reverse(f'admin:{opts.app_label}_{opts.model_name}_changelist')
+        return HttpResponseRedirect(changelist_url)
 
-        return redirect('../')
+    @action(description='Refresh Infrastructure', url_path='changelist-refresh-planet-infrastructure')
+    def action_refresh_planet_infrastructure(self, request: HttpRequest, object_id: int):
+        try:
+            planet = GamePlanet.objects.filter(planet_id=object_id).first()
+            if planet:
+                import_planet_infrastructure(planet.planet_natural_id)
 
-    def fio_import_all_planets(self, request: HttpRequest) -> HttpResponseRedirect:
+            self.message_user(request, 'Planet refreshed from FIO.', messages.SUCCESS)
+        except Exception:
+            self.message_user(request, 'Failed to refresh planet.', messages.ERROR)
 
-        import_all_planets()
-
-        return redirect('../')
+        opts = self.model._meta
+        changelist_url = reverse(f'admin:{opts.app_label}_{opts.model_name}_changelist')
+        return HttpResponseRedirect(changelist_url)

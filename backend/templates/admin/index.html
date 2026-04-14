@@ -1,36 +1,54 @@
 {% extends "admin/base_site.html" %}
 
-{% load static %}
+{% load static humanize unfold %}
 
 {% block content %}
   {% include "admin/dashboard/primary_kpi.html" %}
-  <h1 class="pt-6">App Statistics</h1>
   {% include "admin/dashboard/statistic_chart.html" with chart_data=chart_data %}
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
     <div>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
         <div>
-          <h1 class="pt-6">Database</h1>
-          {% include "admin/dashboard/postgresql_status.html" with postgres_stats=postgres_stats %}
+          {% component "unfold/components/card.html" with title="Database" %}
+            {% component "unfold/components/table.html" with table=database_table card_included=1 striped=1 %}
+            {% endcomponent %}
+          {% endcomponent %}
         </div>
         <div>
-          <h1 class="pt-6">Redis</h1>
-          {% include "admin/dashboard/redis_status.html" with redis_stats=redis_stats %}
+          {% component "unfold/components/card.html" with title="Redis" %}
+            {% component "unfold/components/table.html" with table=redis_table card_included=1 striped=1 %}
+            {% endcomponent %}
+          {% endcomponent %}
         </div>
       </div>
-      <h1 class="pt-6">Task Status</h1>
-      {% include "admin/dashboard/task_status.html" with task_data=task_data %}
-      <h1 class="pt-6">Automation Status</h1>
-      {% include "admin/dashboard/automation_status.html" with automation_status_data=automation_status_data %}
+      <div class="pt-3">
+          {% component "unfold/components/card.html" with title="Task Status" %}
+            {% component "unfold/components/table.html" with table=task_table card_included=1 striped=1 %}
+            {% endcomponent %}
+          {% endcomponent %}
+      </div>
+      <div class="pt-3">
+          {% component "unfold/components/card.html" with title="Automation Status" %}
+            {% component "unfold/components/table.html" with table=automation_table card_included=1 striped=1 %}
+            {% endcomponent %}
+          {% endcomponent %}
+      </div>
     </div>
-    <div>
-      <h1 class="pt-6">Database Models</h1>
-      {% include "admin/dashboard/model_counts.html" with model_counts=model_counts %}
+
+    <div class="mt-3">
+      {% component "unfold/components/card.html" with title="Database Models" %}
+      <div class="flex flex-row justify-between pb-12">
+        <div>
+          Total Records: <strong>{{ model_counts.total_records|intcomma }}</strong>
+        </div>
+        <div>
+          Total Table Size: <strong>{{ model_counts.total_db_size }}</strong>
+        </div>
+      </div>
+        {% component "unfold/components/table.html" with table=models_table card_included=1 striped=1 %}
+        {% endcomponent %}
+      {% endcomponent %}
     </div>
   </div>
   {{ block.super }}
 {% endblock content %}
-{% block extrastyle %}
-  {{ block.super }}
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-{% endblock extrastyle %}

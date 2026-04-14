@@ -17,6 +17,7 @@ dependencies = [
     "django-prometheus>=2.4.1",
     "django-redis>=6.0.0",
     "django-structlog[celery]>=9.1.1",
+    "django-unfold>=0.89.0",
     "djangorestframework>=3.16.1",
     "djangorestframework-api-key==3.*",
     "djangorestframework-csv>=3.0.2",
