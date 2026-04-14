@@ -7,7 +7,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'testing.db',  # noqa: F405
     }
-}
+}  # ty:ignore[invalid-assignment]
 
 CACHES = {
     'default': {

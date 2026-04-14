@@ -34,4 +34,4 @@ if settings.database.legacy_name:
         'PASSWORD': settings.database.legacy_password,
         'HOST': settings.database.legacy_host,
         'PORT': settings.database.legacy_port,
-    }
+    }  # ty:ignore[invalid-assignment]

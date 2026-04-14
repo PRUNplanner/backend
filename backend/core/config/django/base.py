@@ -51,7 +51,6 @@ INSTALLED_APPS = [
     #
     'core',
     'user',
-    'legacy_migration',
     'gamedata',
     'planning',
     'analytics',
