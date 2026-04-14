@@ -7,7 +7,6 @@ requires-python = ">=3.12"
 dependencies = [
     "bcrypt>=5.0.0",
     "celery[redis]>=5.3.1",
-    "dj-redis-panel>=0.6.0",
     "django>=5.2.7",
     "django-anymail[resend]>=14.0",
     "django-celery-beat>=2.8.1",

@@ -41,7 +41,6 @@ INSTALLED_APPS = [
     # 3rd party
     'corsheaders',
     'django_prometheus',
-    'dj_redis_panel',
     'django_celery_beat',
     'django_structlog',
     'rest_framework',
@@ -100,7 +99,6 @@ WSGI_APPLICATION = 'core.wsgi.application'
 from core.config.settings.cache import *  # noqa: E402, F403
 from core.config.settings.celery import *  # noqa: E402, F403
 from core.config.settings.database import *  # noqa: E402, F403
-from core.config.settings.dj_redis import *  # noqa: E402, F403
 from core.config.settings.drf import *  # noqa: E402, F403
 from core.config.settings.logging import *  # noqa: E402, F403
 

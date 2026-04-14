@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import Group
 from django.db.models import F, JSONField, QuerySet
 from django.http import HttpRequest
 from django_json_widget.widgets import JSONEditorWidget
@@ -56,7 +57,6 @@ class LogEntryAdmin(ModelAdmin):
         'action_flag',
         'change_message',
     ]
-    list_filter = ['user', 'content_type', 'action_flag']
     date_hierarchy = 'action_time'
     search_fields = ['object_repr', 'change_message']
     ordering = ['-action_time']
@@ -73,6 +73,7 @@ class LogEntryAdmin(ModelAdmin):
 # remove standard DRF API Key admin page
 try:
     admin.site.unregister(APIKey)
+    admin.site.unregister(Group)
 except Exception:
     pass
 
