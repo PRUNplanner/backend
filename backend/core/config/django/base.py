@@ -40,7 +40,6 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     # 3rd party
     'corsheaders',
-    'django_prometheus',
     'django_celery_beat',
     'django_structlog',
     'rest_framework',
@@ -59,7 +58,6 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'django_prometheus.middleware.PrometheusBeforeMiddleware',
     'django_structlog.middlewares.RequestMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -70,7 +68,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -101,6 +98,7 @@ from core.config.settings.celery import *  # noqa: E402, F403
 from core.config.settings.database import *  # noqa: E402, F403
 from core.config.settings.drf import *  # noqa: E402, F403
 from core.config.settings.logging import *  # noqa: E402, F403
+from core.config.settings.unfold import *  # noqa: E402, F403
 
 AUTHENTICATION_BACKENDS = [
     'user.backends.LegacyAwareBackend',
@@ -157,21 +155,3 @@ ANYMAIL = {
     'RESEND_API_KEY': settings.email.resend_api_key,
 }
 DEFAULT_FROM_EMAIL = settings.email.from_email
-
-
-# Unfold
-UNFOLD = {
-    'SITE_TITLE': 'PRUNPlanner Admin',
-    'SITE_HEADER': 'PRUNplanner',
-    'BORDER_RADIUS': '3px',
-    'THEME': 'dark',
-    'SHOW_HISTORY': False,
-    'DASHBOARD_CALLBACK': 'analytics.admin.dashboard_index',
-    'COLORS': {
-        'base': {'50': 'rgb(21, 21, 21)', '800': 'rgb(21, 21, 21)', '900': '#030707'},
-        'primary': {
-            '500': 'rgb(192, 226, 25)',
-            '600': 'rgb(192, 226, 25)',
-        },
-    },
-}

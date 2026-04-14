@@ -13,7 +13,6 @@ dependencies = [
     "django-cors-headers>=4.9.0",
     "django-filter>=25.2",
     "django-json-widget>=2.1.0",
-    "django-prometheus>=2.4.1",
     "django-redis>=6.0.0",
     "django-structlog[celery]>=9.1.1",
     "django-unfold>=0.89.0",
