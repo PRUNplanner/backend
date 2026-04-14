@@ -1,8 +1,9 @@
 from django.contrib import admin, messages
-from django.http import HttpRequest, HttpResponseRedirect
+from django.http import HttpRequest
 from django.shortcuts import redirect
-from django.urls import path
 from structlog import get_logger
+from unfold.admin import ModelAdmin, TabularInline
+from unfold.decorators import action
 
 from gamedata.fio.importers import import_all_buildings
 from gamedata.models import GameBuilding, GameBuildingCost
@@ -10,17 +11,16 @@ from gamedata.models import GameBuilding, GameBuildingCost
 logger = get_logger(__name__)
 
 
-class BuildingCostInline(admin.TabularInline):
+class BuildingCostInline(TabularInline):
     model = GameBuildingCost
     can_delete = False
     extra = 0
     fk_name = 'building'
+    tab = True
 
 
 @admin.register(GameBuilding)
-class GameBuildingAdmin(admin.ModelAdmin):
-    change_list_template = 'admin/gamedata/building_change_list.html'
-
+class GameBuildingAdmin(ModelAdmin):
     list_display = ['building_ticker', 'building_name', 'expertise', 'building_type']
     search_fields = ['building_ticker', 'building_name', 'expertise']
 
@@ -28,27 +28,14 @@ class GameBuildingAdmin(admin.ModelAdmin):
         BuildingCostInline,
     ]
 
-    def get_urls(self) -> list:
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                'fio_building_import/',
-                self.admin_site.admin_view(self.fio_building_import),
-                name='fio_building_import',
-            )
-        ]
-        return custom_urls + urls
+    actions_list = ['action_fio_import_building']
 
-    def fio_building_import(self, request: HttpRequest) -> HttpResponseRedirect:
+    @action(description='Import from FIO', url_path='changelist-fio-import-building')
+    def action_fio_import_building(self, request: HttpRequest):
         try:
             buildings, costs = import_all_buildings()
-
-            self.message_user(
-                request,
-                f'Buildings synced! Created: {buildings} with {costs} costs.',
-            )
-        except Exception as exc:
+            self.message_user(request, f'Buildings synced! Created: {buildings} with {costs} costs.', messages.SUCCESS)
+        except Exception:
             self.message_user(request, 'Failed to sync buildings from FIO', messages.ERROR)
-            logger.error('Failed to sync buildings from FIO', exc_info=exc)
 
         return redirect('../')

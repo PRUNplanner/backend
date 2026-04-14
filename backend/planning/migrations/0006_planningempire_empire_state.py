@@ -44,4 +44,4 @@ class Migration(migrations.Migration):
                 sql='CREATE INDEX idx_gin_plan_details ON prunplanner_planning_empires USING gin ((empire_state -> \'plan_details\'));',
                 reverse_sql='DROP INDEX IF EXISTS idx_gin_plan_details;',
             ),
-        ]
+        ]  # ty:ignore[unsupported-operator]

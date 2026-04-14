@@ -27,6 +27,9 @@ ALLOWED_HOSTS = settings.django_allowed_hosts.split(',')
 # Application definition
 
 INSTALLED_APPS = [
+    # admin interface
+    'unfold',
+    'unfold.contrib.filters',
     # django
     'django.contrib.admin',
     'django.contrib.auth',
@@ -37,8 +40,6 @@ INSTALLED_APPS = [
     'django.contrib.humanize',
     # 3rd party
     'corsheaders',
-    'django_prometheus',
-    'dj_redis_panel',
     'django_celery_beat',
     'django_structlog',
     'rest_framework',
@@ -50,14 +51,12 @@ INSTALLED_APPS = [
     #
     'core',
     'user',
-    'legacy_migration',
     'gamedata',
     'planning',
     'analytics',
 ]
 
 MIDDLEWARE = [
-    'django_prometheus.middleware.PrometheusBeforeMiddleware',
     'django_structlog.middlewares.RequestMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -68,7 +67,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -97,9 +95,9 @@ WSGI_APPLICATION = 'core.wsgi.application'
 from core.config.settings.cache import *  # noqa: E402, F403
 from core.config.settings.celery import *  # noqa: E402, F403
 from core.config.settings.database import *  # noqa: E402, F403
-from core.config.settings.dj_redis import *  # noqa: E402, F403
 from core.config.settings.drf import *  # noqa: E402, F403
 from core.config.settings.logging import *  # noqa: E402, F403
+from core.config.settings.unfold import *  # noqa: E402, F403
 
 AUTHENTICATION_BACKENDS = [
     'user.backends.LegacyAwareBackend',

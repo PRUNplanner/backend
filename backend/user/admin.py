@@ -1,22 +1,25 @@
 from django.contrib import admin, messages
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import Group
 from django.db.models import F, JSONField, QuerySet
 from django.http import HttpRequest
 from django_json_widget.widgets import JSONEditorWidget
 from rest_framework_api_key.admin import APIKeyAdmin
 from rest_framework_api_key.models import APIKey
+from unfold.admin import ModelAdmin
+from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 
 from user.models import GlobalConfigWebhook, User, UserAPIKey, UserPreference, VerificationCode
 
 
 @admin.register(GlobalConfigWebhook)
-class GlobalConfigWebhookAdmin(admin.ModelAdmin):
+class GlobalConfigWebhookAdmin(ModelAdmin):
     list_display = ['path', 'sender', 'is_active', 'total_calls', 'last_received_at']
 
 
 @admin.register(UserPreference)
-class UserPreferenceAdmin(admin.ModelAdmin):
+class UserPreferenceAdmin(ModelAdmin):
     list_display = ['user', 'updated_at']
     ordering = ['-updated_at']
 
@@ -26,7 +29,10 @@ class UserPreferenceAdmin(admin.ModelAdmin):
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
+class UserAdmin(
+    BaseUserAdmin,
+    ModelAdmin,
+):
     list_display = ['username', 'id', 'email', 'last_login', 'prun_username']
     search_fields = ['username', 'email', 'id', 'prun_username']
     ordering = [F('last_login').desc(nulls_last=True)]
@@ -36,9 +42,13 @@ class UserAdmin(BaseUserAdmin):
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
     )
 
+    form = UserChangeForm
+    add_form = UserCreationForm
+    change_password_form = AdminPasswordChangeForm
+
 
 @admin.register(LogEntry)
-class LogEntryAdmin(admin.ModelAdmin):
+class LogEntryAdmin(ModelAdmin):
     list_display = [
         'action_time',
         'user',
@@ -47,7 +57,6 @@ class LogEntryAdmin(admin.ModelAdmin):
         'action_flag',
         'change_message',
     ]
-    list_filter = ['user', 'content_type', 'action_flag']
     date_hierarchy = 'action_time'
     search_fields = ['object_repr', 'change_message']
     ordering = ['-action_time']
@@ -64,6 +73,7 @@ class LogEntryAdmin(admin.ModelAdmin):
 # remove standard DRF API Key admin page
 try:
     admin.site.unregister(APIKey)
+    admin.site.unregister(Group)
 except Exception:
     pass
 
@@ -75,6 +85,6 @@ class UserAPIKeyAdmin(APIKeyAdmin):
 
 
 @admin.register(VerificationCode)
-class VerificationCodeAdmin(admin.ModelAdmin):
+class VerificationCodeAdmin(ModelAdmin):
     list_display = ['created_at', 'user', 'purpose', 'is_used']
     search_fields = ['user']

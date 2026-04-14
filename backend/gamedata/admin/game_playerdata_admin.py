@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.db.models import JSONField, QuerySet
 from django.http import HttpRequest
 from django_json_widget.widgets import JSONEditorWidget
+from unfold.admin import ModelAdmin
 from user.models import User
 
 from gamedata.models import GameFIOPlayerData
@@ -20,7 +21,7 @@ def action_user_refresh_fio(modeladmin: admin.ModelAdmin, request: HttpRequest, 
 
 
 @admin.register(GameFIOPlayerData)
-class GameFIOPlayerDataAdmin(admin.ModelAdmin):
+class GameFIOPlayerDataAdmin(ModelAdmin):
     # defer json data in list view
     def get_queryset(self, request):
         qs = super().get_queryset(request)
