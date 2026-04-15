@@ -197,7 +197,7 @@ def dashboard_index(request, context):
                     ['Database Size', pg_stats['db_size']],
                     ['Cache Hit-Rate', pg_stats['cache_hit_rate']],
                     ['Total Commits', intcomma(pg_stats['total_commits'])],
-                    ['Dead Tuples', pg_stats['dead_tuples']],
+                    ['Dead Tuples', intcomma(pg_stats['dead_tuples'])],
                     ['Needs Vacuum', pg_stats['needs_vacuum']],
                 ],
             },
