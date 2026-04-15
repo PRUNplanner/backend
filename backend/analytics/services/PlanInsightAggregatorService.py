@@ -101,10 +101,12 @@ class PlanInsightAggregatorService:
         if total_valid_plans < self.MIN_PLANS_THRESHOLD:
             return None
 
+        building_distribution, building_tickers = self._get_building_distribution(building_presence, total_valid_plans)
+
         insights_payload = {
             'expert_distribution': self._get_expert_distribution(experts_total),
-            'recipe_distribution': self._get_recipe_distribution(recipe_distribution),
-            'building_distribution': self._get_building_distribution(building_presence, total_valid_plans),
+            'recipe_distribution': self._get_recipe_distribution(recipe_distribution, building_tickers),
+            'building_distribution': building_distribution,
         }
 
         AnalyticsPlanAggregate.objects.update_or_create(
@@ -131,7 +133,7 @@ class PlanInsightAggregatorService:
 
         return sorted(expert_split, key=lambda x: x['percentage'], reverse=True)
 
-    def _get_building_distribution(self, building_presence: Counter, total_plans: int) -> list:
+    def _get_building_distribution(self, building_presence: Counter, total_plans: int) -> tuple[list, list]:
 
         builds = []
         for ticker, count in building_presence.items():
@@ -139,9 +141,12 @@ class PlanInsightAggregatorService:
             if percentage >= self.BUILDING_USAGE_CUTOFF:
                 builds.append({'ticker': ticker, 'percentage': round(percentage, 2)})
 
-        return sorted(builds, key=lambda x: x['percentage'], reverse=True)
+        builds = sorted(builds, key=lambda x: x['percentage'], reverse=True)
+        tickers = [b['ticker'] for b in builds]
 
-    def _get_recipe_distribution(self, recipe_distribution: dict) -> dict:
+        return builds, tickers
+
+    def _get_recipe_distribution(self, recipe_distribution: dict, building_tickers: list[str]) -> dict:
 
         deep_dive = {}
 
@@ -153,6 +158,10 @@ class PlanInsightAggregatorService:
             # top 5 most used recipes for this building
             top_three = []
             for rid, count in recipes.most_common(5):
+                ticker = rid.split('#')[0]
+                if ticker not in building_tickers:
+                    continue
+
                 percentage = round(count / total_recipe_runs * 100, 2)
                 if percentage >= self.RECIPE_USAGE_CUTOFF:
                     top_three.append({'recipe_id': rid, 'percentage': percentage})
