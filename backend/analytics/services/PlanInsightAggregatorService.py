@@ -15,6 +15,7 @@ class PlanInsightAggregatorService:
     PLAN_STALENESS_DAYS = 180
     BUILDING_USAGE_CUTOFF = 20
     RECIPE_USAGE_CUTOFF = 10
+    EXTRACTION_BUILDINGS = {'COL', 'EXT', 'RIG'}
 
     def __init__(self):
         # cache valid recipes for validation
@@ -91,8 +92,9 @@ class PlanInsightAggregatorService:
                 for r in b.get('active_recipes', []):
                     r_id = r.get('recipeid')
 
-                    # recipe must still be valid / existing
-                    if r_id in self.valid_recipes:
+                    # recipe must still be valid / existing or extraction building
+                    ticker = r_id.split('#')[0]
+                    if ticker in self.EXTRACTION_BUILDINGS or r_id in self.valid_recipes:
                         recipe_distribution[b_code][r_id] += 1
 
             for b_code in seen_in_this_plan:
@@ -159,7 +161,7 @@ class PlanInsightAggregatorService:
             top_three = []
             for rid, count in recipes.most_common(5):
                 ticker = rid.split('#')[0]
-                if ticker not in building_tickers:
+                if ticker not in self.EXTRACTION_BUILDINGS and ticker not in building_tickers:
                     continue
 
                 percentage = round(count / total_recipe_runs * 100, 2)
