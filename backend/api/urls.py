@@ -20,4 +20,5 @@ urlpatterns = [
     path('user/', include('user.api.urls', namespace='user')),
     path('data/', include('gamedata.api.urls', namespace='data')),
     path('planning/', include('planning.api.urls', namespace='planning')),
+    path('analytics/', include('analytics.api.urls', namespace='analytics')),
 ]

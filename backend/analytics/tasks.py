@@ -21,6 +21,7 @@ from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, Plan
 from user.models import User
 
 from analytics.models import AppStatistic
+from analytics.services.PlanInsightAggregatorService import PlanInsightAggregatorService
 
 logger = structlog.get_logger(__name__)
 
@@ -94,3 +95,21 @@ def update_daily_stats():
     except Exception as exc:
         log.error('Failed to update daily statistics', exc_info=exc)
         return f'Failed to update stats at {now.date()}'
+
+
+@shared_task(name='analytics_update_plan_insight_aggregates')
+def analytics_update_plan_insight_aggregates():
+    structlog.contextvars.bind_contextvars(
+        task_category='analytics_update_plan_insight_aggregates',
+    )
+
+    log = logger.bind(name='analytics_update_plan_insight_aggregates')
+
+    try:
+        aggregator = PlanInsightAggregatorService()
+        processed, deleted = aggregator.aggregate_all_plans()
+
+        log.info('completed', processed=processed, deleted=deleted)
+
+    except Exception as exc:
+        log.error('exception', exc_info=exc)
