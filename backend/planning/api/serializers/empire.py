@@ -95,10 +95,7 @@ class PlanningEmpireStateUpdateSerializer(serializers.Serializer):
     empire_total = serializers.DictField(child=PlanningEmpireMaterialIOSerializer())
     plan_details = serializers.DictField(child=SinglePlanDetailSerializer())
 
-    @transaction.atomic
     def update(self, instance, validated_data):
-        instance.empire_state = validated_data
-        instance.save(update_fields=['empire_state'])
         return instance
 
     def create(self, validated_data):
