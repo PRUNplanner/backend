@@ -5,7 +5,7 @@ from django_json_widget.widgets import JSONEditorWidget
 from unfold.admin import ModelAdmin
 from unfold.decorators import action
 
-from analytics.models import AnalyticsPlanAggregate, AppStatistic
+from analytics.models import AnalyticsEmpireMaterialSnapshot, AnalyticsPlanAggregate, AppStatistic
 
 
 @admin.register(AppStatistic)
@@ -38,7 +38,7 @@ class AnalyticsPlanAggregateAdmin(ModelAdmin):
     @action(description='Run Aggregator', url_path='analytics-aggregate-all')
     def action_aggregate_all(self, request):
 
-        from analytics.services.PlanInsightAggregatorService import PlanInsightAggregatorService
+        from analytics.services.planinsight_aggregator_service import PlanInsightAggregatorService
 
         try:
             aggregator = PlanInsightAggregatorService()
@@ -52,3 +52,12 @@ class AnalyticsPlanAggregateAdmin(ModelAdmin):
             self.message_user(request, 'Error processing aggregates.', messages.ERROR)
 
         return redirect('../')
+
+
+@admin.register(AnalyticsEmpireMaterialSnapshot)
+class AnalyticsEmpireMaterialSnapshotAdmin(ModelAdmin):
+    list_display = ['id', 'empire', 'material_ticker', 'production', 'consumption', 'delta']
+    search_fields = ['empire.uuid']
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('empire')

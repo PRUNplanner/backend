@@ -13,6 +13,7 @@ from planning.api.serializers import (
 from planning.api.serializers.empire import PlanningEmpireStateUpdateSerializer
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.planning_cache_manager import PlanningCacheManager
+from planning.services.empire_state_service import EmpireStateService
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -175,9 +176,11 @@ class EmpireViewSet(
         serializer = self.get_serializer(instance, data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        with transaction.atomic():
-            self.perform_update(serializer)
-            PlanningCacheManager.delete_pattern(f'*PLANNING:{request.user.id}:*')
+        # handle empire + relational snapshot refresh
+        EmpireStateService.sync_empire_state(instance, serializer.validated_data)
+
+        # clear caches
+        PlanningCacheManager.delete_pattern(f'*PLANNING:{request.user.id}:*')
 
         return Response(PlanningEmpireDetailSerializer(instance).data)
 

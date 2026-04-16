@@ -21,7 +21,7 @@ from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, Plan
 from user.models import User
 
 from analytics.models import AppStatistic
-from analytics.services.PlanInsightAggregatorService import PlanInsightAggregatorService
+from analytics.services.planinsight_aggregator_service import PlanInsightAggregatorService
 
 logger = structlog.get_logger(__name__)
 

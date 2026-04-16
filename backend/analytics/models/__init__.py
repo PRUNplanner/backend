@@ -1,2 +1,3 @@
 from .app_statistics import AppStatistic
 from .plan_aggregates import AnalyticsPlanAggregate
+from .empire_material_snapshot import AnalyticsEmpireMaterialSnapshot
