@@ -10,7 +10,7 @@ class EmpireStateService:
 
         # update the json field
         empire.empire_state = state_data
-        empire.save(update_fields=['empire_state'])
+        empire.save(update_fields=['empire_state', 'modified_at'])
 
         # upsert / delete stale from EmpireMaterialSnapshot
         empire_total = state_data.get('empire_total', {})
