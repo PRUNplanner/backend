@@ -9,17 +9,23 @@ class AnalyticsEmpireMaterialSnapshot(models.Model):
 
     material_ticker = models.CharField(max_length=3, db_index=True)
 
-    production = models.FloatField(default=0.0)
-    consumption = models.FloatField(default=0.0)
-    delta = models.FloatField(default=0.0)
+    production = models.DecimalField(max_digits=20, decimal_places=6, default=0.0)
+    consumption = models.DecimalField(max_digits=20, decimal_places=6, default=0.0)
+    delta = models.DecimalField(max_digits=20, decimal_places=6, default=0.0)
 
     class Meta:
         db_table = 'prunplanner_statistics_empire_material_snapshot'
-        unique_together = ('empire', 'material_ticker')
         verbose_name = 'Empire Material Snapshot'
         verbose_name_plural = 'Empire Material Snapshots'
 
-        indexes = [models.Index(fields=['material_ticker', 'delta'])]
+        indexes = [
+            models.Index(fields=['material_ticker', 'delta'], name='idx_material_ticker_delta'),
+            models.Index(fields=['empire', 'delta'], name='idx_empire_delta'),
+        ]
+
+        constraints = [
+            models.UniqueConstraint(fields=['empire', 'material_ticker'], name='unique_empire_material_ticker')
+        ]
 
     def __str__(self) -> str:
         return f'{self.empire.uuid} | {self.material_ticker}: {self.delta}'
