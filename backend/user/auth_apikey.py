@@ -39,9 +39,9 @@ class UserAPIKeyAuthentication(authentication.BaseAuthentication):
                 user.last_login = now
                 user.save(update_fields=['last_login'])
 
-            if api_key.last_used is None or api_key.last_used < one_hour_ago:
-                api_key.last_used = now
-                api_key.save(update_fields=['last_used'])
+            # always update apikey last_used
+            api_key.last_used = now
+            api_key.save(update_fields=['last_used'])
 
             return (api_key.user, None)
 
