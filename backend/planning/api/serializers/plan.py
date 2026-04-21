@@ -113,15 +113,17 @@ class PlanningPlanDetailSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def update(self, instance, validated_data):
-        user = self.context['request'].user
-        empire_uuid = validated_data.pop('empire_uuid', None)
+        _user = self.context['request'].user
+        _empire_uuid = validated_data.pop('empire_uuid', None)
 
         # update plan fields
         instance = super().update(instance, validated_data)
 
+        # no junction update on update, only on create
+
         # handle junction
-        if empire_uuid:
-            self._link_empire(user, instance, empire_uuid)
+        # if empire_uuid:
+        #     self._link_empire(user, instance, empire_uuid)
 
         return instance
 
