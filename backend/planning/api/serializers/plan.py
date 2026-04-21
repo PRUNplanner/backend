@@ -1,12 +1,34 @@
+from typing import Any
+
 from api.serializer import PydanticJSONField
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan, PlanningShared
+from django.utils import timezone
+from gamedata.models import GamePlanetCOGCProgram
+from gamedata.models.game_planet import GamePlanetCOGCProgramChoices
+from planning.models import PlanningCOGCChoices, PlanningEmpire, PlanningEmpirePlan, PlanningPlan, PlanningShared
 from planning.schemas.latest_schemas import LATEST_SCHEMA
 from rest_framework import serializers
 
 from .cx import PlanningCXDetailSerializer
 from .empire import PlanningEmpireListSerializer
+
+COGC_MAP: dict[GamePlanetCOGCProgramChoices, PlanningCOGCChoices] = {
+    GamePlanetCOGCProgramChoices.Agriculture: PlanningCOGCChoices.AGRICULTURE,
+    GamePlanetCOGCProgramChoices.Chemistry: PlanningCOGCChoices.CHEMISTRY,
+    GamePlanetCOGCProgramChoices.Construction: PlanningCOGCChoices.CONSTRUCTION,
+    GamePlanetCOGCProgramChoices.Electronics: PlanningCOGCChoices.ELECTRONICS,
+    GamePlanetCOGCProgramChoices.Food_Industries: PlanningCOGCChoices.FOOD_INDUSTRIES,
+    GamePlanetCOGCProgramChoices.Fuel_Refining: PlanningCOGCChoices.FUEL_REFINING,
+    GamePlanetCOGCProgramChoices.Manufacturing: PlanningCOGCChoices.MANUFACTURING,
+    GamePlanetCOGCProgramChoices.Metallurgy: PlanningCOGCChoices.METALLURGY,
+    GamePlanetCOGCProgramChoices.Resource_Extraction: PlanningCOGCChoices.RESOURCE_EXTRACTION,
+    GamePlanetCOGCProgramChoices.Workforce_Pioneers: PlanningCOGCChoices.PIONEERS,
+    GamePlanetCOGCProgramChoices.Workforce_Settlers: PlanningCOGCChoices.SETTLERS,
+    GamePlanetCOGCProgramChoices.Workforce_Technicians: PlanningCOGCChoices.TECHNICIANS,
+    GamePlanetCOGCProgramChoices.Workforce_Engineers: PlanningCOGCChoices.ENGINEERS,
+    GamePlanetCOGCProgramChoices.Workforce_Scientists: PlanningCOGCChoices.SCIENTISTS,
+}
 
 
 class PlanningPlanDetailSerializer(serializers.ModelSerializer):
@@ -17,6 +39,9 @@ class PlanningPlanDetailSerializer(serializers.ModelSerializer):
     empire_uuid = serializers.UUIDField(write_only=True, required=False)
 
     plan_data = PydanticJSONField(pydantic_model=LATEST_SCHEMA['PLANNING_DATA'])
+
+    # COGC: must allow null, if so: populate from planets running cogc
+    plan_cogc = serializers.ChoiceField(choices=PlanningCOGCChoices.choices, allow_null=True, required=False)
 
     class Meta:
         model = PlanningPlan
@@ -32,6 +57,45 @@ class PlanningPlanDetailSerializer(serializers.ModelSerializer):
             'cx',
             'empire_uuid',
         ]
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+
+        # plan_cogc
+        if attrs.get('plan_cogc') is None:
+            # extract planet_natural_id from attrs (CREATE/PUT) or instance (PATCH) if missing
+            planet_id = attrs.get('planet_natural_id')
+            if planet_id is None and self.instance:
+                planet_id = self.instance.planet_natural_id
+
+            if planet_id:
+                attrs['plan_cogc'] = self._calculate_planet_cogc(planet_id)
+            else:
+                attrs['plan_cogc'] = PlanningCOGCChoices.NONE
+
+        return attrs
+
+    def _calculate_planet_cogc(self, planet_natural_id: str) -> str:
+        # look up the active cogc program for the planet or default to NONE
+
+        now_ms = int(timezone.now().timestamp() * 1000)
+
+        raw_active_program_type = (
+            GamePlanetCOGCProgram.objects.filter(
+                planet__planet_natural_id=planet_natural_id, start_epochms__lte=now_ms, end_epochms__gte=now_ms
+            )
+            .values_list('program_type', flat=True)
+            .first()
+        )
+
+        if raw_active_program_type:
+            mapped_value = COGC_MAP.get(raw_active_program_type)
+
+            # return found type if existing and valid
+            if mapped_value:
+                return mapped_value
+
+        # else fallback to NONE
+        return PlanningCOGCChoices.NONE
 
     @transaction.atomic
     def create(self, validated_data):
