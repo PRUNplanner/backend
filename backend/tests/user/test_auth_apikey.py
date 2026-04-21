@@ -88,7 +88,8 @@ class TestUserAPIKeyAuthentication:
             assert api_key_obj.last_used != initial_time
         else:
             assert user.last_login == initial_time
-            assert api_key_obj.last_used == initial_time
+            # api key will always get the last_used update
+            assert api_key_obj.last_used != initial_time
 
     def test_authenticate_extract_from_header_format(self, auth, factory, user):
         _, plain_key = UserAPIKey.objects.create_key(name='test', user=user)
