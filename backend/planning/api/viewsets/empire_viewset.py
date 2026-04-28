@@ -177,7 +177,7 @@ class EmpireViewSet(
         serializer.is_valid(raise_exception=True)
 
         # handle empire + relational snapshot refresh
-        EmpireStateService.sync_empire_state(instance, serializer.validated_data)
+        EmpireStateService.update_state(instance, serializer.validated_data)
 
         # clear caches
         PlanningCacheManager.delete_pattern(f'*PLANNING:{request.user.id}:*')

@@ -7,23 +7,31 @@ from planning.models import PlanningEmpire
 
 class EmpireStateService:
     @staticmethod
-    def sync_empire_state(empire: PlanningEmpire, state_data: dict) -> None:
+    def update_state(empire: PlanningEmpire, state_data: dict) -> None:
+        """Updates the empires state JSON dict only and sets the needs_state_sync flag to True"""
 
-        # update the json field
         empire.empire_state = state_data
-        empire.save(update_fields=['empire_state', 'modified_at'])
+        empire.needs_state_sync = True
+        empire.save(update_fields=['empire_state', 'modified_at', 'needs_state_sync'])
+
+    @staticmethod
+    def sync_snapshot(empire: PlanningEmpire) -> None:
+        """Performs snapshot sync into AnalyticsEmpireMaterialSnapshot object"""
+
+        state_data = empire.empire_state or {}
+        empire_total = state_data.get('empire_total', {})
 
         # upsert / delete stale from EmpireMaterialSnapshot
-        empire_total = state_data.get('empire_total', {})
         active_tickers = []
-
         snapshot_objs = []
-        for material_ticker, stats in empire_total.items():
-            p_raw, c_raw = stats.get('p', 0), stats.get('c', 0)
 
+        # pre-defined quantizer
+        quantizer = Decimal('0.000001')
+
+        for material_ticker, stats in empire_total.items():
             # decimal conversion
-            p = Decimal(str(p_raw)).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
-            c = Decimal(str(c_raw)).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
+            p = Decimal(str(stats.get('p', 0))).quantize(quantizer, rounding=ROUND_HALF_UP)
+            c = Decimal(str(stats.get('c', 0))).quantize(quantizer, rounding=ROUND_HALF_UP)
 
             d = p - c
 
