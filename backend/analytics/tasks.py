@@ -18,6 +18,7 @@ from gamedata.models import (
     GameRecipeOutput,
 )
 from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan
+from planning.services.empire_state_service import EmpireStateService
 from user.models import User
 
 from analytics.models import AppStatistic
@@ -113,3 +114,34 @@ def analytics_update_plan_insight_aggregates():
 
     except Exception as exc:
         log.error('exception', exc_info=exc)
+
+
+@shared_task(name='analytics_bulk_materialize_empire_snapshots')
+def analytics_bulk_materialize_empire_snapshots():
+    structlog.contextvars.bind_contextvars(
+        task_category='analytics_bulk_materialize_empire_snapshots',
+    )
+
+    log = logger.bind(name='analytics_bulk_materialize_empire_snapshots')
+
+    # find all dirty PlanningEmpire and process in chunks
+    dirty_empires = PlanningEmpire.objects.filter(needs_state_sync=True).iterator(chunk_size=100)
+
+    processed_count = 0
+    error_count = 0
+
+    for empire in dirty_empires:
+        try:
+            EmpireStateService.sync_snapshot(empire)
+
+            # clear and update flag only
+            empire.needs_state_sync = False
+            empire.save(update_fields=['needs_state_sync'])
+
+            processed_count += 1
+
+        except Exception as exc:
+            error_count += 1
+            log.error('exception', exc_info=exc)
+
+    log.info('completed', processed=processed_count, errors=error_count)

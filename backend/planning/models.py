@@ -79,7 +79,9 @@ class PlanningEmpire(UUIDModel, ChangeTrackedModel):
     empire_permits_used = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     empire_permits_total = models.PositiveIntegerField(validators=[MinValueValidator(2)])
 
+    # state
     empire_state = models.JSONField(default=dict, blank=True)
+    needs_state_sync = models.BooleanField(default=False, db_index=True)
 
     def __str__(self) -> str:
         return f'{self.empire_name} ({self.uuid})'

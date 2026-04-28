@@ -39,9 +39,10 @@ class PlanningPlanAdmin(ModelAdmin):
 
 @admin.register(PlanningEmpire)
 class PlanningEmpireAdmin(ModelAdmin):
-    list_display = ['uuid', 'user', 'empire_name', 'created_at', 'modified_at']
+    list_display = ['uuid', 'user', 'empire_name', 'created_at', 'modified_at', 'needs_state_sync']
     search_fields = ['uuid', 'empire_name', 'user__username']
     ordering = ['-modified_at']
+    list_filter = ['needs_state_sync']
 
     inlines = [PlanningEmpirePlanInline]
 

@@ -12,8 +12,8 @@ class FIOWebhookExchangeEndpointSchema(BaseModel):
         company_id: str = Field(..., min_length=32, max_length=32, alias='CompanyId')
         company_name: str = Field(..., max_length=200, alias='CompanyName')
         company_code: str = Field(..., min_length=1, max_length=10, alias='CompanyCode')
-        item_count: int | None = Field(default=None, min=1, alias='ItemCount')
-        item_cost: float = Field(min=0.0, alias='ItemCost')
+        item_count: int | None = Field(default=None, ge=1, alias='ItemCount')
+        item_cost: float = Field(ge=0.0, alias='ItemCost')
 
     class FIOExchangeBuyOrderSchema(FIOExchangeOrderSchema):
         cx_buy_order_id: str = Field(..., min_length=32, max_length=32, alias='CXBuyOrderId')
