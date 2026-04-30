@@ -3,12 +3,14 @@ from gamedata.fio.schemas import drf_sites_schema
 from gamedata.models import (
     GameBuilding,
     GameBuildingCost,
+    GameBuildingExpertiseChoices,
     GameExchangeAnalytics,
     GameExchangeCXPC,
     GameMaterial,
     GamePlanet,
     GamePlanetCOGCProgram,
     GamePlanetCOGCProgramChoices,
+    GamePlanetCurrencyCodeChoices,
     GamePlanetInfrastructureReport,
     GamePlanetResource,
     GameRecipe,
@@ -49,6 +51,11 @@ class GameRecipeSerializer(serializers.ModelSerializer):
         model = GameRecipe
         exclude = ['standard_recipe_name']
 
+    @extend_schema_field(
+        serializers.CharField(
+            help_text="Composite ID formatted as 'BUILDING_TICKER#RECIPE_NAME'. Example: 'BMP#100xPE 25xPG=>20xOVE'"
+        )
+    )
     def get_recipe_id(self, obj: GameRecipe):
         return f'{obj.building_ticker}#{obj.recipe_name}'
 
@@ -131,6 +138,27 @@ class GamePlanetSerializer(serializers.ModelSerializer):
             'production_fees',
         ]
 
+    @extend_schema_field(
+        inline_serializer(
+            name='PlanetProductionFeeSchema',
+            fields={
+                'currency': serializers.ChoiceField(choices=GamePlanetCurrencyCodeChoices.choices),
+                'fees': serializers.DictField(
+                    child=serializers.ListField(
+                        child=serializers.FloatField(),
+                        min_length=5,
+                        max_length=5,
+                        help_text='[PIONEER, SETTLER, TECHNICIAN, ENGINEER, SCIENTIST]',
+                    ),
+                    help_text=(
+                        'Dictionary keys are Building Categories (GameBuildingExpertiseChoices). '
+                        'Valid keys include: '
+                        + ', '.join([choice[0] for choice in GameBuildingExpertiseChoices.choices])
+                    ),
+                ),
+            },
+        )
+    )
     def get_production_fees(self, obj):
 
         # prefetched
