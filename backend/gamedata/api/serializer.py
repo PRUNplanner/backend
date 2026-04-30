@@ -3,12 +3,14 @@ from gamedata.fio.schemas import drf_sites_schema
 from gamedata.models import (
     GameBuilding,
     GameBuildingCost,
+    GameBuildingExpertiseChoices,
     GameExchangeAnalytics,
     GameExchangeCXPC,
     GameMaterial,
     GamePlanet,
     GamePlanetCOGCProgram,
     GamePlanetCOGCProgramChoices,
+    GamePlanetCurrencyCodeChoices,
     GamePlanetInfrastructureReport,
     GamePlanetResource,
     GameRecipe,
@@ -16,6 +18,9 @@ from gamedata.models import (
     GameRecipeOutput,
 )
 from rest_framework import serializers
+
+WORKFORCE_ORDER = ['PIONEER', 'SETTLER', 'TECHNICIAN', 'ENGINEER', 'SCIENTIST']
+WF_INDEX_MAP = {level: i for i, level in enumerate(WORKFORCE_ORDER)}
 
 
 class GameMaterialSerializer(serializers.ModelSerializer):
@@ -46,6 +51,11 @@ class GameRecipeSerializer(serializers.ModelSerializer):
         model = GameRecipe
         exclude = ['standard_recipe_name']
 
+    @extend_schema_field(
+        serializers.CharField(
+            help_text="Composite ID formatted as 'BUILDING_TICKER#RECIPE_NAME'. Example: 'BMP#100xPE 25xPG=>20xOVE'"
+        )
+    )
     def get_recipe_id(self, obj: GameRecipe):
         return f'{obj.building_ticker}#{obj.recipe_name}'
 
@@ -100,6 +110,8 @@ class GamePlanetSerializer(serializers.ModelSerializer):
 
     active_cogc_program_type = serializers.CharField(read_only=True)
 
+    production_fees = serializers.SerializerMethodField()
+
     class Meta:
         model = GamePlanet
         fields = [
@@ -123,7 +135,54 @@ class GamePlanetSerializer(serializers.ModelSerializer):
             'resources',
             'cogc_programs',
             'active_cogc_program_type',
+            'production_fees',
         ]
+
+    @extend_schema_field(
+        inline_serializer(
+            name='PlanetProductionFeeSchema',
+            fields={
+                'currency': serializers.ChoiceField(choices=GamePlanetCurrencyCodeChoices.choices),
+                'fees': serializers.DictField(
+                    child=serializers.ListField(
+                        child=serializers.FloatField(),
+                        min_length=5,
+                        max_length=5,
+                        help_text='[PIONEER, SETTLER, TECHNICIAN, ENGINEER, SCIENTIST]',
+                    ),
+                    help_text=(
+                        'Dictionary keys are Building Categories (GameBuildingExpertiseChoices). '
+                        'Valid keys include: '
+                        + ', '.join([choice[0] for choice in GameBuildingExpertiseChoices.choices])
+                    ),
+                ),
+            },
+        )
+    )
+    def get_production_fees(self, obj):
+
+        # prefetched
+        fees = obj.production_fees.all()
+        if not fees:
+            return None
+
+        currency = fees[0].fee_currency
+
+        fee_map = {}
+        for fee in fees:
+            cat = fee.category
+            if cat not in fee_map:
+                # init with 0.0 for all workforces
+                fee_map[cat] = [0.0] * len(WORKFORCE_ORDER)
+
+            try:
+                # overwrite with the values from data
+                idx = WF_INDEX_MAP[fee.workforce_level]
+                fee_map[cat][idx] = fee.fee_amount
+            except KeyError:
+                continue
+
+        return {'currency': currency, 'fees': fee_map}
 
 
 class PlanetIdsSerializer(serializers.ListSerializer):
