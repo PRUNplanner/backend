@@ -10,6 +10,7 @@ from gamedata.models import (
     GamePlanetCOGCProgram,
     GamePlanetCOGCProgramChoices,
     GamePlanetInfrastructureReport,
+    GamePlanetProductionFee,
     GamePlanetResource,
     GameRecipe,
     GameRecipeInput,
@@ -88,6 +89,12 @@ class GamePlanetResourceSerializer(serializers.ModelSerializer):
         fields = ['resource_type', 'factor', 'daily_extraction', 'material_ticker', 'max_daily_extraction']
 
 
+class GamePlanetProductionFeeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GamePlanetProductionFee
+        fields = ['category', 'workforce_level', 'fee_amount', 'fee_currency']
+
+
 class GamePlanetCOGCProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = GamePlanetCOGCProgram
@@ -97,6 +104,7 @@ class GamePlanetCOGCProgramSerializer(serializers.ModelSerializer):
 class GamePlanetSerializer(serializers.ModelSerializer):
     resources = GamePlanetResourceSerializer(many=True, read_only=True)
     cogc_programs = GamePlanetCOGCProgramSerializer(many=True, read_only=True)
+    production_fees = GamePlanetProductionFeeSerializer(many=True, read_only=True)
 
     active_cogc_program_type = serializers.CharField(read_only=True)
 
@@ -122,6 +130,7 @@ class GamePlanetSerializer(serializers.ModelSerializer):
             'cogc_program_status',
             'resources',
             'cogc_programs',
+            'production_fees',
             'active_cogc_program_type',
         ]
 

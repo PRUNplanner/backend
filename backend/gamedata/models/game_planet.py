@@ -27,7 +27,7 @@ def queryset_gameplanet() -> QuerySet:
         .values('program_type')[:1]
     )
 
-    return GamePlanet.objects.prefetch_related('cogc_programs', 'resources').annotate(
+    return GamePlanet.objects.prefetch_related('cogc_programs', 'resources', 'production_fees').annotate(
         active_cogc_program_type=Subquery(active_program_sub)
     )
 

@@ -58,6 +58,25 @@ class TestGamePlanetViewSet:
         assert response.status_code == 200
         assert response.data['planet_natural_id'] == planet_natural_id
 
+    def test_retrieve_production_fees(self, api_client, planet_factory, production_fee_factory):
+        planet_natural_id = 'OT-580b'
+        planet = planet_factory(planet_natural_id=planet_natural_id)
+        production_fee_factory(
+            planet=planet,
+            category='METALLURGY',
+            workforce_level='PIONEER',
+            fee_amount=50.0,
+            fee_currency='AIC',
+        )
+
+        url = reverse('data:planet-detail', kwargs={'planet_natural_id': planet_natural_id})
+        response = api_client.get(url)
+
+        assert response.status_code == 200
+        assert response.data['production_fees'] == [
+            {'category': 'METALLURGY', 'workforce_level': 'PIONEER', 'fee_amount': 50.0, 'fee_currency': 'AIC'}
+        ]
+
     def test_multiple(self, api_client, planet_factory):
         planet_natural_ids = ['OT-580b', 'ZV-759b', 'EW-688c']
 
