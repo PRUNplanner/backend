@@ -55,6 +55,7 @@ class UserPreferenceViewSet(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, 
 class UserRegisterViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     serializer_class = UserRegisterSerializer
     permission_classes = [AllowAny]
+    throttle_scope = 'auth_register'
 
     def perform_create(self, serializer):
         serializer.save()
@@ -107,6 +108,7 @@ class UserAPIKeyViewSet(viewsets.ModelViewSet):
 @extend_schema(tags=['user : authentication'])
 class UserEmailVerificationViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
+    throttle_scope = 'auth_verify_email'
 
     @extend_schema(
         request=None,
@@ -179,6 +181,7 @@ class CustomTokenRefreshView(TokenRefreshView):
 @extend_schema(tags=['user : authentication'])
 class UserPasswordResetViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
+    throttle_scope = 'auth_password_reset'
 
     @extend_schema(
         auth=[],

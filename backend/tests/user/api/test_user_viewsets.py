@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
 import pytest
+from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 from model_bakery import baker
 from planning.models import PlanningCX, PlanningEmpire
@@ -11,6 +13,59 @@ from user.models import User, UserAPIKey, UserPreference
 from user.models.verification_codes import VerificationCode, VerificationeCodeChoices
 
 pytestmark = pytest.mark.django_db
+
+# Test settings use DummyCache, which never throttles; ScopedRateThrottle needs a real cache backend.
+LOCMEM_CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'throttle-test'}}
+
+
+class TestAuthEndpointThrottling:
+    def setup_method(self):
+        cache.clear()
+
+    @override_settings(CACHES=LOCMEM_CACHES)
+    def test_login_is_throttled_after_limit(self, api_client):
+        url = reverse('user:token_obtain_pair')
+
+        for _ in range(5):
+            response = api_client.post(url, data={'username': 'nobody', 'password': 'wrong'}, format='json')
+            assert response.status_code == 401
+
+        response = api_client.post(url, data={'username': 'nobody', 'password': 'wrong'}, format='json')
+        assert response.status_code == 429
+
+    @override_settings(CACHES=LOCMEM_CACHES)
+    def test_register_is_throttled_after_limit(self, api_client):
+        url = reverse('user:user_signup')
+
+        for _ in range(5):
+            response = api_client.post(url, data={}, format='json')
+            assert response.status_code == 400
+
+        response = api_client.post(url, data={}, format='json')
+        assert response.status_code == 429
+
+    @override_settings(CACHES=LOCMEM_CACHES)
+    def test_request_email_verification_is_throttled_after_limit(self, api_client, user_factory):
+        user = user_factory(id=1, is_email_verified=True)
+        url = reverse('user:user_request_email_verification')
+
+        for _ in range(5):
+            response = api_client.as_user(user).post(url)
+            assert response.status_code == 400
+
+        response = api_client.as_user(user).post(url)
+        assert response.status_code == 429
+
+    @override_settings(CACHES=LOCMEM_CACHES)
+    def test_password_reset_request_is_throttled_after_limit(self, api_client):
+        url = reverse('user:user_request_password_reset')
+
+        for _ in range(5):
+            response = api_client.post(url, data={'email': 'nobody@example.com'}, format='json')
+            assert response.status_code == 200
+
+        response = api_client.post(url, data={'email': 'nobody@example.com'}, format='json')
+        assert response.status_code == 429
 
 
 class TestUserPreferenceViewSet:
