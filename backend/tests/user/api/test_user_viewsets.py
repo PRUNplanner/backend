@@ -67,9 +67,7 @@ class TestUserRegisterViewSet:
         assert PlanningEmpire.objects.filter(user=user).exists()
 
     def test_register_rejects_wrong_planet_captcha(self, api_client):
-        response = api_client.post(
-            reverse('user:user_signup'), data=self._payload(planet_input='wrong'), format='json'
-        )
+        response = api_client.post(reverse('user:user_signup'), data=self._payload(planet_input='wrong'), format='json')
         assert response.status_code == 400
 
     def test_register_rejects_duplicate_username(self, api_client, user_factory):
@@ -155,9 +153,7 @@ class TestUserEmailVerificationViewSet:
 
         assert response.status_code == 200
         mock_apply_async.assert_called_once()
-        assert VerificationCode.objects.filter(
-            user=user, purpose=VerificationeCodeChoices.EMAIL_VERIFICATION
-        ).exists()
+        assert VerificationCode.objects.filter(user=user, purpose=VerificationeCodeChoices.EMAIL_VERIFICATION).exists()
 
     def test_verify_email_with_valid_code(self, api_client, user_factory):
         user = user_factory(id=1, is_email_verified=False)
@@ -202,9 +198,7 @@ class TestCustomTokenRefreshView:
         refresh = RefreshToken.for_user(user)
 
         with patch('user.api.viewsets.user_handle_post_refresh.delay') as mock_delay:
-            response = api_client.post(
-                reverse('user:token_refresh'), data={'refresh': str(refresh)}, format='json'
-            )
+            response = api_client.post(reverse('user:token_refresh'), data={'refresh': str(refresh)}, format='json')
 
         assert response.status_code == 200
         assert 'access' in response.data
@@ -243,9 +237,7 @@ class TestUserPasswordResetViewSet:
 
     def test_password_reset_with_valid_code(self, api_client, user_factory):
         user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
-        baker.make(
-            'user.VerificationCode', user=user, code='RESET123', purpose=VerificationeCodeChoices.PASSWORD_RESET
-        )
+        baker.make('user.VerificationCode', user=user, code='RESET123', purpose=VerificationeCodeChoices.PASSWORD_RESET)
 
         response = api_client.post(
             reverse('user:user_password_reset'),

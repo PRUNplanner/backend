@@ -72,9 +72,7 @@ class TestPlanViewSetCrud:
         empire = empire_factory(user=user)
 
         url = reverse('planning:plan')
-        response = api_client.as_user(user).post(
-            url, data=_plan_payload(empire_uuid=str(empire.uuid)), format='json'
-        )
+        response = api_client.as_user(user).post(url, data=_plan_payload(empire_uuid=str(empire.uuid)), format='json')
 
         assert response.status_code == 201
         empire.refresh_from_db()
@@ -85,9 +83,7 @@ class TestPlanViewSetCrud:
         plan = plan_factory(user=user, plan_data=plan_data_vallis, plan_name='Old Name')
 
         url = reverse('planning:plan-detail', kwargs={'pk': str(plan.uuid)})
-        response = api_client.as_user(user).put(
-            url, data=_plan_payload(plan_name='New Name'), format='json'
-        )
+        response = api_client.as_user(user).put(url, data=_plan_payload(plan_name='New Name'), format='json')
 
         assert response.status_code == 200
         assert response.data['plan_name'] == 'New Name'

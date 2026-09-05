@@ -26,9 +26,7 @@ class TestAnalyticsMarketInsightViewSetAccess:
 
         assert response.status_code == 200
 
-    def test_authenticated_access_also_succeeds(
-        self, api_client: APIClient, user_factory: Callable[..., User]
-    ) -> None:
+    def test_authenticated_access_also_succeeds(self, api_client: APIClient, user_factory: Callable[..., User]) -> None:
         user = user_factory()
 
         response = api_client.as_user(user).get(_url())  # ty:ignore[unresolved-attribute]
@@ -59,15 +57,9 @@ class TestAnalyticsMarketInsightViewSetGlobalMaterials:
         empire_a = empire_factory()
         empire_b = empire_factory()
 
-        material_snapshot_factory(
-            empire=empire_a, material_ticker='H2O', production=100, consumption=40, delta=60
-        )
-        material_snapshot_factory(
-            empire=empire_b, material_ticker='H2O', production=50, consumption=10, delta=40
-        )
-        material_snapshot_factory(
-            empire=empire_a, material_ticker='DW', production=5, consumption=5, delta=0
-        )
+        material_snapshot_factory(empire=empire_a, material_ticker='H2O', production=100, consumption=40, delta=60)
+        material_snapshot_factory(empire=empire_b, material_ticker='H2O', production=50, consumption=10, delta=40)
+        material_snapshot_factory(empire=empire_a, material_ticker='DW', production=5, consumption=5, delta=0)
 
         response = api_client.get(_url())
 

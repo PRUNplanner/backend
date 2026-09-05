@@ -79,9 +79,7 @@ class TestEmpireViewSetCrud:
         empire = empire_factory(user=user, empire_name='Old Name')
 
         url = reverse('planning:empire-detail', kwargs={'pk': str(empire.uuid)})
-        response = api_client.as_user(user).put(
-            url, data=_empire_payload(empire_name='New Name'), format='json'
-        )
+        response = api_client.as_user(user).put(url, data=_empire_payload(empire_name='New Name'), format='json')
 
         assert response.status_code == 200
         assert response.data['empire_name'] == 'New Name'
@@ -106,9 +104,7 @@ class TestEmpireViewSetSyncJunctions:
         response = api_client.post(url, data=[], format='json')
         assert response.status_code == 401
 
-    def test_sync_junctions_creates_and_removes_links(
-        self, api_client, user_factory, empire_factory, plan_factory
-    ):
+    def test_sync_junctions_creates_and_removes_links(self, api_client, user_factory, empire_factory, plan_factory):
         user = user_factory(id=1)
         empire = empire_factory(user=user)
         plan_keep = plan_factory(user=user, plan_data=plan_data_vallis)
@@ -155,9 +151,7 @@ class TestEmpireViewSetSyncJunctions:
         assert response.status_code == 200
         mock_delete_pattern.assert_not_called()
 
-    def test_sync_junctions_rejects_unowned_references(
-        self, api_client, user_factory, empire_factory, plan_factory
-    ):
+    def test_sync_junctions_rejects_unowned_references(self, api_client, user_factory, empire_factory, plan_factory):
         user = user_factory(id=1)
         other_user = user_factory(id=2)
         empire = empire_factory(user=user)
