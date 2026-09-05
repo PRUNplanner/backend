@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
@@ -18,6 +19,12 @@ pytestmark = pytest.mark.django_db
 LOCMEM_CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'throttle-test'}}
 
 
+def throttle_limit(scope: str) -> int:
+    """Number of requests allowed for a scope before ScopedRateThrottle returns 429."""
+    rate = settings.REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'][scope]
+    return int(rate.split('/')[0])
+
+
 class TestAuthEndpointThrottling:
     def setup_method(self):
         cache.clear()
@@ -26,7 +33,7 @@ class TestAuthEndpointThrottling:
     def test_login_is_throttled_after_limit(self, api_client):
         url = reverse('user:token_obtain_pair')
 
-        for _ in range(5):
+        for _ in range(throttle_limit('auth_login')):
             response = api_client.post(url, data={'username': 'nobody', 'password': 'wrong'}, format='json')
             assert response.status_code == 401
 
@@ -37,7 +44,7 @@ class TestAuthEndpointThrottling:
     def test_register_is_throttled_after_limit(self, api_client):
         url = reverse('user:user_signup')
 
-        for _ in range(5):
+        for _ in range(throttle_limit('auth_register')):
             response = api_client.post(url, data={}, format='json')
             assert response.status_code == 400
 
@@ -49,7 +56,7 @@ class TestAuthEndpointThrottling:
         user = user_factory(id=1, is_email_verified=True)
         url = reverse('user:user_request_email_verification')
 
-        for _ in range(5):
+        for _ in range(throttle_limit('auth_verify_email')):
             response = api_client.as_user(user).post(url)
             assert response.status_code == 400
 
@@ -60,7 +67,7 @@ class TestAuthEndpointThrottling:
     def test_password_reset_request_is_throttled_after_limit(self, api_client):
         url = reverse('user:user_request_password_reset')
 
-        for _ in range(5):
+        for _ in range(throttle_limit('auth_password_reset')):
             response = api_client.post(url, data={'email': 'nobody@example.com'}, format='json')
             assert response.status_code == 200
 
