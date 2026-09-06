@@ -22,12 +22,6 @@ class DatabaseSettings(BaseSettings):
     host: str = Field(...)
     port: int = Field(...)
 
-    legacy_name: str | None = Field(default=None)
-    legacy_user: str | None = Field(default=None)
-    legacy_password: str | None = Field(default=None)
-    legacy_host: str | None = Field(default=None)
-    legacy_port: int | None = Field(default=None)
-
     model_config = SettingsConfigDict(
         extra='ignore', env_file=str(ENV_FILE) if ENV_FILE else None, env_prefix='DATABASE_'
     )

@@ -1,7 +1,5 @@
 from core.env import settings
 
-DATABASE_ROUTERS = ['legacy_migration.db_router.LegacyRouter']
-
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
@@ -25,13 +23,3 @@ DATABASES = {
         },
     }
 }
-
-if settings.database.legacy_name:
-    DATABASES['legacy'] = {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': settings.database.legacy_name,
-        'USER': settings.database.legacy_user,
-        'PASSWORD': settings.database.legacy_password,
-        'HOST': settings.database.legacy_host,
-        'PORT': settings.database.legacy_port,
-    }  # ty:ignore[invalid-assignment]
