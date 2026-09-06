@@ -1,6 +1,6 @@
 import pytest
 from django.urls import reverse
-from planning.models import PlanningPlan
+from planning.models import PlanningEmpirePlan, PlanningPlan
 from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
 
 pytestmark = pytest.mark.django_db
@@ -99,6 +99,30 @@ class TestPlanViewSetCrud:
 
         response = api_client.as_user(user).delete(url)
         assert response.status_code == 204
+
+
+class TestPlanViewSetQueryCount:
+    def test_list_does_not_n_plus_one_on_empire_cx(
+        self, api_client, user_factory, plan_factory, empire_factory, cx_factory, django_assert_max_num_queries
+    ):
+        user = user_factory(id=1)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+
+        # multiple empires, each with a distinct cx, linked to the same plan
+        for _ in range(3):
+            cx = cx_factory(user=user)
+            empire = empire_factory(user=user, cx=cx)
+            PlanningEmpirePlan.objects.create(user=user, empire=empire, plan=plan)
+
+        url = reverse('planning:plan')
+
+        # 1 query for plans, 1 for empires JOIN cx, 1 for the m2m-through rows
+        with django_assert_max_num_queries(3):
+            response = api_client.as_user(user).get(url)
+
+        assert response.status_code == 200
+        assert len(response.data[0]['empires']) == 3
+        assert {e['cx']['uuid'] for e in response.data[0]['empires']} == {str(e.cx.uuid) for e in plan.empires.all()}
 
 
 class TestPlanViewSetClone:

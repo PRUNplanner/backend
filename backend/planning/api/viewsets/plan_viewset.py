@@ -1,11 +1,12 @@
 from typing import Any
 
+from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
     PlanningPlanDetailSerializer,
 )
-from planning.models import PlanningPlan
+from planning.models import PlanningEmpire, PlanningPlan
 from planning.planning_cache_manager import PlanningCacheManager
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -26,7 +27,11 @@ class PlanViewSet(
     serializer_class = PlanningPlanDetailSerializer
 
     def get_queryset(self):
-        return PlanningPlan.objects.filter(user=self.request.user).prefetch_related('empires').order_by('plan_name')
+        return (
+            PlanningPlan.objects.filter(user=self.request.user)
+            .prefetch_related(Prefetch('empires', queryset=PlanningEmpire.objects.select_related('cx')))
+            .order_by('plan_name')
+        )
 
     @extend_schema(summary='List all users plans')
     def list(self, request, *args, **kwargs):
