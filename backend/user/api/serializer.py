@@ -86,11 +86,10 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         return value
 
     def validate_email(self, value):
-        # Only check uniqueness if an email was actually provided
-        if value:
-            # Case-insensitive check
-            if User.objects.filter(email__iexact=value).exists():
-                raise serializers.ValidationError('A user with this email already exists.')
+        # Don't reveal whether an email is already registered (account enumeration):
+        # silently drop it so registration still succeeds, just without that email attached.
+        if value and User.objects.filter(email__iexact=value).exists():
+            return None
         return value
 
     def validate(self, attrs):
