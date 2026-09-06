@@ -159,16 +159,14 @@ class GamePlanetSerializer(serializers.ModelSerializer):
             },
         )
     )
-    def get_production_fees(self, obj):
+    def get_production_fees(self, obj: GamePlanet) -> dict[str, object] | None:
 
         # prefetched
         fees = obj.production_fees.all()
         if not fees:
             return None
 
-        currency = fees[0].fee_currency
-
-        fee_map = {}
+        fee_map: dict[str, list[float]] = {}
         for fee in fees:
             cat = fee.category
             if cat not in fee_map:
@@ -182,7 +180,7 @@ class GamePlanetSerializer(serializers.ModelSerializer):
             except KeyError:
                 continue
 
-        return {'currency': currency, 'fees': fee_map}
+        return {'currency': obj.currency_code, 'fees': fee_map}
 
 
 class PlanetIdsSerializer(serializers.ListSerializer):

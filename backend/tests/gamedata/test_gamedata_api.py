@@ -58,6 +58,42 @@ class TestGamePlanetViewSet:
         assert response.status_code == 200
         assert response.data['planet_natural_id'] == planet_natural_id
 
+    def test_retrieve_no_production_fees(self, api_client, planet_factory):
+        planet_natural_id = 'OT-580b'
+        planet_factory(planet_natural_id=planet_natural_id)
+
+        url = reverse('data:planet-detail', kwargs={'planet_natural_id': planet_natural_id})
+        response = api_client.get(url)
+
+        assert response.status_code == 200
+        assert response.data['production_fees'] is None
+
+    def test_retrieve_production_fees(self, api_client, planet_factory, production_fee_factory):
+        planet_natural_id = 'OT-580b'
+        planet = planet_factory(planet_natural_id=planet_natural_id, currency_code='NCC')
+
+        production_fee_factory(
+            planet=planet, category='AGRICULTURE', workforce_level='PIONEER', fee_amount=1.5, fee_currency='NCC'
+        )
+        production_fee_factory(
+            planet=planet, category='AGRICULTURE', workforce_level='SCIENTIST', fee_amount=3.0, fee_currency='NCC'
+        )
+        production_fee_factory(
+            planet=planet, category='CHEMISTRY', workforce_level='SETTLER', fee_amount=2.25, fee_currency='NCC'
+        )
+
+        url = reverse('data:planet-detail', kwargs={'planet_natural_id': planet_natural_id})
+        response = api_client.get(url)
+
+        assert response.status_code == 200
+        assert response.data['production_fees'] == {
+            'currency': 'NCC',
+            'fees': {
+                'AGRICULTURE': [1.5, 0.0, 0.0, 0.0, 3.0],
+                'CHEMISTRY': [0.0, 2.25, 0.0, 0.0, 0.0],
+            },
+        }
+
     def test_multiple(self, api_client, planet_factory):
         planet_natural_ids = ['OT-580b', 'ZV-759b', 'EW-688c']
 

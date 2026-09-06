@@ -59,6 +59,11 @@ def popr_factory(**kwargs):
 
 
 @pytest.fixture()
+def production_fee_factory(**kwargs):
+    return lambda **kwargs: baker.make('gamedata.GamePlanetProductionFee', **kwargs)
+
+
+@pytest.fixture()
 def exchange_analytics_factory():
 
     return lambda **kwargs: baker.make('gamedata.GameExchangeAnalytics', **kwargs)
