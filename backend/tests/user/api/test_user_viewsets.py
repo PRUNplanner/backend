@@ -139,16 +139,16 @@ class TestUserRegisterViewSet:
         assert response.status_code == 400
 
     def test_register_silently_drops_duplicate_email(self, api_client, user_factory):
-        owner = user_factory(username='original_owner', email='newpilot@example.com')
-
         with patch('user.tasks.send_email_verification_code.apply_async') as send_code:
+            owner = user_factory(username='original_owner', email='newpilot@example.com')
             response = api_client.post(
                 reverse('user:user_signup'), data=self._payload(username='second_pilot'), format='json'
             )
 
         assert response.status_code == 201
         assert response.data['username'] == 'second_pilot'
-        send_code.assert_not_called()
+        # only the owner's own creation should have queued a code, not the second registration
+        send_code.assert_called_once()
 
         user = User.objects.get(username='second_pilot')
         assert user.email is None
