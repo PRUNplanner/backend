@@ -1,4 +1,4 @@
-from .game_building import GameBuilding, GameBuildingCost
+from .game_building import GameBuilding, GameBuildingCost, GameBuildingExpertiseChoices
 from .game_exchange import GameExchange, GameExchangeAnalytics, GameExchangeCXPC
 from .game_material import GameMaterial
 from .game_planet import (
@@ -11,6 +11,7 @@ from .game_planet import (
     GamePlanetProductionFee,
     GamePlanetResource,
     GamePlanetResourceTypeChoices,
+    GamePlanetCurrencyCodeChoices,
     queryset_gameplanet,
 )
 from .game_playerdata import GameFIOPlayerData

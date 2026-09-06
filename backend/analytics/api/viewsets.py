@@ -1,12 +1,12 @@
 from datetime import timedelta
 
-from analytics.api.serializer import AnalyticsPlanAggregateSerializer
+from analytics.api.serializer import AnalyticsMarketInsightSerializer, AnalyticsPlanAggregateSerializer
 from analytics.models import AnalyticsEmpireMaterialSnapshot, AnalyticsPlanAggregate
 from analytics.services.analytics_cache_manager import AnalyticsCacheManager
 from django.db.models import Sum
 from django.http import Http404
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiExample, extend_schema
 from gamedata.models.game_planet import GamePlanet
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -45,7 +45,19 @@ class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class AnalyticsMarketInsightViewSet(viewsets.ViewSet):
-    @extend_schema(auth=[], summary='Fetch planning insights for materials')
+    @extend_schema(
+        auth=[],
+        summary='Fetch planning insights for materials',
+        responses={200: AnalyticsMarketInsightSerializer},
+        examples=[
+            OpenApiExample(
+                'Material Insights Example',
+                summary='Example for positional array response',
+                value=[['AAR', 30.3584, 12.8593, 17.4991], ['ABH', 120.7919, 0.0, 120.7919]],
+                response_only=True,
+            )
+        ],
+    )
     @action(detail=False, methods=['get'], url_path='get-global-tracker')
     def get_global_materials(self, request):
 
