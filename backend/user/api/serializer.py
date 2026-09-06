@@ -158,6 +158,7 @@ def deep_merge(base, overrides):
 
 
 DEFAULT_PREFERENCES = {
+    'locale': 'en_US',
     'default_empire_uuid': None,
     'default_cx_uuid': None,
     'default_buy_items_from_cx': True,
@@ -165,6 +166,7 @@ DEFAULT_PREFERENCES = {
     'burn_days_yellow': 10,
     'burn_resupply_days': 18,
     'burn_origin': 'Antares Station Warehouse',
+    'supply_cart_days': 20,
     'layout_navigation_style': 'full',
     'plan_overrides': {},
 }
@@ -181,6 +183,7 @@ class PlanOverrideSerializer(serializers.Serializer):
 class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     # Frontend JSON: camelCase, variable name
     # Backend JSON: snake_case, source
+    locale = serializers.CharField(allow_null=True, required=False)
     defaultEmpireUuid = serializers.UUIDField(source='default_empire_uuid', allow_null=True, required=False)
     defaultCXUuid = serializers.UUIDField(source='default_cx_uuid', allow_null=True, required=False)
     defaultBuyItemsFromCX = serializers.BooleanField(source='default_buy_items_from_cx', required=False)
@@ -188,6 +191,7 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     burnDaysYellow = serializers.IntegerField(source='burn_days_yellow', min_value=0, default=10, required=False)
     burnResupplyDays = serializers.IntegerField(source='burn_resupply_days', min_value=0, default=18, required=False)
     burnOrigin = serializers.CharField(source='burn_origin', required=False)
+    supplyCartDays = serializers.IntegerField(source='supply_cart_days', min_value=0, default=20, required=False)
     layoutNavigationStyle = serializers.CharField(source='layout_navigation_style', required=False)
 
     planOverrides = serializers.DictField(
