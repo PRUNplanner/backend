@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(uv sync*)",
+      "Bash(uv run pytest*)",
+      "Bash(uv run ruff check*)",
+      "Bash(uv run ruff format*)",
+      "Bash(uv run ty check*)",
+      "Bash(uv run backend/manage.py makemigrations*)",
+      "Bash(uv run backend/manage.py migrate*)",
+      "Bash(uv run backend/manage.py showmigrations*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Bash(git push --force*)",
+      "Bash(rm -rf*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/format-python.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

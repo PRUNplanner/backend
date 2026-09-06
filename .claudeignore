@@ -1,0 +1,40 @@
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+*.pyc
+__pycache__/
+*.pyo
+uv.lock
+
+# Testing & Quality Tools
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.vscode
+htmlcov/
+
+# Local Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Git & IDEs
+.git/
+.vscode/
+.idea/
+
+# Database & SQLite files
+*.sqlite3
+*.db
+
+# Django Media & Collected Statics
+backend/static/
+backend/media/
+staticfiles/
+
+# Logs
+*.log
+celerybeat-schedule*
