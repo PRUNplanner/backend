@@ -19,7 +19,7 @@ app_name = 'user'
 
 @extend_schema(tags=['user : authentication'], summary='Login and retrieve tokens')
 class DecoratedTokenObtainPairView(TokenObtainPairView):
-    pass
+    throttle_scope = 'auth_login'
 
 
 urlpatterns = [
