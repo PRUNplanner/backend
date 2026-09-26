@@ -276,9 +276,15 @@ class TestGameStorageViewSet:
         response_404 = api_client.as_user(user_2).get(url)
         assert response_404.status_code == 404
 
-        _fio_playerdata_wrong = fio_playerdata_factory(
+        # row created but never successfully refreshed, still {} defaults, gets 404
+        fio_playerdata_empty = fio_playerdata_factory(
             user=user_2,
         )
+        response_empty = api_client.as_user(user_2).get(url)
+        assert response_empty.status_code == 404
+
+        fio_playerdata_empty.storage_data = [{'StorageId': 'invalid'}]
+        fio_playerdata_empty.save()
         response_validationerror = api_client.as_user(user_2).get(url)
         assert response_validationerror.status_code == 400
 
