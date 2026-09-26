@@ -332,8 +332,8 @@ class GameStorageViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
 
             data_object = GameFIOPlayerData.objects.filter(user=request.user).first()
 
-            # user must have data
-            if not data_object:
+            # user must have data, rows without a successful refresh keep the {} model default
+            if not data_object or not data_object.storage_data:
                 raise NotFound(detail='No storage data available.')
 
             # validate schemas of stored data
