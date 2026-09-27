@@ -1,9 +1,11 @@
+from collections.abc import Callable
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.utils import timezone
+from gamedata.models.game_planet import GamePlanet
 from gamedata.models.game_playerdata import GameFIOPlayerData
 from gamedata.tasks import (
     gamedata_clean_user_fiodata,
@@ -49,7 +51,16 @@ class TestGamedataTasks:
         mock_fio.get_user_storage.side_effect = Exception if scenario == 'fio_fail' else None
         mock_fio.get_user_storage.return_value = [MagicMock(model_dump=lambda **k: {})]
 
-        assert gamedata_refresh_user_fiodata(user.id, 'U', 'K') is (True if scenario == 'success' else False)
+        assert gamedata_refresh_user_fiodata(user.id) is (True if scenario == 'success' else False)
+
+    @patch('gamedata.tasks.get_fio_service')
+    def test_refresh_user_fiodata_loads_credentials_and_accepts_legacy_args(self, mock_get_fio):
+        user = baker.make('user.User', prun_username='Stored', fio_apikey='stored-key')
+        mock_fio = mock_get_fio.return_value.__enter__.return_value
+
+        # a task queued before the signature change still carries (prun_username, fio_apikey)
+        assert gamedata_refresh_user_fiodata(user.id, 'Old', 'old-key') is True
+        mock_fio.get_user_storage.assert_called_once_with('Stored', 'stored-key')
 
     @patch('gamedata.tasks.get_fio_service')
     @patch('gamedata.tasks.chord')
@@ -96,7 +107,6 @@ class TestGamedataTasks:
 
 @pytest.mark.django_db
 class TestDispatchFioUpdatesPayload:
-    @pytest.mark.xfail(strict=True, reason='audit: the FIO api key is sent through the broker as a task argument')
     def test_dispatched_task_does_not_carry_the_api_key(self):
         user = baker.make('user.User', prun_username='T', fio_apikey='secret-key', last_login=timezone.now())
         baker.make(
@@ -112,3 +122,87 @@ class TestDispatchFioUpdatesPayload:
 
         mock_async.assert_called_once()
         assert 'secret-key' not in repr(mock_async.call_args)
+
+
+@pytest.mark.django_db
+class TestRefreshCXPCHistory:
+    """Non-full runs only insert history (older than 3 days) for a pair without rows yet."""
+
+    HISTORICAL_EPOCH = 1_000
+
+    @staticmethod
+    def _point(date_epoch: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            interval='DAY_ONE', date_epoch=date_epoch, open=1, close=2, high=3, low=1, volume=10, traded=5
+        )
+
+    def _run(self, full: bool) -> None:
+        recent_epoch = int(timezone.now().timestamp() * 1000)
+        with patch('gamedata.tasks.get_fio_service') as mock_get_fio:
+            mock_get_fio.return_value.__enter__.return_value.get_cxpc.return_value = [
+                self._point(self.HISTORICAL_EPOCH),
+                self._point(recent_epoch),
+            ]
+            assert gamedata_refresh_cxpc('FUEL', 'AI1', full=full) is True
+
+    def _has_history(self) -> bool:
+        from gamedata.models import GameExchangeCXPC
+
+        return GameExchangeCXPC.objects.filter(
+            ticker='FUEL', exchange_code='AI1', date_epoch=self.HISTORICAL_EPOCH
+        ).exists()
+
+    def test_new_pair_gets_history(self) -> None:
+        self._run(full=False)
+
+        assert self._has_history()
+
+    def test_known_pair_skips_history_but_upserts_recent(self) -> None:
+        from gamedata.models import GameExchangeCXPC
+
+        baker.make('gamedata.GameExchangeCXPC', ticker='FUEL', exchange_code='AI1', date_epoch=2_000)
+
+        self._run(full=False)
+
+        assert not self._has_history()
+        assert GameExchangeCXPC.objects.filter(ticker='FUEL', exchange_code='AI1').count() == 2
+
+    def test_full_refresh_inserts_history_for_known_pair(self) -> None:
+        baker.make('gamedata.GameExchangeCXPC', ticker='FUEL', exchange_code='AI1', date_epoch=2_000)
+
+        self._run(full=True)
+
+        assert self._has_history()
+
+
+@pytest.mark.django_db
+class TestRefreshPlanetResult:
+    @staticmethod
+    def _run(import_side_effect: Callable[[str], bool]) -> None:
+        with (
+            patch('gamedata.fio.importers.import_planet', side_effect=import_side_effect),
+            patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+        ):
+            gamedata_refresh_planet()
+
+    def test_failed_import_keeps_its_recorded_error(self) -> None:
+        planet: GamePlanet = baker.make('gamedata.GamePlanet', planet_natural_id='M', automation_error_count=0)
+
+        def import_that_records_an_error(planet_natural_id: str) -> bool:
+            GamePlanet.objects.get(planet_natural_id=planet_natural_id).update_refresh_result(error=Exception('boom'))
+            return False
+
+        self._run(import_that_records_an_error)
+
+        planet.refresh_from_db()
+        assert planet.automation_refresh_status == 'retrying'
+        assert planet.automation_error == 'boom'
+
+    def test_pending_mark_saves_only_the_status(self) -> None:
+        baker.make('gamedata.GamePlanet', planet_natural_id='M', automation_error_count=0)
+
+        with patch.object(GamePlanet, 'save', autospec=True) as save:
+            self._run(lambda _planet_natural_id: True)
+
+        save.assert_called_once()
+        assert save.call_args.kwargs == {'update_fields': ['automation_refresh_status']}

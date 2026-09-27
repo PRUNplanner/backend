@@ -36,6 +36,7 @@ class EmpireViewSet(
     def get_queryset(self):
         return (
             PlanningEmpire.objects.filter(user=self.request.user)
+            .defer('empire_state')
             .prefetch_related('plans', 'cx')
             .order_by('empire_name')
         )
@@ -160,7 +161,7 @@ class EmpireViewSet(
                 )
 
         if to_delete_uuids or to_create_pairs:
-            PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
+            PlanningCacheManager.invalidate_user(user.id)
 
         return self.list(request)
 
@@ -178,9 +179,6 @@ class EmpireViewSet(
 
         # handle empire + relational snapshot refresh
         EmpireStateService.update_state(instance, serializer.validated_data)
-
-        # clear caches
-        PlanningCacheManager.delete_pattern(f'*PLANNING:{request.user.id}:*')
 
         return Response(PlanningEmpireDetailSerializer(instance).data)
 

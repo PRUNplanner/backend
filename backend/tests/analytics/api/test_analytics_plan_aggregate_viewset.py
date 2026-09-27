@@ -122,7 +122,6 @@ class TestAnalyticsPlanAggregateViewSetRetrieve:
 
 @pytest.mark.usefixtures('locmem_cache')
 class TestAnalyticsPlanAggregateViewSetCaching:
-    @pytest.mark.xfail(strict=True, reason='audit: planet existence is checked in the DB before the cache lookup')
     def test_cache_hit_runs_no_queries(
         self, api_client: APIClient, planet_factory: Callable[..., GamePlanet], django_assert_num_queries
     ) -> None:

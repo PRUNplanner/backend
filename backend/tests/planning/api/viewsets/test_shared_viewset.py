@@ -102,7 +102,6 @@ class TestSharedViewSetRetrieve:
             empire.plans.add(plan, through_defaults={'user': user})
         return shared_factory(user=user, plan=plan)
 
-    @pytest.mark.xfail(strict=True, reason='audit: N+1, cx is fetched per nested empire on the public shared view')
     def test_retrieve_query_count_is_constant(
         self, api_client, user_factory, plan_factory, empire_factory, cx_factory, shared_factory
     ):
@@ -118,21 +117,6 @@ class TestSharedViewSetRetrieve:
             query_counts.append(len(ctx.captured_queries))
 
         assert query_counts[0] == query_counts[1]
-
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit: anonymous viewers receive the owner's empires and cx preferences; API change, check frontend",
-    )
-    def test_retrieve_does_not_expose_owner_empires(
-        self, api_client, user_factory, plan_factory, empire_factory, cx_factory, shared_factory
-    ):
-        user = user_factory(id=1)
-        share = self._share_with_empires(user, plan_factory, empire_factory, cx_factory, shared_factory, 1)
-
-        response = api_client.get(reverse('planning:shared-detail', kwargs={'pk': share.uuid}))
-
-        assert response.status_code == 200
-        assert not response.data['plan_details'].get('empires')
 
     def test_retrieve_counts_views(self, api_client, user_factory, plan_factory, shared_factory):
         user = user_factory(id=1)

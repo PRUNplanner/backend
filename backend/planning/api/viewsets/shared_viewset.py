@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Prefetch
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
     PlanningPlanDetailSerializer,
@@ -7,7 +7,7 @@ from planning.api.serializers import (
     PlanningSharedDetailSerializer,
     PlanningSharedSerializer,
 )
-from planning.models import PlanningPlan, PlanningShared
+from planning.models import PlanningEmpire, PlanningPlan, PlanningShared
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -28,8 +28,13 @@ class SharedViewSet(
     lookup_url_kwarg = 'pk'
 
     def get_queryset(self):
-        if self.action in ['retrieve', 'clone']:
-            return PlanningShared.objects.all()
+        if self.action == 'retrieve':
+            empires = PlanningEmpire.objects.select_related('cx').defer('empire_state')
+            return PlanningShared.objects.select_related('plan').prefetch_related(
+                Prefetch('plan__empires', queryset=empires)
+            )
+        if self.action == 'clone':
+            return PlanningShared.objects.select_related('plan')
 
         user = self.request.user
         if user.is_authenticated:
@@ -62,8 +67,7 @@ class SharedViewSet(
         instance = self.get_object()
 
         PlanningShared.objects.filter(pk=instance.pk).update(view_count=F('view_count') + 1)
-
-        instance.refresh_from_db()
+        instance.view_count += 1
 
         serializer = self.get_serializer(instance)
         return Response(serializer.data)

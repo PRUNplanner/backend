@@ -30,7 +30,8 @@ class GamedataCacheManager(CacheManager):
 
     @classmethod
     def key_exchange_list(cls, fmt: str = 'json') -> str:
-        return cls.make_key('exchange', 'list', fmt)
+        # csv entries hold rendered csv since v2, older ones hold json
+        return cls.make_key('exchange', 'list', fmt if fmt == 'json' else f'{fmt}-v2')
 
     @classmethod
     def key_planet_list(cls) -> str:
@@ -46,7 +47,7 @@ class GamedataCacheManager(CacheManager):
 
     @classmethod
     def key_planet_multiple(cls, planet_natural_ids: list[str]) -> str:
-        return cls.make_key('planet', *planet_natural_ids)
+        return cls.make_key('planet', *sorted(set(planet_natural_ids)))
 
     @classmethod
     def key_planet_popr(cls, planet_natural_id: str) -> str:
@@ -85,6 +86,10 @@ class GamedataCacheManager(CacheManager):
 
     # Operations
     @classmethod
+    def has_fio_refresh_lock(cls, user_id: int) -> bool:
+        return cls.get(cls.key_user_fio_lock(user_id)) is not None
+
+    @classmethod
     def set_fio_refresh_lock(cls, user_id: int) -> bool:
         return cls.add(cls.key_user_fio_lock(user_id), 'fio_storage_refresh_locked', 60 * 5)
 
@@ -108,14 +113,17 @@ class GamedataCacheManager(CacheManager):
         return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
 
     @classmethod
-    def get_exchange_list_response(cls, func: Callable[[], Any], fmt: str = 'json') -> Response | HttpResponse:
+    def get_exchange_list_response(
+        cls, func: Callable[[], Any], fmt: str = 'json', csv_header: list[str] | None = None
+    ) -> Response | HttpResponse:
         key = cls.key_exchange_list(fmt)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY, fmt=fmt)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY, fmt=fmt, csv_header=csv_header)
 
     @classmethod
     def get_planet_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
         key = cls.key_planet_list()
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
+        # short ttl instead of invalidating per import: a planet refreshes every ~9s, the full list is costly to build
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT)
 
     @classmethod
     def get_planet_get_response(cls, planet_natural_id: str, func: Callable[[], Any]) -> Response | HttpResponse:
@@ -132,7 +140,7 @@ class GamedataCacheManager(CacheManager):
     @classmethod
     def get_storage_response(cls, user_id: int, func: Callable[[], Any]) -> Response | HttpResponse:
         key = cls.key_user_storage(user_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_3HOURS)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_3HOURS, private=True)
 
     @classmethod
     def get_planet_search_response(

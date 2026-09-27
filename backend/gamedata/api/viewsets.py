@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import structlog
 from django.db import connection
-from django.db.models import Case, CharField, F, Q, Value, When
+from django.db.models import Case, CharField, F, Q, QuerySet, Value, When
 from django.db.models.functions import Concat
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -97,9 +97,12 @@ class GameBuildingViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
 class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     permission_classes = [AllowAny]
-    queryset = queryset_gameplanet()
     serializer_class = GamePlanetSerializer
     lookup_field = 'planet_natural_id'
+
+    def get_queryset(self) -> QuerySet[GamePlanet]:
+        # built per request: the active cogc subquery compares against the current time
+        return queryset_gameplanet()
 
     @extend_schema(auth=[], summary='List all planets')
     def list(self, request, *args, **kwargs):
@@ -172,11 +175,10 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         responses=GamePlanetInfrastructureReportSerializer,
         summary='Get planets latest population report',
     )
-    def latest_popr(self, request, planet_natural_id=None):
+    def latest_popr(self, request, planet_natural_id: str):
 
-        planet = get_object_or_404(GamePlanet, planet_natural_id=planet_natural_id)
-
-        def fetch_data(planet: GamePlanet):
+        def fetch_data():
+            planet = get_object_or_404(GamePlanet, planet_natural_id=planet_natural_id)
             latest_report = planet.popr_reports.all().first()
 
             if not latest_report:
@@ -184,7 +186,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
 
             return GamePlanetInfrastructureReportSerializer(latest_report).data
 
-        return GamedataCacheManager.get_planet_latest_popr(planet.planet_natural_id, lambda: fetch_data(planet))
+        return GamedataCacheManager.get_planet_latest_popr(planet_natural_id, fetch_data)
 
 
 class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
@@ -262,7 +264,8 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
             return analytics_list
 
-        return GamedataCacheManager.get_exchange_list_response(fetch_data, fmt)
+        csv_header = self.get_renderer_context().get('header')
+        return GamedataCacheManager.get_exchange_list_response(fetch_data, fmt, csv_header)
 
 
 @extend_schema(
@@ -435,9 +438,9 @@ class FIOWebhookIngest(APIView):
             return Response(status=400)
 
         # update webhook config stats
-        config.total_calls += 1
-        config.last_received_at = timezone.now()
-        config.save(update_fields=['total_calls', 'last_received_at'])
+        GlobalConfigWebhook.objects.filter(pk=config.pk).update(
+            total_calls=F('total_calls') + 1, last_received_at=timezone.now()
+        )
 
         # handoff to celery
         gamedata_process_fio_webhook.delay(request.data)

@@ -66,11 +66,11 @@ def gamedata_refresh_planet() -> bool:
     gamedata_refresh_planet_infrastructure.delay(to_update.planet_natural_id)
 
     to_update.automation_refresh_status = 'pending'
-    to_update.save()
+    to_update.save(update_fields=['automation_refresh_status'])
 
     try:
+        # records its own refresh result, success or error
         import_planet(to_update.planet_natural_id)
-        to_update.update_refresh_result()
 
         return True
 
@@ -102,7 +102,7 @@ def gamedata_dispatch_fio_updates():
 
     # User Base
     eligible_base = (
-        GameFIOPlayerData.objects.select_related('user')
+        GameFIOPlayerData.objects
         # FIO credentials check
         .filter(
             user__prun_username__isnull=False,
@@ -132,11 +132,9 @@ def gamedata_dispatch_fio_updates():
 
     # Dispatch
     dispatched_count = 0
-    for storage in candidates:
-        user = storage.user
-
+    for user_id in candidates.values_list('user_id', flat=True):
         # Trigger task
-        gamedata_refresh_user_fiodata.apply_async(args=[user.id, user.prun_username, user.fio_apikey])
+        gamedata_refresh_user_fiodata.apply_async(args=[user_id])
         dispatched_count += 1
 
     return f'Dispatched {dispatched_count} FIO refresh tasks.'
@@ -154,12 +152,14 @@ def gamedata_clean_user_fiodata(user_id: int) -> None:
 
 
 @shared_task(name='gamedata_refresh_user_fiodata')
-def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: str) -> bool:
+def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
+    # credentials are loaded here, so the FIO api key never passes through the broker.
+    # _legacy_args: (prun_username, fio_apikey) of tasks queued before this change, ignored; remove next release
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_refresh_user_fiodata',
     )
 
-    log = logger.bind(name='gamedata_refresh_user_fiodata', user=user_id, prun_username=prun_username)
+    log = logger.bind(name='gamedata_refresh_user_fiodata', user=user_id)
 
     # SUBSEQUENT REFRESH LOCK
     if not GamedataCacheManager.set_fio_refresh_lock(user_id):
@@ -173,7 +173,8 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
     from gamedata.models import GameFIOPlayerData
 
     try:
-        if not User.objects.filter(id=user_id).exists():
+        user = User.objects.only('prun_username', 'fio_apikey').filter(id=user_id).first()
+        if user is None:
             # user does not exist anymore, clean up lock key and return
             GamedataCacheManager.delete_fio_refresh_lock(user_id)
             log.info('Skip user fio refresh, user does not exist anymore')
@@ -185,10 +186,10 @@ def gamedata_refresh_user_fiodata(user_id: int, prun_username: str, fio_apikey: 
 
         try:
             with get_fio_service() as fio:
-                storage_data = fio.get_user_storage(prun_username, fio_apikey)
-                sites_data = fio.get_user_sites(prun_username, fio_apikey)
-                warehouse_data = fio.get_user_sites_warehouses(prun_username, fio_apikey)
-                ship_data = fio.get_user_ships(prun_username, fio_apikey)
+                storage_data = fio.get_user_storage(user.prun_username, user.fio_apikey)
+                sites_data = fio.get_user_sites(user.prun_username, user.fio_apikey)
+                warehouse_data = fio.get_user_sites_warehouses(user.prun_username, user.fio_apikey)
+                ship_data = fio.get_user_ships(user.prun_username, user.fio_apikey)
 
             to_update.storage_data = [d.model_dump(mode='json') for d in storage_data]
             to_update.site_data = [d.model_dump(mode='json') for d in sites_data]
@@ -309,8 +310,11 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
                 recent_objs = [o for o in objs if o.date_epoch >= three_days_ago_ms]
                 historical_objs = [o for o in objs if o.date_epoch < three_days_ago_ms]
 
-                # Process Historical: Ignore Conflicts
-                if historical_objs:
+                # Process Historical: only for a pair without rows yet, full refreshes backfill gaps
+                if (
+                    historical_objs
+                    and not GameExchangeCXPC.objects.filter(ticker=ticker, exchange_code=exchange_code).exists()
+                ):
                     GameExchangeCXPC.objects.bulk_create(
                         historical_objs,
                         ignore_conflicts=True,

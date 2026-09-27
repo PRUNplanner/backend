@@ -43,6 +43,17 @@ class TestVerificationService:
             assert kwargs.get('args')[2] == user.email
 
     @pytest.mark.parametrize(
+        'purpose', [VerificationeCodeChoices.EMAIL_VERIFICATION, VerificationeCodeChoices.PASSWORD_RESET]
+    )
+    def test_codes_are_sent_with_the_annotated_priority(self, purpose, user):
+        # Redis broker: 0 is the highest priority; CELERY_TASK_ANNOTATIONS sets 1 for both code emails
+        with patch('celery.app.base.Celery.send_task') as send_task:
+            VerificationService.create_and_send_code(user, purpose)
+
+        send_task.assert_called_once()
+        assert send_task.call_args.kwargs['priority'] == 1
+
+    @pytest.mark.parametrize(
         'purpose, input_code, expected_success, expected_msg',
         [
             (VerificationeCodeChoices.EMAIL_VERIFICATION, 'VALID123', True, 'Email verified.'),

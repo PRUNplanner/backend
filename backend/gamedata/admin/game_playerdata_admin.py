@@ -17,7 +17,7 @@ def action_user_refresh_fio(modeladmin: admin.ModelAdmin, request: HttpRequest, 
         user: User = fio_storage.user
 
         if user._has_fio_credentials():
-            gamedata_refresh_user_fiodata(user.id, user.prun_username, user.fio_apikey)
+            gamedata_refresh_user_fiodata(user.id)
 
 
 @admin.register(GameFIOPlayerData)

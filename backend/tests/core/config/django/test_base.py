@@ -7,10 +7,6 @@ pytestmark = pytest.mark.django_db
 
 
 class TestResponseCompression:
-    @pytest.mark.xfail(
-        strict=True,
-        reason='audit: multi-MB list payloads are sent uncompressed; drop this test if the reverse proxy compresses',
-    )
     def test_large_json_responses_are_gzipped(self, client: Client) -> None:
         baker.make('gamedata.GamePlanet', _quantity=5, make_m2m=True)
 

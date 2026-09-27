@@ -30,6 +30,9 @@ def log_new_process(**kwargs):  # pragma: no cover
 
 @worker_process_shutdown.connect
 def log_shutdown_process(**kwargs):  # pragma: no cover
+    from gamedata.fio.services import close_shared_client
+
+    close_shared_client()
     logger.info('worker_child_process_shutdown')
 
 

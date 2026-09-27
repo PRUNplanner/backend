@@ -22,10 +22,9 @@ class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         planet_id: str = kwargs.get('planet_natural_id', '')
 
-        if not GamePlanet.objects.filter(planet_natural_id=planet_id).exists():
-            raise NotFound(detail='Planet not found.')
-
         def fetch_data(planet_natural_id: str):
+            if not GamePlanet.objects.filter(planet_natural_id=planet_natural_id).exists():
+                raise NotFound(detail='Planet not found.')
 
             try:
                 # try to get aggregate

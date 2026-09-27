@@ -408,4 +408,6 @@ def import_all_buildings() -> tuple[int, int]:
 
         GameBuildingCost.objects.bulk_create(cost_objs, ignore_conflicts=True)
 
+    GamedataCacheManager.delete(GamedataCacheManager.key_building_list())
+
     return len(building_objs), len(cost_objs)

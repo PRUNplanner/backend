@@ -27,10 +27,6 @@ class TestBulkMaterializeEmpireSnapshots:
         assert float(snapshot.production) == 5.0
 
     @pytest.mark.usefixtures('locmem_cache')
-    @pytest.mark.xfail(
-        strict=True,
-        reason='audit: clearing needs_state_sync fires post_save, evicting user caches with a keyspace scan per empire',
-    )
     def test_leaves_planning_caches_alone(self, api_client, user_factory, django_capture_on_commit_callbacks) -> None:
         user = user_factory()
         baker.make('planning.PlanningEmpire', user=user, empire_state=_state(5.0), needs_state_sync=True)
@@ -42,10 +38,6 @@ class TestBulkMaterializeEmpireSnapshots:
 
         assert api_client.as_user(user).get(url)['X-Cache-Hit'] == '1'
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason='audit: a state sync landing mid-run is lost, the unconditional flag reset overwrites it',
-    )
     def test_state_synced_during_run_stays_dirty(self) -> None:
         empire: PlanningEmpire = baker.make('planning.PlanningEmpire', empire_state=_state(5.0), needs_state_sync=True)
         real_sync_snapshot = EmpireStateService.sync_snapshot

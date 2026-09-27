@@ -134,9 +134,8 @@ def analytics_bulk_materialize_empire_snapshots():
         try:
             EmpireStateService.sync_snapshot(empire)
 
-            # clear and update flag only
-            empire.needs_state_sync = False
-            empire.save(update_fields=['needs_state_sync'])
+            # clear the flag only if no newer state landed meanwhile; a queryset update fires no signals
+            PlanningEmpire.objects.filter(pk=empire.pk, modified_at=empire.modified_at).update(needs_state_sync=False)
 
             processed_count += 1
 

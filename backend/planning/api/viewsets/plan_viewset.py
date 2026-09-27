@@ -29,7 +29,9 @@ class PlanViewSet(
     def get_queryset(self):
         return (
             PlanningPlan.objects.filter(user=self.request.user)
-            .prefetch_related(Prefetch('empires', queryset=PlanningEmpire.objects.select_related('cx')))
+            .prefetch_related(
+                Prefetch('empires', queryset=PlanningEmpire.objects.select_related('cx').defer('empire_state'))
+            )
             .order_by('plan_name')
         )
 

@@ -86,15 +86,7 @@ def user_handle_post_refresh(user_id: int):
     try:
         user = User.objects.get(id=user_id)
 
+        # saving last_login queues the fio refresh through the user post_save signal
         update_last_login(User, user)
-
-        if user._has_fio_credentials():
-            from gamedata.tasks import gamedata_refresh_user_fiodata
-
-            gamedata_refresh_user_fiodata.delay(user.id, user.prun_username, user.fio_apikey)
-        else:
-            from gamedata.tasks import gamedata_clean_user_fiodata
-
-            gamedata_clean_user_fiodata.delay(user.id)
     except User.DoesNotExist:
         pass

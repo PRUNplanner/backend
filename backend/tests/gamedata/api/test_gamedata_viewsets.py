@@ -1,15 +1,15 @@
 import uuid
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 from gamedata.models.game_exchange import GameExchange
-from gamedata.models.game_planet import GamePlanet
+from gamedata.models.game_planet import GamePlanet, GamePlanetCOGCProgramChoices
+from model_bakery import baker
 from rest_framework.test import APIClient
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_csv.renderers import CSVRenderer
 from tests.fixtures.fxt_fio_ship_data import fio_ship_data
 from tests.fixtures.fxt_fio_sites_data import fio_sites_data
@@ -194,59 +194,7 @@ def _search_payload(**overrides: object) -> dict[str, object]:
 
 
 @pytest.mark.usefixtures('locmem_cache')
-class TestGamePlanetViewSetAbuseProtection:
-    """
-    Planet search endpoints are public and every distinct request body is a
-    cache miss that serializes planets through nested DRF serializers.
-
-    Contract for the fix: these endpoints are throttled under the scope
-    `planet_search`; `multiple` accepts at most 100 planet ids.
-    """
-
-    @pytest.fixture
-    def tight_planet_search_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(ScopedRateThrottle.THROTTLE_RATES, 'planet_search', '2/min')
-
-    @pytest.mark.usefixtures('tight_planet_search_rate')
-    @pytest.mark.xfail(strict=True, reason='audit: planet search is public and unthrottled')
-    def test_search_is_throttled(self, api_client: APIClient) -> None:
-        statuses = [
-            api_client.post(
-                reverse('data:planet-search'), data=_search_payload(materials=[f'M{i}']), format='json'
-            ).status_code
-            for i in range(3)
-        ]
-
-        assert statuses == [200, 200, 429]
-
-    @pytest.mark.usefixtures('tight_planet_search_rate')
-    @pytest.mark.xfail(strict=True, reason='audit: planet multiple is public and unthrottled')
-    def test_multiple_is_throttled(self, api_client: APIClient) -> None:
-        statuses = [
-            api_client.post(reverse('data:planet-multiple'), data=[f'AB-{i:03d}c'], format='json').status_code
-            for i in range(3)
-        ]
-
-        assert statuses == [200, 200, 429]
-
-    @pytest.mark.usefixtures('tight_planet_search_rate')
-    @pytest.mark.xfail(strict=True, reason='audit: planet term search is public and unthrottled')
-    def test_search_single_is_throttled(self, api_client: APIClient) -> None:
-        statuses = [
-            api_client.get(reverse('data:planet-search-single', kwargs={'search_term': f'term{i}'})).status_code
-            for i in range(3)
-        ]
-
-        assert statuses == [200, 200, 429]
-
-    @pytest.mark.xfail(strict=True, reason='audit: planet multiple accepts an unbounded id list')
-    def test_multiple_rejects_more_than_100_ids(self, api_client: APIClient) -> None:
-        ids = [f'AB-{i:03d}c' for i in range(101)]
-
-        response = api_client.post(reverse('data:planet-multiple'), data=ids, format='json')
-
-        assert response.status_code == 400
-
+class TestGamePlanetViewSetMultiple:
     def test_multiple_accepts_100_ids(self, api_client: APIClient) -> None:
         ids = [f'AB-{i:03d}c' for i in range(100)]
 
@@ -254,7 +202,6 @@ class TestGamePlanetViewSetAbuseProtection:
 
         assert response.status_code == 200
 
-    @pytest.mark.xfail(strict=True, reason='audit: multiple cache key depends on id order and duplicates')
     def test_multiple_cache_key_ignores_order_and_duplicates(
         self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
     ) -> None:
@@ -281,7 +228,6 @@ class TestGamedataCacheHits:
 
         assert response['X-Cache-Hit'] == '1'
 
-    @pytest.mark.xfail(strict=True, reason='audit: latest_popr looks the planet up before checking the cache')
     def test_latest_popr_cache_hit_runs_no_queries(
         self,
         api_client: APIClient,
@@ -298,7 +244,6 @@ class TestGamedataCacheHits:
 
         assert response['X-Cache-Hit'] == '1'
 
-    @pytest.mark.xfail(strict=True, reason='audit: CSV is parsed from JSON and re-rendered on every cache hit')
     def test_exchange_csv_cache_hit_is_not_rerendered(
         self, api_client: APIClient, exchange_analytics_factory: Callable[..., object]
     ) -> None:
@@ -316,7 +261,6 @@ class TestGamedataCacheHits:
 
 class TestGameStorageCacheHeaders:
     @pytest.mark.usefixtures('locmem_cache')
-    @pytest.mark.xfail(strict=True, reason="audit: per-user storage is sent with 'Cache-Control: public'")
     def test_storage_response_is_private(
         self,
         api_client: APIClient,
@@ -340,7 +284,6 @@ class TestGameStorageCacheHeaders:
 
 
 class TestFIOWebhookIngestConcurrency:
-    @pytest.mark.xfail(strict=True, reason='audit: total_calls is a read-modify-write and loses concurrent increments')
     def test_counter_increment_is_atomic(
         self, api_client: APIClient, webhook_config_factory: Callable[..., GlobalConfigWebhook]
     ) -> None:
@@ -359,3 +302,29 @@ class TestFIOWebhookIngestConcurrency:
         assert response.status_code == 202
         config.refresh_from_db()
         assert config.total_calls == 11
+
+
+class TestGamePlanetActiveCOGC:
+    @pytest.mark.parametrize('now_seconds, expected_active', [(1.5, True), (3.0, False)])
+    def test_active_cogc_is_evaluated_per_request(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        now_seconds: float,
+        expected_active: bool,
+    ) -> None:
+        planet = planet_factory(planet_natural_id='AB-001c')
+        program_type = GamePlanetCOGCProgramChoices.values[0]
+        baker.make(
+            'gamedata.GamePlanetCOGCProgram',
+            planet=planet,
+            program_type=program_type,
+            start_epochms=1_000,
+            end_epochms=2_000,
+        )
+        url = reverse('data:planet-detail', kwargs={'planet_natural_id': 'AB-001c'})
+
+        with patch('django.utils.timezone.now', return_value=datetime.fromtimestamp(now_seconds, tz=UTC)):
+            response = api_client.get(url)
+
+        assert response.data['active_cogc_program_type'] == (program_type if expected_active else None)

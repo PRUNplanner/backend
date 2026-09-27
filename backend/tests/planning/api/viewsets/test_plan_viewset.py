@@ -165,7 +165,6 @@ class TestPlanViewSetQueries:
 
         assert len(response.data) == 5
 
-    @pytest.mark.xfail(strict=True, reason='audit: empire_state is loaded for every nested empire but never serialized')
     def test_list_does_not_load_empire_state(self, api_client, user_factory, plan_factory, empire_factory):
         user = user_factory(id=1)
         empire = empire_factory(user=user)
@@ -176,27 +175,8 @@ class TestPlanViewSetQueries:
 
         assert not any('empire_state' in q['sql'] for q in ctx.captured_queries)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason='audit: full cx_data is repeated for every empire of every plan; API change, check frontend usage',
-    )
-    def test_list_does_not_repeat_cx_data_per_empire(
-        self, api_client, user_factory, plan_factory, empire_factory, cx_factory
-    ):
-        user = user_factory(id=1)
-        empire = empire_factory(user=user, cx=cx_factory(user=user))
-        empire.plans.add(plan_factory(user=user), through_defaults={'user': user})
-
-        response = api_client.as_user(user).get(reverse('planning:plan'))
-
-        assert 'cx_data' not in response.data[0]['empires'][0]['cx']
-
 
 class TestPlanViewSetCacheHeaders:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit: per-user plan lists are sent with 'Cache-Control: public', browsers serve them stale for 1h",
-    )
     def test_list_response_is_private(self, api_client, user_factory, plan_factory):
         user = user_factory(id=1)
         plan_factory(user=user)

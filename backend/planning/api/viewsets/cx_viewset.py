@@ -2,7 +2,7 @@ from typing import cast
 from uuid import UUID
 
 from django.db import transaction
-from django.db.models import Case, Value, When
+from django.db.models import Case, Prefetch, Value, When
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
@@ -32,7 +32,12 @@ class CXViewSet(
     serializer_class = PlanningCXDetailSerializer
 
     def get_queryset(self):
-        return PlanningCX.objects.filter(user=self.request.user).prefetch_related('cxs').order_by('cx_name')
+        empires = PlanningEmpire.objects.defer('empire_state').prefetch_related('plans')
+        return (
+            PlanningCX.objects.filter(user=self.request.user)
+            .prefetch_related(Prefetch('cxs', queryset=empires))
+            .order_by('cx_name')
+        )
 
     @extend_schema(summary='List all cx preferences')
     def list(self, request, *args, **kwargs) -> Response:
@@ -110,6 +115,6 @@ class CXViewSet(
         with transaction.atomic():
             PlanningEmpire.objects.filter(user=user).update(cx_id=Case(*update_conditions, default=None))
 
-        PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
+        PlanningCacheManager.invalidate_user(user.id)
 
         return self.list(request)
