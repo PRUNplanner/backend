@@ -46,6 +46,16 @@ class TestCXViewSetCrud:
         assert response.status_code == 201
         assert response.data['cx_name'] == 'New CX'
 
+    def test_create_rejects_empty_ticker(self, api_client, user_factory):
+        user = user_factory(id=1)
+        cx_data = {'ticker_empire': [{'ticker': '', 'type': 'BUY', 'value': 1}]}
+
+        response = api_client.as_user(user).post(
+            reverse('planning:cx'), data={'cx_name': 'New CX', 'cx_data': cx_data}, format='json'
+        )
+
+        assert response.status_code == 400
+
     def test_update(self, api_client, user_factory, cx_factory):
         user = user_factory(id=1)
         cx = cx_factory(user=user, cx_name='Old Name', cx_data={})

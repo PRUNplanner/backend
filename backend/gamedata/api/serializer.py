@@ -1,3 +1,4 @@
+from api.mixins import BlankAsNullMixin
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from gamedata.fio.schemas import drf_sites_schema
 from gamedata.models import (
@@ -66,7 +67,8 @@ class GameBuildingCostSerializer(serializers.ModelSerializer):
         fields = ['material_ticker', 'material_amount']
 
 
-class GameBuildingSerializer(serializers.ModelSerializer):
+class GameBuildingSerializer(BlankAsNullMixin, serializers.ModelSerializer):
+    blank_as_null_fields = ('expertise',)
     costs = GameBuildingCostSerializer(many=True, read_only=True)
     habitations = serializers.ReadOnlyField()
 
@@ -104,7 +106,8 @@ class GamePlanetCOGCProgramSerializer(serializers.ModelSerializer):
         fields = ['program_type', 'start_epochms', 'end_epochms']
 
 
-class GamePlanetSerializer(serializers.ModelSerializer):
+class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
+    blank_as_null_fields = ('faction_code', 'faction_name', 'cogc_program_status')
     resources = GamePlanetResourceSerializer(many=True, read_only=True)
     cogc_programs = GamePlanetCOGCProgramSerializer(many=True, read_only=True)
 

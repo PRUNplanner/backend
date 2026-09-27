@@ -16,6 +16,24 @@ PLANNING_EXPERT_TYPES = Literal[
 
 PLANNING_WORKFORCE_TYPES = Literal['pioneer', 'settler', 'technician', 'engineer', 'scientist']
 
+# hardcoded in the frontend too (InfrastructureTypeSchema), a new hab/storage type needs a lockstep change
+PLANNING_INFRASTRUCTURE_TYPES = Literal[
+    'HB1',
+    'HB2',
+    'HB3',
+    'HB4',
+    'HB5',
+    'HBB',
+    'HBC',
+    'HBM',
+    'HBL',
+    'STO',
+    'STA',
+    'STE',
+    'STV',
+    'STW',
+]
+
 PLANNING_COGC_TYPES = Literal[
     'AGRICULTURE',
     'CHEMISTRY',
@@ -95,7 +113,7 @@ class PlanningPlanData_V1(BaseModel):
         lux2: bool = Field(...)
 
     class PlanningPlanData_V1_Infrastructure(BaseModel):
-        building: str = Field(..., min_length=3, max_length=3)
+        building: PLANNING_INFRASTRUCTURE_TYPES = Field(...)
         amount: int = Field(..., ge=0)
 
     class PlanningPlanData_V1_Building(BaseModel):
@@ -103,7 +121,7 @@ class PlanningPlanData_V1(BaseModel):
             recipeid: str = Field(...)
             amount: int = Field(..., ge=0)
 
-        name: str = Field(..., min_length=1, max_length=3)
+        name: str = Field(..., min_length=2, max_length=3)
         amount: int = Field(..., ge=0)
         active_recipes: list[PlanningPlanData_V1_Building_Recipe]
 

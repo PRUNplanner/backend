@@ -69,6 +69,22 @@ class TestPlanViewSetCrud:
         assert response.status_code == 201
         assert response.data['plan_name'] == 'My Plan'
 
+    @pytest.mark.parametrize(
+        'plan_data',
+        [
+            {**plan_data_vallis, 'buildings': [{'name': 'C', 'amount': 1, 'active_recipes': []}]},
+            {**plan_data_vallis, 'infrastructure': [{'building': 'XYZ', 'amount': 1}]},
+        ],
+    )
+    def test_create_rejects_invalid_plan_data(self, api_client, user_factory, plan_data):
+        user = user_factory(id=1)
+
+        response = api_client.as_user(user).post(
+            reverse('planning:plan'), data=_plan_payload(plan_data=plan_data), format='json'
+        )
+
+        assert response.status_code == 400
+
     def test_create_links_empire_when_empire_uuid_provided(self, api_client, user_factory, empire_factory):
         user = user_factory(id=1)
         empire = empire_factory(user=user)

@@ -38,17 +38,16 @@ class UserPreferenceViewSet(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, 
         return Response(serializer.data)
 
     @extend_schema(summary='Update preferences')
-    def update(self, request, *args, **kwargs):
-        # Partial = True, allows subset of fields from frontend
-        partial = kwargs.pop('partial', False)
-        serializer = self.get_serializer(data=request.data, partial=partial)
+    def partial_update(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
+        # top-level merge: omitted keys keep their stored value, a sent planOverrides replaces the stored dict
         obj, _ = UserPreference.objects.get_or_create(user=request.user)
-        obj.preferences = serializer.validated_data
+        obj.preferences = {**obj.preferences, **serializer.validated_data}
         obj.save()
 
-        return Response(serializer.data)
+        return Response(self.get_serializer(obj.preferences).data)
 
 
 @extend_schema(tags=['user : authentication'])

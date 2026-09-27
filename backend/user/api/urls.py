@@ -29,7 +29,9 @@ urlpatterns = [
     path('profile/', UserProfileViewSet.as_view({'get': 'retrieve', 'patch': 'update_profile'}), name='user_profile'),
     path('change_password/', UserProfileViewSet.as_view({'post': 'change_password'}), name='user_change_password'),
     path(
-        'preferences/', UserPreferenceViewSet.as_view({'get': 'retrieve', 'patch': 'update'}), name='user_preferences'
+        'preferences/',
+        UserPreferenceViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update'}),
+        name='user_preferences',
     ),
     path(
         'api/keys/',
