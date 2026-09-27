@@ -26,3 +26,9 @@ htmlcov/
 
 # Vector
 vector*.toml
+
+# Perf runs (perf/run.sh)
+.perf/
+
+# FIO game data snapshot (manage.py perf_snapshot)
+perf/snapshot/

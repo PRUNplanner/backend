@@ -1,0 +1,33 @@
+# Throwaway Postgres + Redis for perf/run.sh. Data lives in memory (tmpfs) and
+# is gone after `down`; ports differ from the dev stack so the two never mix.
+name: prunplanner-perf
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: prunplanner_perf
+      POSTGRES_USER: perf
+      POSTGRES_PASSWORD: perf
+    command: postgres -c shared_buffers=256MB -c max_connections=200
+    shm_size: 256mb
+    tmpfs:
+      - /var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perf -d prunplanner_perf"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.2-alpine
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
