@@ -1,0 +1,11 @@
+<section class="mb-6" aria-label="Headline">
+  {% if headline %}
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      {% for tile in headline.tiles %}
+        {% include "admin/summary/tile.html" %}
+      {% endfor %}
+    </div>
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Headline numbers" %}
+  {% endif %}
+</section>

@@ -1,7 +1,15 @@
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
+from django.utils import timezone
 
 from user.manager.user_manager import CustomUserManager
+
+# users with both FIO credentials set (the queryset twin of User._has_fio_credentials, minus the strip)
+FIO_LINKED_Q = (
+    models.Q(prun_username__isnull=False, fio_apikey__isnull=False)
+    & ~models.Q(prun_username='')
+    & ~models.Q(fio_apikey='')
+)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -12,6 +20,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
 
     is_email_verified = models.BooleanField(default=False)
+    # empty for users from before the field existed (added without a default, so no backfill)
+    date_joined = models.DateTimeField(null=True, blank=True, default=timezone.now, db_index=True)
 
     prun_username = models.CharField(max_length=255, null=True, blank=True, default=None)  # noqa: DJ001
     fio_apikey = models.CharField(max_length=255, null=True, blank=True, default=None)  # noqa: DJ001

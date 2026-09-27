@@ -18,13 +18,10 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 
+from core.env import settings
+
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    path(settings.admin_url, admin.site.urls),
     # API
     path('', include('api.urls')),
 ]
-
-# Admin Renaming
-admin.site.site_header = 'PRUNplanner Admin'
-admin.site.site_title = 'PRUNplanner Admin'
-admin.site.index_title = 'Welcome to PRUNplanner Admin'

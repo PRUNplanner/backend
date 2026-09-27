@@ -23,7 +23,6 @@ from tests.fixtures.fxt_fio_ship_data import fio_ship_data
 from tests.fixtures.fxt_fio_sites_data import fio_sites_data
 from tests.fixtures.fxt_fio_storage_data import fio_storage_data
 from tests.fixtures.fxt_fio_warehouse_data import fio_warehouse_data
-from tests.gamedata.conftest import create_unmanaged_tables  # noqa: F401  (exchange analytics table)
 from user.models import User
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('locmem_cache')]

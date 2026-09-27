@@ -1,0 +1,9 @@
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6" aria-label="Growth">
+  {% if growth %}
+    {% for chart in growth %}
+      {% include "admin/summary/chart.html" %}
+    {% endfor %}
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Growth" %}
+  {% endif %}
+</section>

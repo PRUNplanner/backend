@@ -24,6 +24,9 @@ DEBUG = True
 ALLOWED_HOSTS = settings.django_allowed_hosts.split(',')
 
 
+# admin environment badge; production.py overrides it
+ENVIRONMENT_NAME: str = 'local'
+
 # Application definition
 
 INSTALLED_APPS = [

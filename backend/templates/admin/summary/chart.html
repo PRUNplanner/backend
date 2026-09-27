@@ -1,0 +1,14 @@
+{% load unfold %}
+
+<div class="bg-base-900 border border-base-800 rounded-default p-4 min-w-0">
+  <h3 class="mb-3 font-semibold text-important text-sm">{{ chart.title }}</h3>
+  <div style="height: {{ chart.height }}px">
+    {% if chart.kind == "bar" %}
+      {% component "unfold/components/chart/bar.html" with data=chart.config.data options=chart.config.options class="h-full" %}
+      {% endcomponent %}
+    {% else %}
+      {% component "unfold/components/chart/line.html" with data=chart.config.data options=chart.config.options class="h-full" %}
+      {% endcomponent %}
+    {% endif %}
+  </div>
+</div>

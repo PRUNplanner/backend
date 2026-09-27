@@ -1,0 +1,28 @@
+{% load admin_ops %}
+
+<section class="mb-6" aria-label="Needs attention">
+  {% if all_ok %}
+    <div class="bg-base-900 border border-base-800 rounded-default p-4 flex items-center gap-2 text-sm">
+      <span class="material-symbols-outlined" style="color: {{ 'good'|status_colour }}">check_circle</span>
+      <span class="text-important">All checks normal</span>
+      <span class="text-subtle">· no periodic task overdue · no planet stuck in pending</span>
+    </div>
+  {% else %}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      {% for chip in chips %}
+        {% if chip %}
+          <a href="{{ chip.href }}"
+             class="bg-base-900 border border-base-800 rounded-default p-4 flex items-center gap-2 text-sm hover:border-base-700">
+            <span class="material-symbols-outlined" style="color: {{ chip.colour }}">{{ chip.icon }}</span>
+            <span class="{% if chip.ok %}text-subtle{% else %}text-important font-semibold{% endif %}">{{ chip.text }}</span>
+          </a>
+        {% else %}
+          <div class="bg-base-900 border border-base-800 rounded-default p-4 flex items-center gap-2 text-sm text-subtle">
+            <span class="material-symbols-outlined" style="color: {{ 'serious'|status_colour }}">cloud_off</span>
+            Check unavailable
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>

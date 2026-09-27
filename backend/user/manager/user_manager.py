@@ -43,7 +43,8 @@ class CustomUserManager(BaseUserManager):
         user = self.model.objects.filter(id=id).first()
 
         if not user:
-            user = self.model(id=id)
+            # migrated accounts are not signups, their join date is unknown
+            user = self.model(id=id, date_joined=None)
 
         # migration flag
         user._migration_in_progress = True

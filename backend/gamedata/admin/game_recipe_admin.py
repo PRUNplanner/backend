@@ -1,14 +1,14 @@
-from django.contrib import admin, messages
-from django.http import HttpRequest
-from django.shortcuts import redirect
+from core.admin import ReadOnlyAdminMixin
+from django.contrib import admin
+from django.http import HttpRequest, HttpResponseRedirect
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.decorators import action
 
-from gamedata.fio.importers import import_all_recipes
+from gamedata.admin.fio_import import queue_fio_import
 from gamedata.models import GameRecipe, GameRecipeInput, GameRecipeOutput
 
 
-class RecipeInputInline(TabularInline):
+class RecipeInputInline(ReadOnlyAdminMixin, TabularInline):
     model = GameRecipeInput
     can_delete = False
     extra = 0
@@ -16,7 +16,7 @@ class RecipeInputInline(TabularInline):
     tab = True
 
 
-class RecipeOutputInline(TabularInline):
+class RecipeOutputInline(ReadOnlyAdminMixin, TabularInline):
     model = GameRecipeOutput
     can_delete = False
     extra = 0
@@ -25,25 +25,14 @@ class RecipeOutputInline(TabularInline):
 
 
 @admin.register(GameRecipe)
-class GameRecipeAdmin(ModelAdmin):
+class GameRecipeAdmin(ReadOnlyAdminMixin, ModelAdmin):
     list_display = ['standard_recipe_name', 'building_ticker', 'time_ms']
-    search_fields = ['standard_recipe_name', 'building_ticker', 'time_ms']
+    search_fields = ['standard_recipe_name', 'building_ticker']
 
-    inlines = [
-        RecipeInputInline,
-        RecipeOutputInline,
-    ]
+    inlines = [RecipeInputInline, RecipeOutputInline]
 
     actions_list = ['action_fio_import_recipe']
 
-    @action(description='Import from FIO', url_path='changelist-fio-import-recipe')
-    def action_fio_import_recipe(self, request: HttpRequest):
-        try:
-            recipes, inputs, outputs = import_all_recipes()
-            self.message_user(
-                request, f'Recipes synced! Recipes: {recipes}, Inputs: {inputs}, Outputs: {outputs}.', messages.SUCCESS
-            )
-        except Exception:
-            self.message_user(request, 'Failed refresh recipes.', messages.ERROR)
-
-        return redirect('../')
+    @action(description='Import from FIO', url_path='changelist-fio-import-recipe', icon='download')
+    def action_fio_import_recipe(self, request: HttpRequest) -> HttpResponseRedirect:
+        return queue_fio_import(request, GameRecipe, 'recipes')

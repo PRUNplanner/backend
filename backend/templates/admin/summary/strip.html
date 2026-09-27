@@ -1,0 +1,24 @@
+{% load admin_ops %}
+
+{% admin_summary as summary %}
+{% if summary %}
+  <div class="flex flex-col gap-3 mb-6">
+    {% if summary.tiles %}
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {% for tile in summary.tiles %}
+          {% include "admin/summary/tile.html" %}
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if summary.segments %}
+      {% include "admin/summary/segments.html" with title=summary.segments_title segments=summary.segments %}
+    {% endif %}
+    {% if summary.charts %}
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {% for chart in summary.charts %}
+          {% include "admin/summary/chart.html" %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endif %}

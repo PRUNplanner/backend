@@ -1,0 +1,58 @@
+{% load l10n %}
+
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6" aria-label="Top lists">
+  {% if top_planets is not None %}
+    <div class="bg-base-900 border border-base-800 rounded-default p-4">
+      <h3 class="mb-3 font-semibold text-important text-sm">Top 10 planets by plan count</h3>
+      <div class="flex flex-col gap-2 text-sm" style="font-variant-numeric: tabular-nums">
+        {% for row in top_planets %}
+          <a href="{{ row.href }}" class="flex items-center gap-3">
+            <span class="w-24 truncate text-important">{{ row.label }}</span>
+            <span class="grow">
+              <span style="display: block;
+                           height: 8px;
+                           border-radius: 2px;
+                           width: {{ row.pct|unlocalize }}%;
+                           background: {{ bar_colour }}"></span>
+            </span>
+            <span class="w-12 text-right">{{ row.value }}</span>
+          </a>
+        {% empty %}
+          <p class="text-subtle">No plans yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Top planets" %}
+  {% endif %}
+
+  {% if top_shared is not None %}
+    <div class="bg-base-900 border border-base-800 rounded-default p-4">
+      <h3 class="mb-3 font-semibold text-important text-sm">Top 10 shared plans by views</h3>
+      <table class="w-full text-sm" style="font-variant-numeric: tabular-nums">
+        <tbody>
+          {% for row in top_shared %}
+            <tr class="border-b border-base-800">
+              <td class="py-1 pr-2 truncate"><a href="{{ row.href }}" class="text-important">{{ row.label }}</a></td>
+              <td class="py-1 pr-2 text-subtle truncate">{{ row.owner }}</td>
+              <td class="py-1 w-40">
+                <span style="display: block;
+                             height: 8px;
+                             border-radius: 2px;
+                             width: {{ row.pct|unlocalize }}%;
+                             background: {{ bar_colour }}"></span>
+              </td>
+              <td class="py-1 pl-2 text-right">{{ row.value }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td class="py-1 text-subtle">No shared plans yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Top shared plans" %}
+  {% endif %}
+</section>

@@ -1,0 +1,24 @@
+{% load unfold %}
+
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6" aria-label="Product">
+  {% if plans_per_user %}
+    {% include "admin/summary/chart.html" with chart=plans_per_user %}
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Users by number of plans" %}
+  {% endif %}
+
+  {% if feature_adoption %}
+    <div class="bg-base-900 border border-base-800 rounded-default p-4 flex flex-col gap-4">
+      <h3 class="font-semibold text-important text-sm">Feature adoption, share of users</h3>
+      {% for row in feature_adoption.rows %}
+        <a href="{{ row.href }}">
+          {% component "unfold/components/progress.html" with title=row.label description=row.text value=row.pct %}
+          {% endcomponent %}
+        </a>
+      {% endfor %}
+      <p class="text-xs text-subtle">Out of {{ feature_adoption.users }} users; FIO sync as a share of users with FIO credentials.</p>
+    </div>
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Feature adoption" %}
+  {% endif %}
+</section>

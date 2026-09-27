@@ -1,0 +1,18 @@
+{% load unfold %}
+
+<{% if tile.href %}a href="{{ tile.href }}"{% else %}div{% endif %} class="bg-base-900 border border-base-800 rounded-default p-4 flex flex-col gap-1 min-w-0{% if tile.href %} hover:border-base-700{% endif %}">
+  <span class="text-sm text-subtle truncate">{{ tile.label }}</span>
+  <span class="text-2xl font-semibold text-important" style="font-variant-numeric: tabular-nums">{{ tile.value }}</span>
+  {% if tile.change %}
+    <span class="text-xs" style="color: {{ tile.change.colour }}; font-variant-numeric: tabular-nums">
+      {{ tile.change.arrow }} {{ tile.change.text }} <span class="text-subtle">vs previous period</span>
+    </span>
+  {% endif %}
+  {% if tile.sub %}<span class="text-xs text-subtle">{{ tile.sub }}</span>{% endif %}
+  {% if tile.spark %}
+    <div class="mt-2" style="height: 36px">
+      {% component "unfold/components/chart/line.html" with data=tile.spark.data options=tile.spark.options class="h-full" %}
+      {% endcomponent %}
+    </div>
+  {% endif %}
+</{% if tile.href %}a{% else %}div{% endif %}>

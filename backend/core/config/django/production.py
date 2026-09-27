@@ -4,6 +4,8 @@ from .base import *  # noqa: F403
 
 DEBUG: bool = False
 
+ENVIRONMENT_NAME = 'production'
+
 ALLOWED_HOSTS = settings.django_allowed_hosts.split(',')
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
