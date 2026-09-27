@@ -1,6 +1,14 @@
 from django.db import transaction
 from django.db.models import Max
 
+from gamedata.fio.schemas import (
+    FIOBuildingSchema,
+    FIOExchangeCXPC,
+    FIOExchangeSchema,
+    FIOMaterialSchema,
+    FIOPlanetSchema,
+    FIORecipeSchema,
+)
 from gamedata.fio.schemas.fio_planet import (
     FIOPlanetCOGCProgramSchema,
     FIOPlanetProductionFeeSchema,
@@ -12,6 +20,7 @@ from gamedata.models import (
     GameBuilding,
     GameBuildingCost,
     GameExchange,
+    GameExchangeCXPC,
     GameMaterial,
     GamePlanet,
     GamePlanetCOGCProgram,
@@ -185,6 +194,12 @@ def import_all_planets() -> bool:
     with get_fio_service() as fio:
         planets = fio.get_all_planets()
 
+    save_planets(planets)
+    return True
+
+
+def save_planets(planets: list[FIOPlanetSchema]) -> None:
+    """Replaces the given planets and their resources, fees and COGC programs. Needs the materials first."""
     fetched_planet_natural_ids = [p.planet_natural_id for p in planets]
 
     with transaction.atomic():
@@ -239,8 +254,6 @@ def import_all_planets() -> bool:
 
     GamedataCacheManager.delete_pattern('*planet*')
 
-    return True
-
 
 def import_planet_infrastructure(planet_natural_id: str) -> bool:
     with get_fio_service() as fio:
@@ -291,39 +304,66 @@ def import_all_exchanges() -> bool:
         with get_fio_service() as fio:
             exchanges = fio.get_all_exchanges()
 
-        with transaction.atomic():
-            exchange_objs = [GameExchange(**e.model_dump()) for e in exchanges]
-
-            GameExchange.objects.bulk_create(
-                exchange_objs,
-                update_conflicts=True,
-                unique_fields=['ticker_id'],
-                update_fields=[
-                    'mm_buy',
-                    'mm_sell',
-                    'price_average',
-                    'ask',
-                    'bid',
-                    'ask_count',
-                    'bid_count',
-                    'supply',
-                    'demand',
-                ],
-            )
-
-        # clear cache as live data changes
-        GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='json'))
-        GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='csv'))
+        save_exchanges(exchanges)
         return True
 
     except Exception:
         return False
 
 
+def save_exchanges(exchanges: list[FIOExchangeSchema]) -> None:
+    with transaction.atomic():
+        exchange_objs = [GameExchange(**e.model_dump()) for e in exchanges]
+
+        GameExchange.objects.bulk_create(
+            exchange_objs,
+            update_conflicts=True,
+            unique_fields=['ticker_id'],
+            update_fields=[
+                'mm_buy',
+                'mm_sell',
+                'price_average',
+                'ask',
+                'bid',
+                'ask_count',
+                'bid_count',
+                'supply',
+                'demand',
+            ],
+        )
+
+    # clear cache as live data changes
+    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='json'))
+    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='csv'))
+
+
+def cxpc_objects(ticker: str, exchange_code: str, cxpc_data: list[FIOExchangeCXPC]) -> list[GameExchangeCXPC]:
+    """The daily price history rows; FIO also sends other intervals."""
+    return [
+        GameExchangeCXPC(
+            ticker=ticker,
+            exchange_code=exchange_code,
+            date_epoch=item.date_epoch,
+            open_p=item.open,
+            close_p=item.close,
+            high_p=item.high,
+            low_p=item.low,
+            volume=item.volume,
+            traded=item.traded,
+        )
+        for item in cxpc_data
+        if item.interval == 'DAY_ONE'
+    ]
+
+
 def import_all_recipes() -> tuple[int, int, int]:
     with get_fio_service() as fio:
         recipes = fio.get_all_recipes()
 
+    return save_recipes(recipes)
+
+
+def save_recipes(recipes: list[FIORecipeSchema]) -> tuple[int, int, int]:
     with transaction.atomic():
         GameRecipe.objects.all().delete()
 
@@ -369,6 +409,10 @@ def import_all_materials() -> tuple[int, int]:
     with get_fio_service() as fio:
         fio_materials = fio.get_all_materials()
 
+    return save_materials(fio_materials)
+
+
+def save_materials(fio_materials: list[FIOMaterialSchema]) -> tuple[int, int]:
     material_objs = [GameMaterial(**mat.model_dump()) for mat in fio_materials]
 
     with transaction.atomic():
@@ -385,7 +429,11 @@ def import_all_buildings() -> tuple[int, int]:
     with get_fio_service() as fio:
         fio_buildings = fio.get_all_buildings()
 
-        fetched_ids = [b.building_id for b in fio_buildings]
+    return save_buildings(fio_buildings)
+
+
+def save_buildings(fio_buildings: list[FIOBuildingSchema]) -> tuple[int, int]:
+    fetched_ids = [b.building_id for b in fio_buildings]
 
     with transaction.atomic():
         # Delete all existing buildings
