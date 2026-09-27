@@ -196,10 +196,12 @@ class TestUserActions:
         assert LogEntry.objects.count() == 1
 
     def test_resend_verification(self, admin_client: Client) -> None:
-        unverified = baker.make(User, email='a@example.com', is_email_verified=False)
-        verified = baker.make(User, email='b@example.com', is_email_verified=True)
+        # creating a user with an email also sends a code (user signal): patched for the whole test, so no broker call
+        with patch('user.services.verification_service.VerificationService.create_and_send_code') as send:
+            unverified = baker.make(User, email='a@example.com', is_email_verified=False)
+            verified = baker.make(User, email='b@example.com', is_email_verified=True)
+            send.reset_mock()
 
-        with patch('user.admin.VerificationService.create_and_send_code') as send:
             self._run(admin_client, 'action_resend_verification', [unverified, verified])
 
         send.assert_called_once_with(unverified, VerificationeCodeChoices.EMAIL_VERIFICATION)

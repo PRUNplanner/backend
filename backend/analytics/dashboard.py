@@ -568,13 +568,15 @@ def dashboard_index(request: HttpRequest, context: dict[str, object]) -> dict[st
         data = build_dashboard(days)
         safe(lambda: cache.set(key, data, CACHE_TTL_SECONDS))
 
+    built_at = data['built_at']
+    cached_ago = int(time.time() - built_at) if isinstance(built_at, float) else 0
     context.update(
         {
             **data,
             'title': 'Overview',
             'range_days': days,
             'ranges': RANGES,
-            'cached_seconds_ago': int(time.time() - built_at) if isinstance(built_at := data['built_at'], float) else 0,
+            'cached_seconds_ago': cached_ago,
         }
     )
     return context
