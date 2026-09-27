@@ -156,6 +156,8 @@ def deep_merge(base, overrides):
     return result
 
 
+LAYOUT_NAVIGATION_STYLES = ['full', 'collapsed']
+
 DEFAULT_PREFERENCES = {
     'locale': 'en_US',
     'default_empire_uuid': None,
@@ -191,15 +193,20 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     burnResupplyDays = serializers.IntegerField(source='burn_resupply_days', min_value=0, default=18, required=False)
     burnOrigin = serializers.CharField(source='burn_origin', required=False)
     supplyCartDays = serializers.IntegerField(source='supply_cart_days', min_value=0, default=20, required=False)
-    layoutNavigationStyle = serializers.CharField(source='layout_navigation_style', required=False)
-
-    planOverrides = serializers.DictField(
-        source='plan_overrides', child=PlanOverrideSerializer(), allow_null=True, required=False
+    layoutNavigationStyle = serializers.ChoiceField(
+        source='layout_navigation_style', choices=LAYOUT_NAVIGATION_STYLES, required=False
     )
+
+    planOverrides = serializers.DictField(source='plan_overrides', child=PlanOverrideSerializer(), required=False)
 
     def to_representation(self, instance):
         data_from_db = instance if isinstance(instance, dict) else {}
         merged = deep_merge(DEFAULT_PREFERENCES, data_from_db)
+        # ChoiceField / allow_null only guard writes, fix up values stored before they existed
+        if merged['plan_overrides'] is None:
+            merged['plan_overrides'] = {}
+        if merged['layout_navigation_style'] not in LAYOUT_NAVIGATION_STYLES:
+            merged['layout_navigation_style'] = 'full'
         return super().to_representation(merged)
 
 

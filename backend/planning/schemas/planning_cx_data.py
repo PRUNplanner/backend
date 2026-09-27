@@ -83,7 +83,7 @@ class CXExchangeTickerPreferences_Legacy(BaseModel):
 
 
 class CXTickerPreference_V1(BaseModel):
-    ticker: str
+    ticker: str = Field(..., min_length=1)
     type: CX_TYPES
     value: float
 

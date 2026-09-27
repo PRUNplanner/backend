@@ -1,3 +1,4 @@
+import copy
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -281,6 +282,34 @@ class TestGameStorageCacheHeaders:
         assert response.status_code == 200
         assert 'private' in response['Cache-Control']
         assert 'public' not in response['Cache-Control']
+
+
+class TestGameStorageViewSet:
+    def test_null_or_missing_storage_items_return_empty_list(
+        self,
+        api_client: APIClient,
+        user_factory: Callable[..., User],
+        fio_playerdata_factory: Callable[..., object],
+    ) -> None:
+        user = user_factory()
+        storage_data = copy.deepcopy(fio_storage_data)
+        stores = [s for s in storage_data if s['Type'] == 'STORE']
+        stores[0]['StorageItems'] = None  # ty:ignore[invalid-assignment]
+        del stores[1]['StorageItems']
+        fio_playerdata_factory(
+            user=user,
+            storage_data=storage_data,
+            site_data=fio_sites_data,
+            warehouse_data=fio_warehouse_data,
+            ship_data=fio_ship_data,
+        )
+
+        response = api_client.as_user(user).get(reverse('data:storage-retrieve'))  # ty:ignore[unresolved-attribute]
+
+        assert response.status_code == 200
+        planets = response.data['storage_data']['planets'].values()
+        assert all(isinstance(p['StorageItems'], list) for p in planets)
+        assert sum(p['StorageItems'] == [] for p in planets) >= 2
 
 
 class TestFIOWebhookIngestConcurrency:

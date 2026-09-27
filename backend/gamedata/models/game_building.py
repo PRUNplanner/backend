@@ -31,7 +31,7 @@ class GameBuilding(models.Model):
         max_length=50,
         choices=GameBuildingExpertiseChoices.choices,
         blank=True,
-        default='',
+        default=None,
         db_index=True,
         null=True,
     )
