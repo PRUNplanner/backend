@@ -91,7 +91,7 @@ def user_handle_post_refresh(user_id: int):
         if user._has_fio_credentials():
             from gamedata.tasks import gamedata_refresh_user_fiodata
 
-            gamedata_refresh_user_fiodata.delay(user.id, user.prun_username, user.fio_apikey)
+            gamedata_refresh_user_fiodata.delay(user.id)
         else:
             from gamedata.tasks import gamedata_clean_user_fiodata
 

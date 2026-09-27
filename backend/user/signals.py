@@ -66,9 +66,7 @@ def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
 
         # trigger refresh on every save (last_login update)
         logger.info('signal:trigger_fio_refresh', user=instance.id, task='gamedata_refresh_user_fiodata')
-        transaction.on_commit(
-            lambda: gamedata_refresh_user_fiodata.delay(instance.id, instance.prun_username, instance.fio_apikey)
-        )
+        transaction.on_commit(lambda: gamedata_refresh_user_fiodata.delay(instance.id))
 
     elif fio_existed_before:
         # user had fio, but not anymore, so we clean the users data

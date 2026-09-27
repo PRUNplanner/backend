@@ -49,7 +49,16 @@ class TestGamedataTasks:
         mock_fio.get_user_storage.side_effect = Exception if scenario == 'fio_fail' else None
         mock_fio.get_user_storage.return_value = [MagicMock(model_dump=lambda **k: {})]
 
-        assert gamedata_refresh_user_fiodata(user.id, 'U', 'K') is (True if scenario == 'success' else False)
+        assert gamedata_refresh_user_fiodata(user.id) is (True if scenario == 'success' else False)
+
+    @patch('gamedata.tasks.get_fio_service')
+    def test_refresh_user_fiodata_loads_credentials_and_accepts_legacy_args(self, mock_get_fio):
+        user = baker.make('user.User', prun_username='Stored', fio_apikey='stored-key')
+        mock_fio = mock_get_fio.return_value.__enter__.return_value
+
+        # a task queued before the signature change still carries (prun_username, fio_apikey)
+        assert gamedata_refresh_user_fiodata(user.id, 'Old', 'old-key') is True
+        mock_fio.get_user_storage.assert_called_once_with('Stored', 'stored-key')
 
     @patch('gamedata.tasks.get_fio_service')
     @patch('gamedata.tasks.chord')
@@ -96,7 +105,6 @@ class TestGamedataTasks:
 
 @pytest.mark.django_db
 class TestDispatchFioUpdatesPayload:
-    @pytest.mark.xfail(strict=True, reason='audit: the FIO api key is sent through the broker as a task argument')
     def test_dispatched_task_does_not_carry_the_api_key(self):
         user = baker.make('user.User', prun_username='T', fio_apikey='secret-key', last_login=timezone.now())
         baker.make(
