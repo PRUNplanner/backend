@@ -122,7 +122,9 @@ class CacheManager:
         csv_header: list[str] | None = None,
     ) -> HttpResponse:
         """Serves the pre-gzipped entry, or its plain body to clients that don't accept gzip."""
-        assert scope is not None or not ns.private, f'{ns.name} is private, its scope must be the user id'
+        if ns.private and scope is None:
+            # a missing scope would share one user's entry with everyone
+            raise ValueError(f'{ns.name} is private, its scope must be the user id')
 
         key = cls.key(ns, endpoint, *parts, scope=scope, fmt=fmt)
         cached: CacheEntry | None = cache.get(key)

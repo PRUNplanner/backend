@@ -105,7 +105,7 @@ class TestRespond:
         assert _respond(PRIVATE, scope=1)['Cache-Control'] == 'private, no-cache'
 
     def test_private_namespace_needs_a_scope(self) -> None:
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError, match='scope must be the user id'):
             _respond(PRIVATE)
 
     def test_csv(self) -> None:
