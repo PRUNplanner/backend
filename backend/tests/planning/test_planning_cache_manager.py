@@ -56,3 +56,16 @@ class TestPlanningCacheManager:
 
         assert mock_get_or_set.called
         assert mock_get_or_set.call_args.kwargs['timeout'] == 3600
+
+
+@pytest.mark.usefixtures('locmem_cache')
+def test_invalidate_user_moves_only_that_users_keys_to_a_new_version():
+    before = PlanningCacheManager.key_for_plan_list(1)
+    other = PlanningCacheManager.key_for_plan_list(11)
+
+    PlanningCacheManager.invalidate_user(1)
+    after_first = PlanningCacheManager.key_for_plan_list(1)
+    PlanningCacheManager.invalidate_user(1)
+
+    assert len({before, after_first, PlanningCacheManager.key_for_plan_list(1)}) == 3
+    assert PlanningCacheManager.key_for_plan_list(11) == other

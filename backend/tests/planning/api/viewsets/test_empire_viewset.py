@@ -205,10 +205,6 @@ class TestEmpireViewSetSyncState:
         assert empire.empire_state['empire_total']['H2O']['p'] == 10.0
 
     @pytest.mark.usefixtures('locmem_cache')
-    @pytest.mark.xfail(
-        strict=True,
-        reason='audit: empire_state is in no cached payload, yet sync_state runs two full keyspace scans',
-    )
     def test_sync_state_keeps_planning_caches(
         self, api_client, user_factory, empire_factory, plan_factory, django_capture_on_commit_callbacks
     ):

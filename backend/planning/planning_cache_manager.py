@@ -10,37 +10,55 @@ class PlanningCacheManager(CacheManager):
 
     CACHE_TIMEOUT_1Hour = 60 * 60
 
+    # Per-user version: every planning key embeds it, so bumping it drops all of
+    # a user's planning caches at once; the orphaned keys expire on their TTL.
+    @classmethod
+    def key_for_user_version(cls, user_id: int) -> str:
+        return cls.make_key(user_id, 'version')
+
+    @classmethod
+    def make_user_key(cls, user_id: int, *parts: str | UUID) -> str:
+        version = cls.get(cls.key_for_user_version(user_id)) or 1
+        return cls.make_key(user_id, f'v{version}', *parts)
+
+    @classmethod
+    def invalidate_user(cls, user_id: int) -> None:
+        key = cls.key_for_user_version(user_id)
+        # no expiry, so the counter outlives every key built from it
+        if not cls.add(key, 2, timeout=None):
+            cls.incr(key)
+
     # Keys
     ## Plan
     @classmethod
     def key_for_plan_list(cls, user_id: int) -> str:
-        return cls.make_key(user_id, 'plan', 'list')
+        return cls.make_user_key(user_id, 'plan', 'list')
 
     @classmethod
     def key_plan_retrieve(cls, user_id: int, plan_id: UUID) -> str:
-        return cls.make_key(user_id, 'plan', 'retrieve', plan_id)
+        return cls.make_user_key(user_id, 'plan', 'retrieve', plan_id)
 
     ## Empire
     @classmethod
     def key_for_empire_list(cls, user_id: int) -> str:
-        return cls.make_key(user_id, 'empire', 'list')
+        return cls.make_user_key(user_id, 'empire', 'list')
 
     @classmethod
     def key_for_empire_retrieve(cls, user_id: int, empire_id: UUID) -> str:
-        return cls.make_key(user_id, 'empire', 'retrieve', empire_id)
+        return cls.make_user_key(user_id, 'empire', 'retrieve', empire_id)
 
     @classmethod
     def key_for_empire_retrieve_plans(cls, user_id: int, empire_id: UUID) -> str:
-        return cls.make_key(user_id, 'empire', 'retrieve', 'plans', empire_id)
+        return cls.make_user_key(user_id, 'empire', 'retrieve', 'plans', empire_id)
 
     ## CX
     @classmethod
     def key_for_cx_list(cls, user_id: int) -> str:
-        return cls.make_key(user_id, 'cx', 'list')
+        return cls.make_user_key(user_id, 'cx', 'list')
 
     @classmethod
     def key_for_cx_retrieve(cls, user_id: int, cx_id: UUID) -> str:
-        return cls.make_key(user_id, 'cx', 'retrieve', cx_id)
+        return cls.make_user_key(user_id, 'cx', 'retrieve', cx_id)
 
     # Operations
     ## Plan

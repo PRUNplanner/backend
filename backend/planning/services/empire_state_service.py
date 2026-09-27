@@ -2,6 +2,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from analytics.models import AnalyticsEmpireMaterialSnapshot
 from django.db import transaction
+from django.utils import timezone
 from planning.models import PlanningEmpire
 
 
@@ -12,7 +13,11 @@ class EmpireStateService:
 
         empire.empire_state = state_data
         empire.needs_state_sync = True
-        empire.save(update_fields=['empire_state', 'modified_at', 'needs_state_sync'])
+        empire.modified_at = timezone.now()
+        # queryset update fires no post_save: the state is in no cached payload
+        PlanningEmpire.objects.filter(pk=empire.pk).update(
+            empire_state=empire.empire_state, needs_state_sync=True, modified_at=empire.modified_at
+        )
 
     @staticmethod
     def sync_snapshot(empire: PlanningEmpire) -> None:

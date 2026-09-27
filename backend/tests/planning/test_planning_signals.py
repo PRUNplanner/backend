@@ -120,7 +120,6 @@ class TestPlanChangesInvalidate:
         assert _get_detail(api_client, user, detail_url).data['plans'][0]['plan_name'] == 'After'
         assert _get(api_client, user, plans_url).data[0]['plan_name'] == 'After'
 
-    @pytest.mark.xfail(strict=True, reason='audit: plan changes never invalidate the cx list, which nests plans')
     def test_plan_rename_refreshes_nested_plans_in_cx_list(
         self, api_client, user_factory, plan_factory, empire_factory, cx_factory, django_capture_on_commit_callbacks
     ):
@@ -172,7 +171,6 @@ class TestEmpireChangesInvalidate:
 
         assert _get(api_client, user, url).data[0]['empires'][0]['empire_name'] == 'After'
 
-    @pytest.mark.xfail(strict=True, reason='audit: empire changes never invalidate the cx list, which nests empires')
     def test_empire_rename_refreshes_nested_empires_in_cx_list(
         self, api_client, user_factory, empire_factory, cx_factory, django_capture_on_commit_callbacks
     ):
@@ -229,10 +227,6 @@ class TestInvalidationScope:
 
         assert _get(api_client, other, url)['X-Cache-Hit'] == '1'
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit: pattern '*{user_id}:empire:retrieve*' also matches users 11, 21, 101, ... of user 1",
-    )
     def test_changes_leave_caches_of_users_with_suffix_ids_alone(
         self, api_client, user_factory, empire_factory, plan_factory, django_capture_on_commit_callbacks
     ):
@@ -256,7 +250,6 @@ class TestInvalidationCost:
     """
 
     @pytest.mark.parametrize('linked_plans', [1, 5])
-    @pytest.mark.xfail(strict=True, reason='audit: one keyspace scan per cascaded empire-plan junction')
     def test_empire_delete_scans_at_most_once(
         self,
         linked_plans: int,
@@ -275,7 +268,6 @@ class TestInvalidationCost:
 
         assert len(PatternLocMemCache.pattern_calls) <= 1
 
-    @pytest.mark.xfail(strict=True, reason='audit: one keyspace scan per cascaded empire-plan junction')
     def test_plan_delete_scans_at_most_once(
         self, user_factory, empire_factory, plan_factory, django_capture_on_commit_callbacks
     ):
@@ -289,7 +281,6 @@ class TestInvalidationCost:
 
         assert len(PatternLocMemCache.pattern_calls) <= 1
 
-    @pytest.mark.xfail(strict=True, reason='audit: every plan save runs a full keyspace scan')
     def test_plan_save_does_not_scan_keyspace(self, user_factory, plan_factory, django_capture_on_commit_callbacks):
         user = user_factory()
         plan = plan_factory(user=user)

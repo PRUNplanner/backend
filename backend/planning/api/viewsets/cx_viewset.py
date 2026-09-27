@@ -110,6 +110,6 @@ class CXViewSet(
         with transaction.atomic():
             PlanningEmpire.objects.filter(user=user).update(cx_id=Case(*update_conditions, default=None))
 
-        PlanningCacheManager.delete_pattern(f'*PLANNING:{user.id}:*')
+        PlanningCacheManager.invalidate_user(user.id)
 
         return self.list(request)

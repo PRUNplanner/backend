@@ -42,8 +42,12 @@ class CacheManager:
         cache.delete_pattern(pattern)
 
     @classmethod
-    def add(cls, key: str, content: Any, timeout: int) -> bool:
+    def add(cls, key: str, content: Any, timeout: int | None) -> bool:
         return cache.add(key, content, timeout=timeout)
+
+    @classmethod
+    def incr(cls, key: str) -> int:
+        return cache.incr(key)
 
     # Response handling
     @classmethod
