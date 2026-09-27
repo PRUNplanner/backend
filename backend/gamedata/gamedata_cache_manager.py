@@ -1,173 +1,36 @@
-import re
-from collections.abc import Callable
-from typing import Any
+from core.services.cache_manager import CacheNamespace
+from django.core.cache import cache
 
-from core.services.cache_manager import CacheManager
-from django.http import HttpResponse
-from rest_framework.response import Response
+HOUR = 60 * 60
+DAY = 24 * HOUR
+
+MATERIALS = CacheNamespace('gamedata:materials', DAY)
+RECIPES = CacheNamespace('gamedata:recipes', DAY)
+BUILDINGS = CacheNamespace('gamedata:buildings', DAY)
+EXCHANGES = CacheNamespace('gamedata:exchanges', DAY)
+CXPC = CacheNamespace('gamedata:cxpc', 3 * HOUR)
+# scope: planet natural id. 1 h, as the active cogc program is computed against the build time
+PLANET = CacheNamespace('gamedata:planet', HOUR)
+# single planet refreshes (~9 s apart) rely on the short ttl, full imports invalidate
+PLANET_LIST = CacheNamespace('gamedata:planet-list', 15 * 60)
+STORAGE = CacheNamespace('gamedata:storage', 3 * HOUR, private=True)
 
 
-class GamedataCacheManager(CacheManager):
-    BASE_KEY = 'GAMEDATA'
+class GamedataCacheManager:
+    """FIO refresh lock per user. A lock, not a response cache."""
 
-    CACHE_TIMEOUT = 60 * 15
-    CACHE_TIMEOUT_30MIN = 60 * 30
-    CACHE_TIMEOUT_3HOURS = 60 * 60 * 3
-    CACHE_TIMEOUT_1DAY = 60 * 60 * 24
+    @staticmethod
+    def key_user_fio_lock(user_id: int) -> str:
+        return f'GAMEDATA:task:fio_refresh_lock:{user_id}'
 
-    # Keys
-    @classmethod
-    def key_material_list(cls) -> str:
-        return cls.make_key('material', 'list')
-
-    @classmethod
-    def key_recipe_list(cls) -> str:
-        return cls.make_key('recipe', 'list')
-
-    @classmethod
-    def key_building_list(cls) -> str:
-        return cls.make_key('building', 'list')
-
-    @classmethod
-    def key_exchange_list(cls, fmt: str = 'json') -> str:
-        # csv entries hold rendered csv since v2, older ones hold json
-        return cls.make_key('exchange', 'list', fmt if fmt == 'json' else f'{fmt}-v2')
-
-    @classmethod
-    def key_planet_list(cls) -> str:
-        return cls.make_key('planet', 'list')
-
-    @classmethod
-    def key_planet_get(cls, planet_natural_id: str) -> str:
-        return cls.make_key('planet', planet_natural_id)
-
-    @classmethod
-    def key_planet_searchterm(cls, search_term: str) -> str:
-        return cls.make_key('planet', 'search_term', search_term)
-
-    @classmethod
-    def key_planet_multiple(cls, planet_natural_ids: list[str]) -> str:
-        return cls.make_key('planet', *sorted(set(planet_natural_ids)))
-
-    @classmethod
-    def key_planet_popr(cls, planet_natural_id: str) -> str:
-        return cls.make_key('planet', 'popr', planet_natural_id)
-
-    @classmethod
-    def key_user_storage(cls, user_id: int) -> str:
-        return cls.make_key('storage', user_id)
-
-    @classmethod
-    def key_exchange_cxpc_response(cls, ticker: str, exchange_code: str | None) -> str:
-        if exchange_code:
-            return cls.make_key('exchange', 'cxpc', ticker, exchange_code)
-        else:
-            return cls.make_key('exchange', 'cxpc', ticker)
-
-    @classmethod
-    def key_user_fio_lock(cls, user_id: int) -> str:
-        return cls.make_key('task', 'fio_refresh_lock', user_id)
-
-    @classmethod
-    def key_planet_search(cls, search_request: dict[str, list[str] | bool]) -> str:
-        parts = []
-        for key in sorted(search_request.keys()):
-            value = search_request[key]
-
-            if isinstance(value, list):
-                value_str = ','.join(sorted(value))
-            elif isinstance(value, bool):
-                value_str = 'TRUE' if value else 'FALSE'
-            else:
-                value_str = str(value)
-            parts.append(value_str)
-
-        return cls.make_key('planet', 'search', *parts)
-
-    # Operations
     @classmethod
     def has_fio_refresh_lock(cls, user_id: int) -> bool:
-        return cls.get(cls.key_user_fio_lock(user_id)) is not None
+        return cache.get(cls.key_user_fio_lock(user_id)) is not None
 
     @classmethod
     def set_fio_refresh_lock(cls, user_id: int) -> bool:
-        return cls.add(cls.key_user_fio_lock(user_id), 'fio_storage_refresh_locked', 60 * 5)
+        return cache.add(cls.key_user_fio_lock(user_id), 'fio_storage_refresh_locked', 60 * 5)
 
     @classmethod
     def delete_fio_refresh_lock(cls, user_id: int) -> None:
-        return cls.delete(cls.key_user_fio_lock(user_id))
-
-    @classmethod
-    def get_material_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_material_list()
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
-
-    @classmethod
-    def get_recipe_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_recipe_list()
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
-
-    @classmethod
-    def get_building_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_building_list()
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
-
-    @classmethod
-    def get_exchange_list_response(
-        cls, func: Callable[[], Any], fmt: str = 'json', csv_header: list[str] | None = None
-    ) -> Response | HttpResponse:
-        key = cls.key_exchange_list(fmt)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY, fmt=fmt, csv_header=csv_header)
-
-    @classmethod
-    def get_planet_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_planet_list()
-        # short ttl instead of invalidating per import: a planet refreshes every ~9s, the full list is costly to build
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT)
-
-    @classmethod
-    def get_planet_get_response(cls, planet_natural_id: str, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_planet_get(planet_natural_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
-
-    @classmethod
-    def get_planet_multiple_response(
-        cls, planet_natural_ids: list[str], func: Callable[[], Any]
-    ) -> Response | HttpResponse:
-        key = cls.key_planet_multiple(planet_natural_ids)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_30MIN)
-
-    @classmethod
-    def get_storage_response(cls, user_id: int, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_user_storage(user_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_3HOURS, private=True)
-
-    @classmethod
-    def get_planet_search_response(
-        cls, search_request: dict[str, list[str] | bool], func: Callable[[], Any]
-    ) -> Response | HttpResponse:
-        key = cls.key_planet_search(search_request)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_30MIN)
-
-    @classmethod
-    def get_planet_searchterm(cls, search_term: str, func: Callable[[], Any]) -> Response | HttpResponse:
-
-        safe_term = re.sub(r'[^a-zA-Z0-9]', '_', search_term.strip().lower())
-
-        key = cls.key_planet_searchterm(safe_term)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_30MIN)
-
-    @classmethod
-    def get_exchange_cxpc_response(
-        cls,
-        ticker: str,
-        exchange_code: str | None,
-        func: Callable[[], Any],
-    ) -> Response | HttpResponse:
-        key = cls.key_exchange_cxpc_response(ticker, exchange_code)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_3HOURS)
-
-    @classmethod
-    def get_planet_latest_popr(cls, planet_natural_id: str, func: Callable[[], Any]) -> Response | HttpResponse:
-        key = cls.key_planet_popr(planet_natural_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
+        cache.delete(cls.key_user_fio_lock(user_id))

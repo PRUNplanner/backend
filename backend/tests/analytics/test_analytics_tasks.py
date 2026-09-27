@@ -38,6 +38,20 @@ class TestBulkMaterializeEmpireSnapshots:
 
         assert api_client.as_user(user).get(url)['X-Cache-Hit'] == '1'
 
+    @pytest.mark.usefixtures('locmem_cache')
+    def test_refreshes_the_global_tracker_only_when_something_changed(self, api_client) -> None:
+        url = reverse('analytics:planning-insight-materials')
+        api_client.get(url)
+
+        analytics_bulk_materialize_empire_snapshots()
+        assert api_client.get(url)['X-Cache-Hit'] == '1'
+
+        baker.make('planning.PlanningEmpire', empire_state=_state(5.0), needs_state_sync=True)
+        analytics_bulk_materialize_empire_snapshots()
+        response = api_client.get(url)
+        assert response['X-Cache-Hit'] == '0'
+        assert response.data[0][0] == 'H2O'
+
     def test_state_synced_during_run_stays_dirty(self) -> None:
         empire: PlanningEmpire = baker.make('planning.PlanningEmpire', empire_state=_state(5.0), needs_state_sync=True)
         real_sync_snapshot = EmpireStateService.sync_snapshot

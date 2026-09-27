@@ -2,13 +2,14 @@ from datetime import timedelta
 
 import structlog
 from celery import chord, shared_task
+from core.services.cache_manager import CacheManager
 from django.db import connection, transaction
 from django.db.models import F, Q
 from django.utils import timezone
 
 from gamedata.fio.schemas import FIOWebhookRootSchema
 from gamedata.fio.services import get_fio_service
-from gamedata.gamedata_cache_manager import GamedataCacheManager
+from gamedata.gamedata_cache_manager import CXPC, EXCHANGES, GamedataCacheManager
 
 logger = structlog.get_logger(__name__)
 
@@ -339,9 +340,8 @@ def refresh_exchange_analytics():
     with connection.cursor() as cursor:
         cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY prunplanner_game_exchanges_analytics;')
 
-    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='json'))
-    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='csv'))
-    GamedataCacheManager.delete_pattern('*cxpc*')
+    CacheManager.invalidate(EXCHANGES)
+    CacheManager.invalidate(CXPC)
 
     return True
 

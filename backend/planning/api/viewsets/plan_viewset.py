@@ -1,5 +1,6 @@
 from typing import Any
 
+from core.services.cache_manager import CacheManager
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
@@ -7,7 +8,7 @@ from planning.api.serializers import (
     PlanningPlanDetailSerializer,
 )
 from planning.models import PlanningEmpire, PlanningPlan
-from planning.planning_cache_manager import PlanningCacheManager
+from planning.planning_cache_manager import PLANNING
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -42,10 +43,7 @@ class PlanViewSet(
         def fetch_data() -> list[dict[str, Any]]:
             return self.get_serializer(self.get_queryset(), many=True).data
 
-        return PlanningCacheManager.get_plan_list_response(
-            user_id=user_id,
-            func=fetch_data,
-        )
+        return CacheManager.respond(request, PLANNING, 'plan-list', build=fetch_data, scope=user_id)
 
     @extend_schema(summary='Get a users specific plan')
     def retrieve(self, request, *args, **kwargs):
@@ -56,11 +54,7 @@ class PlanViewSet(
         def fetch_data() -> dict[str, Any]:
             return self.get_serializer(get_object_or_404(self.get_queryset(), pk=pk, user=request.user)).data
 
-        return PlanningCacheManager.get_plan_retrieve_response(
-            user_id=user_id,
-            plan_id=pk,
-            func=fetch_data,
-        )
+        return CacheManager.respond(request, PLANNING, 'plan-retrieve', pk, build=fetch_data, scope=user_id)
 
     @extend_schema(summary='Creates a new plan')
     def create(self, request, *args, **kwargs):

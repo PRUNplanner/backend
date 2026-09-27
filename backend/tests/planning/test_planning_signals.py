@@ -9,14 +9,12 @@ audit. They fail today by design; once the defect is fixed they XPASS, which
 fails the run so the marker gets removed together with the fix.
 """
 
-from collections.abc import Callable
 from typing import Protocol, cast
 
 import pytest
 from django.urls import reverse
 from planning.models import PlanningCX, PlanningEmpire, PlanningPlan
 from rest_framework.test import APIClient
-from tests.cache_backends import PatternLocMemCache
 from user.models import User
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('locmem_cache')]
@@ -241,51 +239,3 @@ class TestInvalidationScope:
             plan.save()
 
         assert _get(api_client, other, url)['X-Cache-Hit'] == '1'
-
-
-class TestInvalidationCost:
-    """
-    Every `delete_pattern` is a full-keyspace SCAN on Redis (COUNT 10). The number
-    of scans per write must not grow with the number of linked rows.
-    """
-
-    @pytest.mark.parametrize('linked_plans', [1, 5])
-    def test_empire_delete_scans_at_most_once(
-        self,
-        linked_plans: int,
-        user_factory: Callable[..., User],
-        empire_factory: Callable[..., PlanningEmpire],
-        plan_factory: Callable[..., PlanningPlan],
-        django_capture_on_commit_callbacks,
-    ):
-        user = user_factory()
-        empire = empire_factory(user=user)
-        for _ in range(linked_plans):
-            _link(empire, plan_factory(user=user), user)
-
-        with django_capture_on_commit_callbacks(execute=True):
-            empire.delete()
-
-        assert len(PatternLocMemCache.pattern_calls) <= 1
-
-    def test_plan_delete_scans_at_most_once(
-        self, user_factory, empire_factory, plan_factory, django_capture_on_commit_callbacks
-    ):
-        user = user_factory()
-        plan = plan_factory(user=user)
-        for _ in range(3):
-            _link(empire_factory(user=user), plan, user)
-
-        with django_capture_on_commit_callbacks(execute=True):
-            plan.delete()
-
-        assert len(PatternLocMemCache.pattern_calls) <= 1
-
-    def test_plan_save_does_not_scan_keyspace(self, user_factory, plan_factory, django_capture_on_commit_callbacks):
-        user = user_factory()
-        plan = plan_factory(user=user)
-
-        with django_capture_on_commit_callbacks(execute=True):
-            plan.save()
-
-        assert PatternLocMemCache.pattern_calls == []

@@ -2,7 +2,8 @@ from datetime import timedelta
 
 from analytics.api.serializer import AnalyticsMarketInsightSerializer, AnalyticsPlanAggregateSerializer
 from analytics.models import AnalyticsEmpireMaterialSnapshot, AnalyticsPlanAggregate
-from analytics.services.analytics_cache_manager import AnalyticsCacheManager
+from analytics.services.analytics_cache_manager import MATERIALS_INSIGHT
+from core.services.cache_manager import CacheManager
 from django.db.models import Sum
 from django.http import Http404
 from django.utils import timezone
@@ -11,6 +12,7 @@ from gamedata.models.game_planet import GamePlanet
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
+from rest_framework.response import Response
 
 
 class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
@@ -20,27 +22,23 @@ class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
 
     @extend_schema(auth=[], summary='Fetch planet insights by Planet Natural Id')
     def retrieve(self, request, *args, **kwargs):
-        planet_id: str = kwargs.get('planet_natural_id', '')
+        planet_natural_id: str = kwargs.get('planet_natural_id', '')
 
-        def fetch_data(planet_natural_id: str):
-            if not GamePlanet.objects.filter(planet_natural_id=planet_natural_id).exists():
-                raise NotFound(detail='Planet not found.')
+        if not GamePlanet.objects.filter(planet_natural_id=planet_natural_id).exists():
+            raise NotFound(detail='Planet not found.')
 
-            try:
-                # try to get aggregate
-                instance = self.get_object()
-                serializer = self.get_serializer(instance)
-                return serializer.data
-            except (AnalyticsPlanAggregate.DoesNotExist, Http404):
-                # return a 200 OK, but without any data
-                return {
+        try:
+            return Response(self.get_serializer(self.get_object()).data)
+        except (AnalyticsPlanAggregate.DoesNotExist, Http404):
+            # return a 200 OK, but without any data
+            return Response(
+                {
                     'status': 'below_threshold',
                     'planet_natural_id': planet_natural_id,
                     'total_plans_analyzed': 0,
                     'aggregated_data': None,
                 }
-
-        return AnalyticsCacheManager.get_plan_aggregate_response(planet_id, lambda: fetch_data(planet_id))
+            )
 
 
 class AnalyticsMarketInsightViewSet(viewsets.ViewSet):
@@ -73,4 +71,4 @@ class AnalyticsMarketInsightViewSet(viewsets.ViewSet):
 
             return list(stats_queryset.values_list('material_ticker', 'total_p', 'total_c', 'net_d'))
 
-        return AnalyticsCacheManager.get_planning_insight_materials(fetch_data)
+        return CacheManager.respond(request, MATERIALS_INSIGHT, 'global-tracker', build=fetch_data)

@@ -1,7 +1,9 @@
 from typing import cast
 from uuid import UUID
 
+from core.services.cache_manager import CacheManager
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
@@ -12,7 +14,7 @@ from planning.api.serializers import (
 )
 from planning.api.serializers.empire import PlanningEmpireStateUpdateSerializer
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
-from planning.planning_cache_manager import PlanningCacheManager
+from planning.planning_cache_manager import PLANNING
 from planning.services.empire_state_service import EmpireStateService
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -47,38 +49,34 @@ class EmpireViewSet(
         return super().get_serializer_class()
 
     @extend_schema(summary='List all users empires')
-    def list(self, request, *args, **kwargs) -> Response:
+    def list(self, request, *args, **kwargs) -> HttpResponse:
         user_id = request.user.id
 
         def fetch_data():
             empires = self.get_queryset()
             return self.get_serializer(empires, many=True).data
 
-        return PlanningCacheManager.get_empire_list_response(user_id=user_id, func=fetch_data)
+        return CacheManager.respond(request, PLANNING, 'empire-list', build=fetch_data, scope=user_id)
 
     @extend_schema(summary='Get a users specific empire')
-    def retrieve(self, request, *args, **kwargs) -> Response:
+    def retrieve(self, request, *args, **kwargs) -> HttpResponse:
         pk: UUID = cast(UUID, kwargs.get('pk'))
         user_id = request.user.id
 
         def fetch_data():
             return self.get_serializer(get_object_or_404(self.get_queryset(), pk=pk)).data
 
-        return PlanningCacheManager.get_empire_retrieve_response(
-            user_id=user_id,
-            empire_id=pk,
-            func=fetch_data,
-        )
+        return CacheManager.respond(request, PLANNING, 'empire-retrieve', pk, build=fetch_data, scope=user_id)
 
     @extend_schema(summary='Get all plans of the users specific empire')
-    def retrieve_plans(self, request, *args, **kwargs) -> Response:
+    def retrieve_plans(self, request, *args, **kwargs) -> HttpResponse:
         pk: UUID = cast(UUID, kwargs.get('pk'))
         user_id = request.user.id
 
         def fetch_data():
             return PlanningPlanListSerializer(get_object_or_404(self.get_queryset(), pk=pk).plans.all(), many=True).data
 
-        return PlanningCacheManager.get_empire_retrieve_plans_response(user_id=user_id, empire_id=pk, func=fetch_data)
+        return CacheManager.respond(request, PLANNING, 'empire-plans', pk, build=fetch_data, scope=user_id)
 
     @extend_schema(summary='Updates an existing exmpire')
     def update(self, request, *args, **kwargs):
@@ -161,7 +159,7 @@ class EmpireViewSet(
                 )
 
         if to_delete_uuids or to_create_pairs:
-            PlanningCacheManager.invalidate_user(user.id)
+            CacheManager.invalidate(PLANNING, user.id)
 
         return self.list(request)
 

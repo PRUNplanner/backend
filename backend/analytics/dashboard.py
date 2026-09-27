@@ -206,7 +206,7 @@ def dashboard_index(request, context):
                     ['Active Connections', redis_stats['active_connections']],
                     ['Stream Connections', redis_stats['active_stream_users']],
                     ['Usage', redis_stats['usage']],
-                    ['Hit Rate', redis_stats['hit_rate']],
+                    ['Keyspace hit rate (all Redis)', redis_stats['hit_rate']],
                     ['Blocked Clients', redis_stats['blocked_clients']],
                     ['Fragmentation', redis_stats['fragmentation']],
                     ['Status', redis_stats['status']],

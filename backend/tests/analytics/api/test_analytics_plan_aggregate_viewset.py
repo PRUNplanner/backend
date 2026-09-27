@@ -69,7 +69,7 @@ class TestAnalyticsPlanAggregateViewSetRetrieve:
         assert response.data['total_plans_analyzed'] == 42
         assert response.data['insights_data'] == {'avg_cost': 1234.5, 'materials': ['H2O', 'DW']}
         assert response.data['last_updated'] is not None
-        assert response['X-Cache-Hit'] == '0'
+        assert not response.has_header('X-Cache-Hit')  # computed per request, not cached
         assert aggregate.pk is not None
 
     def test_retrieve_planet_without_aggregate_returns_below_threshold(
@@ -118,18 +118,3 @@ class TestAnalyticsPlanAggregateViewSetRetrieve:
         response = api_client.get(_detail_url('OT-580b'))
 
         assert response.status_code == 404
-
-
-@pytest.mark.usefixtures('locmem_cache')
-class TestAnalyticsPlanAggregateViewSetCaching:
-    def test_cache_hit_runs_no_queries(
-        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet], django_assert_num_queries
-    ) -> None:
-        planet = planet_factory(planet_natural_id='OT-580b')
-        url = _detail_url(planet.planet_natural_id)
-        api_client.get(url)
-
-        with django_assert_num_queries(0):
-            response = api_client.get(url)
-
-        assert response['X-Cache-Hit'] == '1'
