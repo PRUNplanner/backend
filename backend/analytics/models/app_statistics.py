@@ -10,6 +10,9 @@ class AppStatistic(models.Model):
     user_count = models.PositiveIntegerField(default=0)
     users_active_today = models.PositiveIntegerField(default=0)
     users_active_30d = models.PositiveIntegerField(default=0)
+    # null before these were tracked, so charts show a gap rather than zeros
+    users_active_7d = models.PositiveIntegerField(null=True, blank=True)
+    signups = models.PositiveIntegerField(null=True, blank=True)
 
     ## planning
     plan_count = models.PositiveIntegerField(default=0)

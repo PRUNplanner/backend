@@ -1,0 +1,48 @@
+{% load admin_ops %}
+
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6" aria-label="Operations">
+  {% if task_health is not None %}
+    <div class="bg-base-900 border border-base-800 rounded-default p-4 min-w-0">
+      <div class="flex items-center mb-3">
+        <h3 class="font-semibold text-important text-sm">Task health, last 14 days</h3>
+        <a href="{% url 'admin:task_health' %}" class="ml-auto text-sm text-primary-500">Details</a>
+      </div>
+      <div class="flex flex-col gap-2 text-sm">
+        {% for row in task_health %}
+          <div class="flex items-center gap-3">
+            <span class="w-40 truncate text-important" title="{{ row.task }}">{{ row.name }}</span>
+            {% include "unfold/helpers/label.html" with text=row.state variant=row.state|state_variant size="md" %}
+            <span class="flex gap-1 ml-auto">
+              {% for cell in row.days %}
+                <span title="{{ cell.day }}: {{ cell.ok }} ok, {{ cell.fail }} failed"
+                      style="display: inline-block;
+                             width: 8px;
+                             height: 16px;
+                             border-radius: 2px;
+                             background: {{ cell|tracker_colour }}"></span>
+              {% endfor %}
+            </span>
+          </div>
+        {% empty %}
+          <p class="text-subtle">No periodic tasks.</p>
+        {% endfor %}
+      </div>
+    </div>
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Task health" %}
+  {% endif %}
+
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+    {% include "admin/dashboard/kv_table.html" with title="Postgres (this database)" rows=postgres headers=None %}
+    {% include "admin/dashboard/kv_table.html" with title="Redis" rows=redis headers=None %}
+  </div>
+</section>
+
+<section class="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6" aria-label="Postgres details">
+  {% include "admin/dashboard/kv_table.html" with title="Most dead tuples" rows=dead_tuples headers=dead_tuple_headers empty="No dead tuples." %}
+  {% include "admin/dashboard/kv_table.html" with title="Queries running longer than 30 s" rows=long_queries headers=long_query_headers empty="None right now." %}
+  {% include "admin/dashboard/kv_table.html" with title="FIO webhooks" rows=webhooks headers=webhook_headers empty="No webhook configured." %}
+  {% if slow_queries is not None %}
+    {% include "admin/dashboard/kv_table.html" with title="Slowest queries (pg_stat_statements, by mean time)" rows=slow_queries headers=slow_query_headers %}
+  {% endif %}
+</section>

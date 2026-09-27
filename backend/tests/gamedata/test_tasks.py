@@ -198,11 +198,115 @@ class TestRefreshPlanetResult:
         assert planet.automation_refresh_status == 'retrying'
         assert planet.automation_error == 'boom'
 
-    def test_pending_mark_saves_only_the_status(self) -> None:
+    def test_pending_mark_saves_only_the_status_and_lease(self) -> None:
         baker.make('gamedata.GamePlanet', planet_natural_id='M', automation_error_count=0)
 
         with patch.object(GamePlanet, 'save', autospec=True) as save:
             self._run(lambda _planet_natural_id: True)
 
         save.assert_called_once()
-        assert save.call_args.kwargs == {'update_fields': ['automation_refresh_status']}
+        assert save.call_args.kwargs == {'update_fields': ['automation_refresh_status', 'automation_next_retry_at']}
+
+
+@pytest.mark.django_db
+class TestPendingLease:
+    """AC21: pending carries a 1 h lease; the scheduler takes pending rows back once the lease expired."""
+
+    @staticmethod
+    def _picked(**planet_fields: object) -> list[str]:
+        baker.make(  # ty: ignore[no-matching-overload]
+            'gamedata.GamePlanet', planet_natural_id='X', automation_error_count=0, **planet_fields
+        )
+        with (
+            patch('gamedata.fio.importers.import_planet', return_value=True) as import_planet,
+            patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+        ):
+            gamedata_refresh_planet()
+        return [call.args[0] for call in import_planet.call_args_list]
+
+    def test_pending_without_lease_is_picked(self) -> None:
+        assert self._picked(automation_refresh_status='pending', automation_next_retry_at=None) == ['X']
+
+    def test_pending_with_expired_lease_is_picked(self) -> None:
+        expired = timezone.now() - timedelta(minutes=1)
+        assert self._picked(automation_refresh_status='pending', automation_next_retry_at=expired) == ['X']
+
+    def test_pending_with_active_lease_is_not_picked(self) -> None:
+        active = timezone.now() + timedelta(minutes=30)
+        assert self._picked(automation_refresh_status='pending', automation_next_retry_at=active) == []
+
+    def test_failed_stays_excluded(self) -> None:
+        assert self._picked(automation_refresh_status='failed') == []
+
+    def test_marking_pending_sets_a_one_hour_lease(self) -> None:
+        planet: GamePlanet = baker.make('gamedata.GamePlanet', planet_natural_id='X', automation_error_count=0)
+        seen: dict[str, object] = {}
+
+        def import_that_looks(planet_natural_id: str) -> bool:
+            row = GamePlanet.objects.get(planet_natural_id=planet_natural_id)
+            seen['status'], seen['lease'] = row.automation_refresh_status, row.automation_next_retry_at
+            return True
+
+        before = timezone.now()
+        with (
+            patch('gamedata.fio.importers.import_planet', side_effect=import_that_looks),
+            patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+        ):
+            gamedata_refresh_planet()
+
+        assert seen['status'] == 'pending'
+        lease = seen['lease']
+        assert isinstance(lease, type(before))
+        assert before + planet.PENDING_LEASE <= lease <= timezone.now() + planet.PENDING_LEASE
+
+    def test_fio_dispatch_takes_pending_rows_with_expired_lease_only(self) -> None:
+        now = timezone.now()
+        stale = now - timedelta(hours=7)
+
+        def fio_row(lease: object) -> int:
+            user = baker.make('user.User', prun_username='T', fio_apikey='K')
+            baker.make(
+                'gamedata.GameFIOPlayerData',
+                user=user,
+                automation_refresh_status='pending',
+                automation_next_retry_at=lease,
+                automation_last_refreshed_at=stale,
+            )
+            return user.pk
+
+        expired, leased = fio_row(now - timedelta(minutes=1)), fio_row(now + timedelta(minutes=30))
+
+        with patch('gamedata.tasks.gamedata_refresh_user_fiodata.apply_async') as mock_async:
+            gamedata_dispatch_fio_updates()
+
+        dispatched = [call.kwargs['args'][0] for call in mock_async.call_args_list]
+        assert expired in dispatched and leased not in dispatched
+
+
+@pytest.mark.django_db
+class TestAdminTasks:
+    @pytest.mark.parametrize(
+        'kind, importer, result',
+        [
+            ('materials', 'import_all_materials', (1, 2)),
+            ('buildings', 'import_all_buildings', (3, 4)),
+            ('recipes', 'import_all_recipes', (1, 2, 3)),
+            ('planets', 'import_all_planets', True),
+            ('exchanges', 'import_all_exchanges', True),
+        ],
+    )
+    def test_admin_import_dispatches_to_the_importer(self, kind: str, importer: str, result: object) -> None:
+        from gamedata.tasks import gamedata_admin_import
+
+        with patch(f'gamedata.fio.importers.{importer}', return_value=result) as run:
+            assert gamedata_admin_import(kind) == f'{kind}: {result}'
+
+        run.assert_called_once_with()
+
+    def test_single_planet_refresh(self) -> None:
+        from gamedata.tasks import gamedata_refresh_single_planet
+
+        with patch('gamedata.fio.importers.import_planet', return_value=True) as run:
+            assert gamedata_refresh_single_planet('OT-580b') is True
+
+        run.assert_called_once_with('OT-580b')

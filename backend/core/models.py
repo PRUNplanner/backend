@@ -47,6 +47,19 @@ class CeleryAutomationModel(models.Model):
 
     RETRY_DELAY_MINUTES = 15
     MAX_RETRIES = 10
+    # a row marked pending holds its next_retry_at as a lease; a worker that dies leaves it to expire
+    PENDING_LEASE = timedelta(hours=1)
+
+    @classmethod
+    def stuck_q(cls) -> models.Q:
+        """Pending rows whose lease expired (or never had one): the worker that took them is gone."""
+        return models.Q(automation_refresh_status='pending') & (
+            models.Q(automation_next_retry_at__isnull=True) | models.Q(automation_next_retry_at__lte=timezone.now())
+        )
+
+    @classmethod
+    def failed_q(cls) -> models.Q:
+        return models.Q(automation_error_count__gte=cls.MAX_RETRIES)
 
     @property
     def is_permanently_failed(self) -> bool:

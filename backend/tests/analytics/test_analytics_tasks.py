@@ -67,3 +67,26 @@ class TestBulkMaterializeEmpireSnapshots:
         empire.refresh_from_db()
         assert empire.empire_state == _state(9.0)
         assert empire.needs_state_sync is True
+
+
+class TestUpdateDailyStats:
+    def test_fills_weekly_active_users_and_signups(self) -> None:
+        """AC20"""
+        from datetime import timedelta
+
+        from analytics.models import AppStatistic
+        from analytics.tasks import update_daily_stats
+        from django.utils import timezone
+
+        now = timezone.now()
+        baker.make('user.User', last_login=now - timedelta(days=2), date_joined=now)  # active this week, new today
+        baker.make('user.User', last_login=now - timedelta(days=20), date_joined=now - timedelta(days=20))
+        baker.make('user.User', last_login=None, date_joined=None)  # from before date_joined existed
+
+        update_daily_stats()
+
+        stats = AppStatistic.objects.get(date=now.date())
+        assert stats.users_active_7d == 1
+        assert stats.users_active_30d == 2
+        assert stats.signups == 1
+        assert stats.user_count == 3

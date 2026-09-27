@@ -1,0 +1,9 @@
+{% load admin_ops %}
+
+<div class="bg-base-900 border border-base-800 rounded-default p-4 min-w-0">
+  {% if title %}<h3 class="mb-2 font-semibold text-important text-sm">{{ title }}</h3>{% endif %}
+  <p class="flex items-center gap-2 text-sm text-subtle">
+    <span class="material-symbols-outlined text-sm" style="color: {{ 'serious'|status_colour }}">cloud_off</span>
+    unavailable
+  </p>
+</div>

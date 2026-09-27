@@ -1,4 +1,6 @@
+from collections.abc import Callable
 from datetime import timedelta
+from typing import Literal
 
 import structlog
 from celery import chord, shared_task
@@ -53,7 +55,8 @@ def gamedata_refresh_planet() -> bool:
     to_update = (
         GamePlanet.objects.filter(
             Q(automation_next_retry_at__lte=now) | Q(automation_next_retry_at__isnull=True),
-            ~Q(automation_refresh_status__in=['pending', 'failed']),
+            # pending rows come back once their lease expires, so a dead worker can't strand them
+            ~Q(automation_refresh_status='failed'),
             automation_error_count__lt=GamePlanet.MAX_RETRIES,
         )
         .order_by('automation_last_refreshed_at')
@@ -67,7 +70,8 @@ def gamedata_refresh_planet() -> bool:
     gamedata_refresh_planet_infrastructure.delay(to_update.planet_natural_id)
 
     to_update.automation_refresh_status = 'pending'
-    to_update.save(update_fields=['automation_refresh_status'])
+    to_update.automation_next_retry_at = now + GamePlanet.PENDING_LEASE
+    to_update.save(update_fields=['automation_refresh_status', 'automation_next_retry_at'])
 
     try:
         # records its own refresh result, success or error
@@ -79,6 +83,42 @@ def gamedata_refresh_planet() -> bool:
         to_update.update_refresh_result(error=exc)
 
         return False
+
+
+@shared_task(name='gamedata_refresh_single_planet')
+def gamedata_refresh_single_planet(planet_natural_id: str) -> bool:
+    structlog.contextvars.bind_contextvars(
+        task_category='gamedata_refresh_single_planet',
+    )
+
+    from gamedata.fio.importers import import_planet
+
+    # records its own refresh result, success or error
+    return import_planet(planet_natural_id)
+
+
+type AdminImportKind = Literal['materials', 'buildings', 'recipes', 'planets', 'exchanges']
+
+
+@shared_task(name='gamedata_admin_import')
+def gamedata_admin_import(kind: AdminImportKind) -> str:
+    structlog.contextvars.bind_contextvars(
+        task_category='gamedata_admin_import',
+    )
+
+    from gamedata.fio import importers
+
+    runners: dict[str, Callable[[], object]] = {
+        'materials': importers.import_all_materials,
+        'buildings': importers.import_all_buildings,
+        'recipes': importers.import_all_recipes,
+        'planets': importers.import_all_planets,
+        'exchanges': importers.import_all_exchanges,
+    }
+
+    result = runners[kind]()
+    logger.info('admin_import_done', kind=kind, result=result)
+    return f'{kind}: {result}'
 
 
 @shared_task(name='gamedata_dispatch_fio_updates')
@@ -118,9 +158,8 @@ def gamedata_dispatch_fio_updates():
 
     # safety filters
     candidates = eligible_base
-    candidates = candidates.filter(automation_error_count__lt=GameFIOPlayerData.MAX_RETRIES).exclude(
-        automation_refresh_status='pending'
-    )
+    # a pending row is held by the retry-at lease check in eligible_base, not excluded outright
+    candidates = candidates.filter(automation_error_count__lt=GameFIOPlayerData.MAX_RETRIES)
 
     # timing filters
     candidates = candidates.filter(

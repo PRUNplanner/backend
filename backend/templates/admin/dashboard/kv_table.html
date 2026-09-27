@@ -1,0 +1,30 @@
+{# a small key/value (or multi-column) table card; rows=None renders "unavailable" #}
+{% if rows is None %}
+  {% include "admin/dashboard/unavailable.html" with title=title %}
+{% else %}
+  <div class="bg-base-900 border border-base-800 rounded-default p-4 min-w-0">
+    <h3 class="mb-3 font-semibold text-important text-sm">{{ title }}</h3>
+    <table class="w-full text-sm" style="font-variant-numeric: tabular-nums">
+      {% if headers %}
+        <thead>
+          <tr class="text-left text-subtle border-b border-base-800">
+            {% for header in headers %}<th class="py-1 pr-2">{{ header }}</th>{% endfor %}
+          </tr>
+        </thead>
+      {% endif %}
+      <tbody>
+        {% for row in rows %}
+          <tr class="border-b border-base-800 align-top">
+            {% for cell in row %}
+              <td class="py-1 pr-2{% if forloop.first %} text-subtle{% else %} text-important{% endif %}">{{ cell }}</td>
+            {% endfor %}
+          </tr>
+        {% empty %}
+          <tr>
+            <td class="py-1 text-subtle">{{ empty|default:"None" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}

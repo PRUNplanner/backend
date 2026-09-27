@@ -39,6 +39,7 @@ def update_daily_stats():
     today_date = now.date()
     yesterday_date = today_date - timedelta(days=1)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    seven_days_ago = now - timedelta(days=7)
     thirty_days_ago = now - timedelta(days=30)
 
     log = logger.bind(name='update_daily_stats', today_date=today_date)
@@ -49,7 +50,9 @@ def update_daily_stats():
         user_stats = User.objects.aggregate(
             total=Count('id'),
             active_today=Count('id', filter=Q(last_login__gte=today_start)),
+            active_7d=Count('id', filter=Q(last_login__gte=seven_days_ago)),
             active_30d=Count('id', filter=Q(last_login__gte=thirty_days_ago)),
+            signups=Count('id', filter=Q(date_joined__gte=today_start)),
         )
 
         current_counts = {
@@ -71,7 +74,9 @@ def update_daily_stats():
             defaults={
                 # user
                 'users_active_today': user_stats['active_today'],
+                'users_active_7d': user_stats['active_7d'],
                 'users_active_30d': user_stats['active_30d'],
+                'signups': user_stats['signups'],
                 # planning
                 'plan_empire_junctions_count': PlanningEmpirePlan.objects.count(),
                 # other currents

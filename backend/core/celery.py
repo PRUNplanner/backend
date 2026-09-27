@@ -2,8 +2,10 @@ import logging.config
 
 import structlog
 from celery import Celery
-from celery.signals import setup_logging, worker_process_init, worker_process_shutdown
+from celery.signals import setup_logging, task_postrun, task_prerun, worker_process_init, worker_process_shutdown
 from django_structlog.celery.steps import DjangoStructLogInitStep
+
+from core.services import task_health
 
 app = Celery('prunplanner')
 
@@ -35,5 +37,9 @@ def log_shutdown_process(**kwargs):  # pragma: no cover
     close_shared_client()
     logger.info('worker_child_process_shutdown')
 
+
+# task health for the admin: last success/failure and daily counters per task name, never raising into the task
+task_prerun.connect(task_health.on_task_prerun, weak=False, dispatch_uid='task_health_prerun')
+task_postrun.connect(task_health.on_task_postrun, weak=False, dispatch_uid='task_health_postrun')
 
 app.autodiscover_tasks()

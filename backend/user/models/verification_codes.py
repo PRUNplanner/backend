@@ -30,7 +30,8 @@ class VerificationCode(models.Model):
         verbose_name_plural = 'Verification Codes'
 
     def __str__(self):
-        return f'{self.user.email} - {self.purpose} - {self.code}'
+        # never the code: it would show in the admin and be copied into LogEntry.object_repr
+        return f'{self.user.email} - {self.purpose}'
 
     @property
     def is_expired(self):

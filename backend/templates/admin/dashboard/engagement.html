@@ -1,0 +1,11 @@
+<section class="mb-6" aria-label="Engagement">
+  {% if engagement %}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {% for tile in engagement %}
+        {% include "admin/summary/tile.html" %}
+      {% endfor %}
+    </div>
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Engagement" %}
+  {% endif %}
+</section>

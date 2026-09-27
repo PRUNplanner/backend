@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     django_secret_key: str = Field(default='---')
     django_allowed_hosts: str = Field(default='127.0.0.1,localhost')
 
+    # admin: path prefix, and optional external links (hidden when unset)
+    admin_url: str = Field(default='admin/')
+    admin_axiom_url: str | None = Field(default=None)
+    frontend_url: str | None = Field(default=None)
+
     database: DatabaseSettings = DatabaseSettings()
     cache: CacheSettings = CacheSettings()
     celery: CelerySettings = CelerySettings()

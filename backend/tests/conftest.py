@@ -51,6 +51,20 @@ def client():
 
 
 @pytest.fixture
+def superuser():
+    # no email: pytest-django's admin_user has one, and a new email queues a real verification task
+    return baker.make('user.User', is_superuser=True, is_staff=True, is_active=True)
+
+
+@pytest.fixture
+def admin_client(superuser) -> Client:
+    """A client logged in to the admin as `superuser` (replaces pytest-django's fixture of the same name)."""
+    admin = Client()
+    admin.force_login(superuser)
+    return admin
+
+
+@pytest.fixture
 def user_factory(**kwargs):
     # admin: is_superuser = True
     # staff: is_staff = True
@@ -72,3 +86,30 @@ def locmem_cache(settings) -> Iterator[LocMemCache]:
     yield backend
 
     backend.clear()
+
+
+@pytest.fixture(scope='session', autouse=True)
+def create_unmanaged_tables(django_db_setup, django_db_blocker):
+    # the exchange analytics materialized view is unmanaged; SQLite gets a plain table in its place
+    with django_db_blocker.unblock():
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            # Manually create the table schema here
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS prunplanner_game_exchanges_analytics (
+                    id integer PRIMARY KEY AUTOINCREMENT,
+                    ticker varchar(20),
+                    exchange_code varchar(20),
+                    date_epoch bigint,
+                    calendar_date date,
+                    traded_daily integer,
+                    vwap_daily decimal,
+                    sum_traded_7d integer,
+                    avg_traded_7d decimal,
+                    vwap_7d decimal,
+                    sum_traded_30d integer,
+                    avg_traded_30d decimal,
+                    vwap_30d decimal
+                )
+            """)

@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+
+{% load unfold %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block content %}
+  <div class="max-w-2xl">
+    {% component "unfold/components/card.html" with title=title %}
+      <p class="mb-4 text-important">{{ message }}</p>
+      <form method="post">
+        {% csrf_token %}
+        {% if expected %}
+          <label class="block mb-2 text-sm" for="id_confirm">Type <strong>{{ expected }}</strong> to confirm</label>
+          <input id="id_confirm"
+                 name="confirm"
+                 autocomplete="off"
+                 required
+                 class="border border-base-700 bg-base-900 px-3 py-2 rounded-default w-full max-w-2xl text-important">
+        {% endif %}
+        <div class="flex flex-col gap-3 items-center mt-4 w-full lg:flex-row">
+          {% component "unfold/components/button.html" with href=cancel_url variant="default" %}
+            Cancel
+          {% endcomponent %}
+          {% component "unfold/components/button.html" with submit=1 variant="danger" class="lg:ml-auto" %}
+            {{ submit_label }}
+          {% endcomponent %}
+        </div>
+      </form>
+    {% endcomponent %}
+  </div>
+{% endblock content %}

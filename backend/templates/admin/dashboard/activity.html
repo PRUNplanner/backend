@@ -1,0 +1,9 @@
+<section class="grid grid-cols-1 lg:grid-cols-4 gap-3 mb-6" aria-label="Activity">
+  {% if activity %}
+    {% for chart in activity %}
+      {% include "admin/summary/chart.html" %}
+    {% endfor %}
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="New per day" %}
+  {% endif %}
+</section>

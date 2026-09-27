@@ -1,0 +1,25 @@
+{% load l10n %}
+
+{# status split: one stacked bar in status colours, every segment also labelled with icon, count and share #}
+<div class="bg-base-900 border border-base-800 rounded-default p-4">
+  <h3 class="mb-3 font-semibold text-important text-sm">{{ title }}</h3>
+  <div class="flex overflow-hidden rounded-default" style="height: 10px">
+    {% for segment in segments %}
+      {% if segment.value %}
+        <a href="{{ segment.href }}"
+           title="{{ segment.label }}: {{ segment.value }}"
+           style="width: {{ segment.pct|unlocalize }}%;
+                  background: {{ segment.colour }}"></a>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <div class="flex flex-wrap gap-4 mt-3 text-sm">
+    {% for segment in segments %}
+      <a href="{{ segment.href }}" class="flex items-center gap-1">
+        <span class="material-symbols-outlined text-sm" style="color: {{ segment.colour }}">{{ segment.icon }}</span>
+        {{ segment.label }} <strong style="font-variant-numeric: tabular-nums">{{ segment.value }}</strong>
+        <span class="text-subtle">({% if segment.value and segment.pct < 0.1 %}&lt;0.1{% else %}{{ segment.pct|floatformat:1 }}{% endif %}%)</span>
+      </a>
+    {% endfor %}
+  </div>
+</div>

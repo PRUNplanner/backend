@@ -1,0 +1,84 @@
+{% extends "admin/base_site.html" %}
+
+{% load admin_ops humanize unfold %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block content %}
+  <div class="flex flex-wrap items-center gap-2 mb-4 text-sm">
+    <span class="text-subtle">Show:</span>
+    <a href="?" class="{% if not state %}text-primary-500 font-semibold{% endif %}">All</a>
+    {% for s in states %}
+      <a href="?state={{ s }}" class="{% if state == s %}text-primary-500 font-semibold{% endif %}">{{ s|capfirst }}</a>
+    {% endfor %}
+    <a href="{% url 'admin:django_celery_beat_periodictask_changelist' %}" class="ml-auto text-subtle">Periodic tasks</a>
+  </div>
+
+  {% if not redis_ok %}
+    <div class="bg-base-900 border border-base-800 rounded-default p-4 mb-4 text-sm">
+      <span class="material-symbols-outlined text-sm" style="color: {{ 'serious'|status_colour }}">warning</span>
+      Redis unavailable: success, failure and the tracker are unknown. Schedules and overdue state are still shown.
+    </div>
+  {% endif %}
+
+  <div class="bg-base-900 border border-base-800 rounded-default overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-subtle border-b border-base-800">
+          <th class="px-3 py-2">Task</th>
+          <th class="px-3 py-2">State</th>
+          <th class="px-3 py-2">Schedule</th>
+          <th class="px-3 py-2">Dispatched</th>
+          <th class="px-3 py-2">Last success</th>
+          <th class="px-3 py-2">Last failure</th>
+          <th class="px-3 py-2 text-right">Runtime</th>
+          <th class="px-3 py-2">Last 14 days</th>
+        </tr>
+      </thead>
+      <tbody style="font-variant-numeric: tabular-nums">
+        {% for row in rows %}
+          <tr class="border-b border-base-800 align-top">
+            <td class="px-3 py-2">
+              {% if row.periodic_task_id %}
+                <a href="{% url 'admin:django_celery_beat_periodictask_change' row.periodic_task_id %}" class="text-important font-semibold">{{ row.name }}</a>
+              {% else %}
+                <span class="text-important font-semibold">{{ row.name }}</span>
+              {% endif %}
+              <div class="text-xs text-subtle">{{ row.task }}</div>
+              {% if row.failing and row.last_error %}
+                <div class="text-xs mt-1" style="color: {{ 'critical'|status_colour }}" title="{{ row.last_error }}">{{ row.last_error|truncatechars:90 }}</div>
+              {% endif %}
+            </td>
+            <td class="px-3 py-2">{% include "unfold/helpers/label.html" with text=row.state variant=row.state|state_variant %}</td>
+            <td class="px-3 py-2">{{ row.schedule|default:"—" }}</td>
+            <td class="px-3 py-2 whitespace-nowrap" title="{{ row.last_run_at|default:'' }}">{{ row.last_run_at|naturaltime|default:"—" }}</td>
+            <td class="px-3 py-2 whitespace-nowrap" title="{{ row.last_success_at|default:'' }}">{{ row.last_success_at|naturaltime|default:"—" }}</td>
+            <td class="px-3 py-2 whitespace-nowrap" title="{{ row.last_failure_at|default:'' }}">{{ row.last_failure_at|naturaltime|default:"—" }}</td>
+            <td class="px-3 py-2 text-right whitespace-nowrap">{% if row.last_runtime_ms is not None %}{{ row.last_runtime_ms|intcomma }} ms{% else %}—{% endif %}</td>
+            <td class="px-3 py-2">
+              <div class="flex gap-1" style="min-width: 168px">
+                {% for cell in row.days %}
+                  <span title="{{ cell.day }}: {{ cell.ok }} ok, {{ cell.fail }} failed"
+                        style="display: inline-block;
+                               width: 10px;
+                               height: 18px;
+                               border-radius: 2px;
+                               background: {{ cell|tracker_colour }}"></span>
+                {% endfor %}
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="8" class="px-3 py-4 text-subtle">No tasks{% if state %} in state "{{ state }}"{% endif %}.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-3 text-xs text-subtle">
+    Overdue: the run after the missed one is due too (more than one interval late). Failing: the last failure is newer than the last success.
+    Tracker cells: <span style="color: {{ 'good'|status_colour }}">■</span> ok,
+    <span style="color: {{ 'critical'|status_colour }}">■</span> any failure, grey no runs.
+  </p>
+{% endblock content %}

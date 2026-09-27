@@ -1,0 +1,10 @@
+{# Override of Unfold's sidebar badge: Unfold wraps a badge callback in lazy(), which is always truthy, so a callback #}
+{# could never hide its badge. Here an empty result hides it. Only the default (red) style is used by this admin. #}
+{% if item.badge %}
+  {% with text=item.badge_callback|default:item.badge|stringformat:"s" %}
+    {% if text %}
+      <span data-sidebar-badge
+            class="font-semibold h-[18px] leading-[18px] ml-2 px-1 relative rounded-xs text-center text-[11px] whitespace-nowrap uppercase min-w-[18px] bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400">{{ text }}</span>
+    {% endif %}
+  {% endwith %}
+{% endif %}
