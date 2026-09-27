@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Benchmark and load-test the backend against a throwaway, seeded Postgres.
 #
-#   perf/run.sh [--scale tiny|small|medium|large] [--mode quick|full]
+#   perf/run.sh [--scale tiny|small|medium|large|prod] [--mode quick|full]
 #               [--users 50] [--spawn-rate 10] [--duration 60s] [--workers 3]
 #               [--only planning,data.planet] [--no-snapshot] [--keep]
 #               [--prod-like]

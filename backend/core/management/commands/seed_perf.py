@@ -112,6 +112,8 @@ class Scale:
     buildings: int
     recipes: int
     cxpc_days: int
+    # share of users with 1-5 plans and one empire, as most real users; the rest spread up to the max
+    small_user_share: float = 0.0
 
 
 SCALES: dict[str, Scale] = {
@@ -120,6 +122,8 @@ SCALES: dict[str, Scale] = {
     'small': Scale(100, 20, 3, 500, 150, 60, 200, 30),
     'medium': Scale(1000, 20, 3, 3000, 330, 110, 500, 60),
     'large': Scale(5000, 30, 4, 6000, 330, 110, 500, 90),
+    # production's shape (2026-09): 6330 users, ~40k plans, ~8.8k empires; most users small, power users up to 50 plans
+    'prod': Scale(6330, 50, 5, 6000, 330, 110, 500, 90, small_user_share=0.865),
 }
 
 
@@ -550,6 +554,9 @@ class Seeder:
             if index == 0:
                 plan_count = self.scale.max_plans_per_user * 3
                 empire_count = self.scale.max_empires_per_user + 2
+            elif self.scale.small_user_share and self.rng.random() < self.scale.small_user_share:
+                plan_count = self.rng.randint(1, 5)
+                empire_count = 1
             else:
                 plan_count = self.rng.randint(0, self.scale.max_plans_per_user)
                 empire_count = self.rng.randint(1, self.scale.max_empires_per_user)

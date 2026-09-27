@@ -49,9 +49,13 @@ optimistic; what this shows is saturation, queueing and memory pressure.
 | small | 100 | 1,000 | 500 | 30 |
 | medium | 1,000 | 10,000 | 3,000 | 60 |
 | large | 5,000 | 75,000 | 6,000 | 90 |
+| prod | 6,330 | 38,000 | 6,000 | 90 |
 
 `perf_user_0` is the power user (3× the plans, extra empires) the benchmarks
 run as. All seeded users have the password `perf-password`.
+
+`prod` matches production's shape (2026-09): 86.5% of users have 1-5 plans
+and one empire, the rest 0-50 plans and 1-5 empires.
 
 With the FIO snapshot the scale only sets users, plans and empires; all real
 planets, materials, buildings and recipes are loaded. The planets, materials,
