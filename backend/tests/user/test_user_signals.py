@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from gamedata.gamedata_cache_manager import GamedataCacheManager
 from model_bakery import baker
 from user.models import User
 
@@ -29,3 +30,31 @@ class TestUserPreSaveCost:
         user.refresh_from_db()
         assert user.is_email_verified is False
         mock_send.assert_called_once()
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestTriggerFioRefresh:
+    def test_save_skips_refresh_while_lock_is_held(self, django_capture_on_commit_callbacks) -> None:
+        user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        GamedataCacheManager.set_fio_refresh_lock(user.id)
+
+        with (
+            patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            user.save(update_fields=['last_login'])
+
+        refresh.assert_not_called()
+
+    def test_credential_change_refreshes_despite_lock(self, django_capture_on_commit_callbacks) -> None:
+        user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        GamedataCacheManager.set_fio_refresh_lock(user.id)
+
+        with (
+            patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            user.fio_apikey = 'new-key'
+            user.save()
+
+        refresh.assert_called_once_with(user.id)

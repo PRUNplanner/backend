@@ -64,9 +64,11 @@ def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
         if fio_credentials_changed:
             GamedataCacheManager.delete_fio_refresh_lock(instance.pk)
 
-        # trigger refresh on every save (last_login update)
-        logger.info('signal:trigger_fio_refresh', user=instance.id, task='gamedata_refresh_user_fiodata')
-        transaction.on_commit(lambda: gamedata_refresh_user_fiodata.delay(instance.id))
+        # trigger refresh on every save (last_login update), unless a recent refresh still holds the lock;
+        # a read only, the task itself takes the lock
+        if not GamedataCacheManager.has_fio_refresh_lock(instance.pk):
+            logger.info('signal:trigger_fio_refresh', user=instance.id, task='gamedata_refresh_user_fiodata')
+            transaction.on_commit(lambda: gamedata_refresh_user_fiodata.delay(instance.id))
 
     elif fio_existed_before:
         # user had fio, but not anymore, so we clean the users data
