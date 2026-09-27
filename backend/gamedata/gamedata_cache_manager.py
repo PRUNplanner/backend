@@ -86,6 +86,10 @@ class GamedataCacheManager(CacheManager):
 
     # Operations
     @classmethod
+    def has_fio_refresh_lock(cls, user_id: int) -> bool:
+        return cls.get(cls.key_user_fio_lock(user_id)) is not None
+
+    @classmethod
     def set_fio_refresh_lock(cls, user_id: int) -> bool:
         return cls.add(cls.key_user_fio_lock(user_id), 'fio_storage_refresh_locked', 60 * 5)
 

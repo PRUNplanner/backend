@@ -5,6 +5,7 @@ from django.contrib.auth.models import update_last_login
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
+from gamedata.gamedata_cache_manager import GamedataCacheManager
 
 from user.models import User
 
@@ -88,13 +89,11 @@ def user_handle_post_refresh(user_id: int):
 
         update_last_login(User, user)
 
-        if user._has_fio_credentials():
+        # a held lock means a refresh ran recently, the task would only skip; the task still takes the lock itself.
+        # users without credentials need no clean-up here, user signals clean up when credentials are removed
+        if user._has_fio_credentials() and not GamedataCacheManager.has_fio_refresh_lock(user.id):
             from gamedata.tasks import gamedata_refresh_user_fiodata
 
             gamedata_refresh_user_fiodata.delay(user.id)
-        else:
-            from gamedata.tasks import gamedata_clean_user_fiodata
-
-            gamedata_clean_user_fiodata.delay(user.id)
     except User.DoesNotExist:
         pass
