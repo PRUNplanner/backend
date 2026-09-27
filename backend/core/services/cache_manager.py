@@ -11,6 +11,7 @@ from django.http import HttpResponse
 from django.utils.cache import patch_cache_control
 from django_redis.cache import RedisCache
 from rest_framework.response import Response
+from rest_framework_csv.renderers import CSVRenderer
 
 logger = structlog.get_logger(__name__)
 cache = cast(RedisCache, django_cache)
@@ -78,7 +79,7 @@ class CacheManager:
         return response
 
     @classmethod
-    def _rebuild(cls, key: str, func: Callable[[], Any], timeout: int) -> bytes:
+    def _rebuild(cls, key: str, func: Callable[[], Any], timeout: int, fmt: str, csv_header: list[str] | None) -> bytes:
         """Builds and caches the payload. Concurrent misses wait for a single builder instead of all rebuilding."""
         lock_key = f'{key}:rebuild-lock'
         owns_lock = cls.add(lock_key, 1, cls.REBUILD_LOCK_TIMEOUT)
@@ -98,6 +99,10 @@ class CacheManager:
                     float(obj) if isinstance(obj, decimal.Decimal) else str(obj) if isinstance(obj, UUID) else None
                 ),
             )
+            if fmt == 'csv':
+                # rendered from the json round trip, so values match the json payload
+                context = {'header': csv_header} if csv_header else {}
+                data = CSVRenderer().render(orjson.loads(data), renderer_context=context)
             cls.set(key, data, timeout)
             return data
         finally:
@@ -106,20 +111,23 @@ class CacheManager:
 
     @classmethod
     def get_or_set_response(
-        cls, key: str, func: Callable[[], Any], timeout: int = 300, fmt: str = 'json'
+        cls,
+        key: str,
+        func: Callable[[], Any],
+        timeout: int = 300,
+        fmt: str = 'json',
+        private: bool = False,
+        csv_header: list[str] | None = None,
     ) -> HttpResponse:
+        """Serves pre-rendered bytes from the cache. `private` keeps per-user payloads out of shared caches."""
         cached_data = cls.get(key)
-        data_to_return = cached_data or cls._rebuild(key, func, timeout)
+        data_to_return = cached_data or cls._rebuild(key, func, timeout, fmt, csv_header)
 
-        # csv data
-        if fmt == 'csv':
-            decoded_data = orjson.loads(data_to_return)
-            response = Response(decoded_data)
-            response['Content-Type'] = 'text/csv; charset=utf-8'
-        else:
-            response = HttpResponse(data_to_return, content_type='application/json')
-
-        # standard json, return pre-rendered orjson bytes directly
+        content_type = 'text/csv; charset=utf-8' if fmt == 'csv' else 'application/json'
+        response = HttpResponse(data_to_return, content_type=content_type)
         response['X-Cache-Hit'] = '1' if cached_data else '0'
-        patch_cache_control(response, public=True, max_age=timeout)
+        if private:
+            patch_cache_control(response, private=True, max_age=timeout)
+        else:
+            patch_cache_control(response, public=True, max_age=timeout)
         return response

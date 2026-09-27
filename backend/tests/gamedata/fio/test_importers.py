@@ -74,7 +74,6 @@ class TestImporterCacheInvalidation:
         assert GamedataCacheManager.get(key) is None
 
     @pytest.mark.usefixtures('montem_response')
-    @pytest.mark.xfail(strict=True, reason='audit: import_planet leaves the 1-day planet list cache stale')
     def test_import_planet_invalidates_planet_list(self, django_capture_on_commit_callbacks):
         key = GamedataCacheManager.key_planet_list()
         GamedataCacheManager.set(key, b'stale', timeout=60)
@@ -96,7 +95,6 @@ class TestImporterCacheInvalidation:
 
         assert GamedataCacheManager.get(key) is None
 
-    @pytest.mark.xfail(strict=True, reason='audit: import_all_buildings leaves the 1-day building list cache stale')
     def test_import_all_buildings_invalidates_building_list(self):
         key = GamedataCacheManager.key_building_list()
         GamedataCacheManager.set(key, b'stale', timeout=60)

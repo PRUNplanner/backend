@@ -65,36 +65,36 @@ class PlanningCacheManager(CacheManager):
     @classmethod
     def get_plan_list_response(cls, user_id: int, func: Callable[[], Any]):
         key = cls.key_for_plan_list(user_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour, private=True)
 
     @classmethod
     def get_plan_retrieve_response(cls, user_id: int, plan_id: UUID, func: Callable[[], Any]):
         key = cls.key_plan_retrieve(user_id, plan_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour, private=True)
 
     ## Empire
     @classmethod
     def get_empire_list_response(cls, user_id: int, func: Callable[[], Any]):
         key = cls.key_for_empire_list(user_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour, private=True)
 
     @classmethod
     def get_empire_retrieve_response(cls, user_id: int, empire_id: UUID, func: Callable[[], Any]):
         key = cls.key_for_empire_retrieve(user_id, empire_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour, private=True)
 
     @classmethod
     def get_empire_retrieve_plans_response(cls, user_id: int, empire_id: UUID, func: Callable[[], Any]):
         key = cls.key_for_empire_retrieve_plans(user_id, empire_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour, private=True)
 
     ## CX
     @classmethod
     def get_cx_list_response(cls, user_id: int, func: Callable[[], Any]):
         key = cls.key_for_cx_list(user_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour, private=True)
 
     @classmethod
     def get_cx_retrieve_response(cls, user_id: int, cx_id: UUID, func: Callable[[], Any]):
         key = cls.key_for_cx_retrieve(user_id, cx_id)
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour)
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1Hour, private=True)

@@ -227,7 +227,6 @@ class TestGamedataCacheHits:
 
         assert response['X-Cache-Hit'] == '1'
 
-    @pytest.mark.xfail(strict=True, reason='audit: latest_popr looks the planet up before checking the cache')
     def test_latest_popr_cache_hit_runs_no_queries(
         self,
         api_client: APIClient,
@@ -244,7 +243,6 @@ class TestGamedataCacheHits:
 
         assert response['X-Cache-Hit'] == '1'
 
-    @pytest.mark.xfail(strict=True, reason='audit: CSV is parsed from JSON and re-rendered on every cache hit')
     def test_exchange_csv_cache_hit_is_not_rerendered(
         self, api_client: APIClient, exchange_analytics_factory: Callable[..., object]
     ) -> None:
@@ -262,7 +260,6 @@ class TestGamedataCacheHits:
 
 class TestGameStorageCacheHeaders:
     @pytest.mark.usefixtures('locmem_cache')
-    @pytest.mark.xfail(strict=True, reason="audit: per-user storage is sent with 'Cache-Control: public'")
     def test_storage_response_is_private(
         self,
         api_client: APIClient,

@@ -172,11 +172,10 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         responses=GamePlanetInfrastructureReportSerializer,
         summary='Get planets latest population report',
     )
-    def latest_popr(self, request, planet_natural_id=None):
+    def latest_popr(self, request, planet_natural_id: str):
 
-        planet = get_object_or_404(GamePlanet, planet_natural_id=planet_natural_id)
-
-        def fetch_data(planet: GamePlanet):
+        def fetch_data():
+            planet = get_object_or_404(GamePlanet, planet_natural_id=planet_natural_id)
             latest_report = planet.popr_reports.all().first()
 
             if not latest_report:
@@ -184,7 +183,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
 
             return GamePlanetInfrastructureReportSerializer(latest_report).data
 
-        return GamedataCacheManager.get_planet_latest_popr(planet.planet_natural_id, lambda: fetch_data(planet))
+        return GamedataCacheManager.get_planet_latest_popr(planet_natural_id, fetch_data)
 
 
 class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
@@ -262,7 +261,8 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
             return analytics_list
 
-        return GamedataCacheManager.get_exchange_list_response(fetch_data, fmt)
+        csv_header = self.get_renderer_context().get('header')
+        return GamedataCacheManager.get_exchange_list_response(fetch_data, fmt, csv_header)
 
 
 @extend_schema(

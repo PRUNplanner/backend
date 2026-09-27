@@ -192,10 +192,6 @@ class TestPlanViewSetQueries:
 
 
 class TestPlanViewSetCacheHeaders:
-    @pytest.mark.xfail(
-        strict=True,
-        reason="audit: per-user plan lists are sent with 'Cache-Control: public', browsers serve them stale for 1h",
-    )
     def test_list_response_is_private(self, api_client, user_factory, plan_factory):
         user = user_factory(id=1)
         plan_factory(user=user)
