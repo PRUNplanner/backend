@@ -102,10 +102,6 @@ class TestUserAPIKeyAuthentication:
 
 
 class TestUserAPIKeyAuthenticationCost:
-    @pytest.mark.xfail(
-        strict=True,
-        reason='audit: every API-key request writes last_used and lazily loads the user in a second query',
-    )
     def test_recently_used_key_authenticates_with_a_single_read(self):
         from model_bakery import baker
 

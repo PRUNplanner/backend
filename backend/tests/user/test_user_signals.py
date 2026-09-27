@@ -10,7 +10,6 @@ pytestmark = pytest.mark.django_db
 
 
 class TestUserPreSaveCost:
-    @pytest.mark.xfail(strict=True, reason='audit: pre_save loads the previous user row twice on every save')
     def test_save_reads_previous_row_at_most_once(self) -> None:
         user: User = baker.make('user.User')
 

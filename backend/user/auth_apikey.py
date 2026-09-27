@@ -7,6 +7,8 @@ from user.models import UserAPIKey
 
 
 class UserAPIKeyAuthentication(authentication.BaseAuthentication):
+    LAST_USED_INTERVAL = timedelta(minutes=5)
+
     def authenticate(self, request):
         key = None
 
@@ -39,9 +41,10 @@ class UserAPIKeyAuthentication(authentication.BaseAuthentication):
                 user.last_login = now
                 user.save(update_fields=['last_login'])
 
-            # always update apikey last_used
-            api_key.last_used = now
-            api_key.save(update_fields=['last_used'])
+            # update apikey last_used at most every few minutes
+            if api_key.last_used is None or api_key.last_used < now - self.LAST_USED_INTERVAL:
+                api_key.last_used = now
+                api_key.save(update_fields=['last_used'])
 
             return (api_key.user, None)
 

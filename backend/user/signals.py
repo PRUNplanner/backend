@@ -22,16 +22,18 @@ def check_user_changes(sender, instance, **kwargs):
     if getattr(instance, '_migration_in_progress', False):
         return
 
-    if instance.pk:  # pk only available on update
-        try:
-            old_instance = User.objects.get(pk=instance.pk)
+    # previous row, read once for the email and fio checks below
+    old_instance = (
+        sender.objects.only('email', 'prun_username', 'fio_apikey').filter(pk=instance.pk).first()
+        if instance.pk  # pk only available on update
+        else None
+    )
 
-            if instance.email != old_instance.email and instance.email:
-                instance._email_changed = True
-                instance.is_email_verified = False
-        except User.DoesNotExist:
-            pass
-    else:
+    if old_instance:
+        if instance.email != old_instance.email and instance.email:
+            instance._email_changed = True
+            instance.is_email_verified = False
+    elif not instance.pk:
         # It's a brand new user
         if instance.email and not instance.is_email_verified:
             instance._email_changed = True
@@ -41,13 +43,11 @@ def check_user_changes(sender, instance, **kwargs):
     instance._fio_existed_before = False
     instance._fio_credentials_changed = False
 
-    if instance.pk:
-        old_instance = sender.objects.only('prun_username', 'fio_apikey').filter(pk=instance.pk).first()
-        if old_instance:
-            instance._fio_existed_before = old_instance._has_fio_credentials()
-            instance._fio_credentials_changed = (
-                old_instance.prun_username != instance.prun_username or old_instance.fio_apikey != instance.fio_apikey
-            )
+    if old_instance:
+        instance._fio_existed_before = old_instance._has_fio_credentials()
+        instance._fio_credentials_changed = (
+            old_instance.prun_username != instance.prun_username or old_instance.fio_apikey != instance.fio_apikey
+        )
 
 
 @receiver([post_save], sender=User)
