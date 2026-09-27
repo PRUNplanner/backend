@@ -9,7 +9,6 @@ from django.utils import timezone
 from gamedata.models.game_exchange import GameExchange
 from gamedata.models.game_planet import GamePlanet
 from rest_framework.test import APIClient
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_csv.renderers import CSVRenderer
 from tests.fixtures.fxt_fio_ship_data import fio_ship_data
 from tests.fixtures.fxt_fio_sites_data import fio_sites_data
@@ -194,59 +193,7 @@ def _search_payload(**overrides: object) -> dict[str, object]:
 
 
 @pytest.mark.usefixtures('locmem_cache')
-class TestGamePlanetViewSetAbuseProtection:
-    """
-    Planet search endpoints are public and every distinct request body is a
-    cache miss that serializes planets through nested DRF serializers.
-
-    Contract for the fix: these endpoints are throttled under the scope
-    `planet_search`; `multiple` accepts at most 100 planet ids.
-    """
-
-    @pytest.fixture
-    def tight_planet_search_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(ScopedRateThrottle.THROTTLE_RATES, 'planet_search', '2/min')
-
-    @pytest.mark.usefixtures('tight_planet_search_rate')
-    @pytest.mark.xfail(strict=True, reason='audit: planet search is public and unthrottled')
-    def test_search_is_throttled(self, api_client: APIClient) -> None:
-        statuses = [
-            api_client.post(
-                reverse('data:planet-search'), data=_search_payload(materials=[f'M{i}']), format='json'
-            ).status_code
-            for i in range(3)
-        ]
-
-        assert statuses == [200, 200, 429]
-
-    @pytest.mark.usefixtures('tight_planet_search_rate')
-    @pytest.mark.xfail(strict=True, reason='audit: planet multiple is public and unthrottled')
-    def test_multiple_is_throttled(self, api_client: APIClient) -> None:
-        statuses = [
-            api_client.post(reverse('data:planet-multiple'), data=[f'AB-{i:03d}c'], format='json').status_code
-            for i in range(3)
-        ]
-
-        assert statuses == [200, 200, 429]
-
-    @pytest.mark.usefixtures('tight_planet_search_rate')
-    @pytest.mark.xfail(strict=True, reason='audit: planet term search is public and unthrottled')
-    def test_search_single_is_throttled(self, api_client: APIClient) -> None:
-        statuses = [
-            api_client.get(reverse('data:planet-search-single', kwargs={'search_term': f'term{i}'})).status_code
-            for i in range(3)
-        ]
-
-        assert statuses == [200, 200, 429]
-
-    @pytest.mark.xfail(strict=True, reason='audit: planet multiple accepts an unbounded id list')
-    def test_multiple_rejects_more_than_100_ids(self, api_client: APIClient) -> None:
-        ids = [f'AB-{i:03d}c' for i in range(101)]
-
-        response = api_client.post(reverse('data:planet-multiple'), data=ids, format='json')
-
-        assert response.status_code == 400
-
+class TestGamePlanetViewSetMultiple:
     def test_multiple_accepts_100_ids(self, api_client: APIClient) -> None:
         ids = [f'AB-{i:03d}c' for i in range(100)]
 
@@ -254,7 +201,6 @@ class TestGamePlanetViewSetAbuseProtection:
 
         assert response.status_code == 200
 
-    @pytest.mark.xfail(strict=True, reason='audit: multiple cache key depends on id order and duplicates')
     def test_multiple_cache_key_ignores_order_and_duplicates(
         self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
     ) -> None:

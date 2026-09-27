@@ -46,7 +46,7 @@ class GamedataCacheManager(CacheManager):
 
     @classmethod
     def key_planet_multiple(cls, planet_natural_ids: list[str]) -> str:
-        return cls.make_key('planet', *planet_natural_ids)
+        return cls.make_key('planet', *sorted(set(planet_natural_ids)))
 
     @classmethod
     def key_planet_popr(cls, planet_natural_id: str) -> str:
