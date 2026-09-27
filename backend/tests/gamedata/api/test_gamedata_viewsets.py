@@ -1,13 +1,14 @@
 import uuid
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from django.urls import reverse
 from django.utils import timezone
 from gamedata.models.game_exchange import GameExchange
-from gamedata.models.game_planet import GamePlanet
+from gamedata.models.game_planet import GamePlanet, GamePlanetCOGCProgramChoices
+from model_bakery import baker
 from rest_framework.test import APIClient
 from rest_framework_csv.renderers import CSVRenderer
 from tests.fixtures.fxt_fio_ship_data import fio_ship_data
@@ -301,3 +302,29 @@ class TestFIOWebhookIngestConcurrency:
         assert response.status_code == 202
         config.refresh_from_db()
         assert config.total_calls == 11
+
+
+class TestGamePlanetActiveCOGC:
+    @pytest.mark.parametrize('now_seconds, expected_active', [(1.5, True), (3.0, False)])
+    def test_active_cogc_is_evaluated_per_request(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        now_seconds: float,
+        expected_active: bool,
+    ) -> None:
+        planet = planet_factory(planet_natural_id='AB-001c')
+        program_type = GamePlanetCOGCProgramChoices.values[0]
+        baker.make(
+            'gamedata.GamePlanetCOGCProgram',
+            planet=planet,
+            program_type=program_type,
+            start_epochms=1_000,
+            end_epochms=2_000,
+        )
+        url = reverse('data:planet-detail', kwargs={'planet_natural_id': 'AB-001c'})
+
+        with patch('django.utils.timezone.now', return_value=datetime.fromtimestamp(now_seconds, tz=UTC)):
+            response = api_client.get(url)
+
+        assert response.data['active_cogc_program_type'] == (program_type if expected_active else None)

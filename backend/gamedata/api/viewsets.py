@@ -4,7 +4,7 @@ from typing import Any, cast
 
 import structlog
 from django.db import connection
-from django.db.models import Case, CharField, F, Q, Value, When
+from django.db.models import Case, CharField, F, Q, QuerySet, Value, When
 from django.db.models.functions import Concat
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -97,9 +97,12 @@ class GameBuildingViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
 class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     permission_classes = [AllowAny]
-    queryset = queryset_gameplanet()
     serializer_class = GamePlanetSerializer
     lookup_field = 'planet_natural_id'
+
+    def get_queryset(self) -> QuerySet[GamePlanet]:
+        # built per request: the active cogc subquery compares against the current time
+        return queryset_gameplanet()
 
     @extend_schema(auth=[], summary='List all planets')
     def list(self, request, *args, **kwargs):
