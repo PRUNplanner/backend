@@ -16,10 +16,6 @@ class TestRecipeDistribution:
             'BMP': [{'recipe_id': 'BMP#A=>B', 'percentage': 80.0}, {'recipe_id': 'BMP#C=>D', 'percentage': 20.0}]
         }
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason='audit: the inner loop rebinds `ticker`, so results land under the last recipe prefix, not the building',
-    )
     def test_result_key_is_the_building_not_the_recipe_prefix(self) -> None:
         service = PlanInsightAggregatorService()
 

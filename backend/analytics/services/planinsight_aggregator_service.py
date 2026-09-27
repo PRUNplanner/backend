@@ -160,8 +160,8 @@ class PlanInsightAggregatorService:
             # top 5 most used recipes for this building
             top_three = []
             for rid, count in recipes.most_common(5):
-                ticker = rid.split('#')[0]
-                if ticker not in self.EXTRACTION_BUILDINGS and ticker not in building_tickers:
+                recipe_building = rid.split('#')[0]
+                if recipe_building not in self.EXTRACTION_BUILDINGS and recipe_building not in building_tickers:
                     continue
 
                 percentage = round(count / total_recipe_runs * 100, 2)
