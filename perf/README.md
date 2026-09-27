@@ -24,9 +24,23 @@ perf/run.sh --scale medium --users 100 --duration 3m
 perf/run.sh --mode quick --only planning   # just the planning endpoints
 perf/run.sh --keep                         # leave the stack up afterwards
 perf/run.sh --no-snapshot                  # fake game data instead of the FIO snapshot
+perf/run.sh --prod-like                    # server shaped like production (see below)
 ```
 
 In Claude Code, `/perf` in the workspace runs this and interprets the result.
+
+### Production-like runs
+
+By default everything gets the whole dev machine, and gunicorn runs natively.
+Production is a 2 vCPU / 4 GB host shared by all containers. `--prod-like`
+layers `perf/docker-compose.prod-like.yml` on the stack: gunicorn runs in the
+real `Dockerfile` image, and it, Postgres and Redis share the same two cores
+with production's memory limits (1 GB app, 1 GB db, 256 MB redis). Postgres
+uses its default config on disk. Locust stays on the host as outside clients.
+These runs are compared only with other `--prod-like` runs.
+
+A laptop core is still faster than a cloud vCPU, so absolute latencies stay
+optimistic; what this shows is saturation, queueing and memory pressure.
 
 ## Scales
 

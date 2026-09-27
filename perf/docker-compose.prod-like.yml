@@ -1,0 +1,39 @@
+# Layered on docker-compose.perf.yml by `perf/run.sh --prod-like`: shapes the
+# stack like production (2 vCPU / 4 GB host, limits from `docker stats` there).
+# db, redis and app share the same two cores; the rest of prod (worker, beat,
+# vector, traefik, ...) idles and is left out. Locust stays on the host,
+# unlimited, as the outside clients.
+# ponytail: M1 cores are faster than cloud vCPUs, so latency stays optimistic;
+# add a cpus: quota here once calibrated against the server.
+
+services:
+  db:
+    command: postgres  # production runs the default config
+    tmpfs: !reset []   # disk-backed (anonymous volume, removed by `down -v`)
+    cpuset: "0,1"
+    mem_limit: 1g
+
+  redis:
+    cpuset: "0,1"
+    mem_limit: 256m
+
+  app:
+    build: ..
+    command: gunicorn -c backend/gunicorn.conf.py
+    env_file: env.perf
+    environment:
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      CACHE_DEFAULT_LOCATION: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
+    ports:
+      - "127.0.0.1:8765:8000"
+    cpuset: "0,1"
+    mem_limit: 1g
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

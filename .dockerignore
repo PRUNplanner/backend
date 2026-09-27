@@ -1,0 +1,11 @@
+# keep host-only state out of the image; the host .venv (macOS) would replace the one uv builds
+.venv/
+.git/
+.perf/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+perf/snapshot/
+**/__pycache__/
+.DS_Store

@@ -85,9 +85,9 @@ def source(meta: JSON) -> str:
     return str(meta.get('source', 'fake'))  # runs from before the FIO snapshot all used fake game data
 
 
-def run_key(meta: JSON) -> tuple[object, object, str]:
+def run_key(meta: JSON) -> tuple[object, object, str, bool]:
     """Only runs with the same key are comparable."""
-    return meta.get('scale'), meta.get('mode'), source(meta)
+    return meta.get('scale'), meta.get('mode'), source(meta), bool(meta.get('prod_like'))
 
 
 def find_baseline(run_dir: Path, meta: JSON) -> Path | None:
@@ -216,6 +216,7 @@ def main() -> None:
         f'# Perf run {run_dir.name}',
         '',
         f'scale **{meta.get("scale")}**, mode **{meta.get("mode")}**, game data **{source(meta)}**, '
+        f'{"**prod-like** (2 shared cores, prod memory limits), " if meta.get("prod_like") else ""}'
         f'git `{meta.get("git_sha")}` on `{meta.get("git_branch")}`{dirty}',
         f'Baseline: `{baseline_dir.name}`'
         if baseline_dir
