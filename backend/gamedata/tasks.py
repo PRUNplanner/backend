@@ -310,8 +310,11 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
                 recent_objs = [o for o in objs if o.date_epoch >= three_days_ago_ms]
                 historical_objs = [o for o in objs if o.date_epoch < three_days_ago_ms]
 
-                # Process Historical: Ignore Conflicts
-                if historical_objs:
+                # Process Historical: only for a pair without rows yet, full refreshes backfill gaps
+                if (
+                    historical_objs
+                    and not GameExchangeCXPC.objects.filter(ticker=ticker, exchange_code=exchange_code).exists()
+                ):
                     GameExchangeCXPC.objects.bulk_create(
                         historical_objs,
                         ignore_conflicts=True,

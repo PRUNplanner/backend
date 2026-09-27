@@ -120,3 +120,54 @@ class TestDispatchFioUpdatesPayload:
 
         mock_async.assert_called_once()
         assert 'secret-key' not in repr(mock_async.call_args)
+
+
+@pytest.mark.django_db
+class TestRefreshCXPCHistory:
+    """Non-full runs only insert history (older than 3 days) for a pair without rows yet."""
+
+    HISTORICAL_EPOCH = 1_000
+
+    @staticmethod
+    def _point(date_epoch: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            interval='DAY_ONE', date_epoch=date_epoch, open=1, close=2, high=3, low=1, volume=10, traded=5
+        )
+
+    def _run(self, full: bool) -> None:
+        recent_epoch = int(timezone.now().timestamp() * 1000)
+        with patch('gamedata.tasks.get_fio_service') as mock_get_fio:
+            mock_get_fio.return_value.__enter__.return_value.get_cxpc.return_value = [
+                self._point(self.HISTORICAL_EPOCH),
+                self._point(recent_epoch),
+            ]
+            assert gamedata_refresh_cxpc('FUEL', 'AI1', full=full) is True
+
+    def _has_history(self) -> bool:
+        from gamedata.models import GameExchangeCXPC
+
+        return GameExchangeCXPC.objects.filter(
+            ticker='FUEL', exchange_code='AI1', date_epoch=self.HISTORICAL_EPOCH
+        ).exists()
+
+    def test_new_pair_gets_history(self) -> None:
+        self._run(full=False)
+
+        assert self._has_history()
+
+    def test_known_pair_skips_history_but_upserts_recent(self) -> None:
+        from gamedata.models import GameExchangeCXPC
+
+        baker.make('gamedata.GameExchangeCXPC', ticker='FUEL', exchange_code='AI1', date_epoch=2_000)
+
+        self._run(full=False)
+
+        assert not self._has_history()
+        assert GameExchangeCXPC.objects.filter(ticker='FUEL', exchange_code='AI1').count() == 2
+
+    def test_full_refresh_inserts_history_for_known_pair(self) -> None:
+        baker.make('gamedata.GameExchangeCXPC', ticker='FUEL', exchange_code='AI1', date_epoch=2_000)
+
+        self._run(full=True)
+
+        assert self._has_history()
