@@ -1,6 +1,6 @@
-from unittest.mock import patch
-
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 pytestmark = pytest.mark.django_db
@@ -76,19 +76,26 @@ class TestCXViewSetSyncJunctions:
         response = api_client.post(url, data=[], format='json')
         assert response.status_code == 401
 
+    @pytest.mark.usefixtures('locmem_cache')
     def test_sync_junctions_assigns_empire_to_cx(self, api_client, user_factory, cx_factory, empire_factory):
         user = user_factory(id=1)
         cx = cx_factory(user=user, cx_name='My CX')
         empire = empire_factory(user=user)
 
+        empire_list_url = reverse('planning:empire')
+        api_client.as_user(user).get(empire_list_url)
+        assert api_client.as_user(user).get(empire_list_url)['X-Cache-Hit'] == '1'
+
         url = reverse('planning:cx-junctions')
         payload = [{'cx_uuid': str(cx.uuid), 'empires': [{'empire_uuid': str(empire.uuid)}]}]
 
-        with patch('planning.api.viewsets.cx_viewset.PlanningCacheManager.delete_pattern') as mock_delete_pattern:
-            response = api_client.as_user(user).post(url, data=payload, format='json')
+        response = api_client.as_user(user).post(url, data=payload, format='json')
 
         assert response.status_code == 200
-        mock_delete_pattern.assert_called_once_with(f'*PLANNING:{user.id}:*')
+        assert [e['uuid'] for e in response.data[0]['empires']] == [str(empire.uuid)]
+
+        # the cached empire list nests the cx, so it must reflect the new assignment
+        assert api_client.as_user(user).get(empire_list_url).data[0]['cx']['uuid'] == str(cx.uuid)
 
         empire.refresh_from_db()
         assert empire.cx_id == cx.uuid
@@ -139,3 +146,52 @@ class TestCXViewSetSyncJunctions:
 
         assert response.status_code == 400
         assert response.data['error'] == 'Duplicate empire assignment in request.'
+
+
+class TestCXViewSetQueries:
+    @pytest.mark.parametrize(
+        'empire_count',
+        [
+            1,
+            pytest.param(
+                5, marks=pytest.mark.xfail(strict=True, reason='audit: N+1 on empire.plans in nested serializer')
+            ),
+        ],
+    )
+    def test_list_query_count_is_constant(
+        self, empire_count, api_client, user_factory, cx_factory, empire_factory, plan_factory
+    ):
+        user = user_factory(id=1)
+        cx = cx_factory(user=user)
+        for _ in range(empire_count):
+            empire = empire_factory(user=user, cx=cx)
+            empire.plans.add(plan_factory(user=user), through_defaults={'user': user})
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = api_client.as_user(user).get(reverse('planning:cx'))
+
+        assert len(response.data[0]['empires']) == empire_count
+        # cx, empires prefetch, plans prefetch
+        assert len(ctx.captured_queries) == 3
+
+    @pytest.mark.xfail(strict=True, reason='audit: N+1, nested empire serializer reads empire.plans unprefetched')
+    def test_retrieve_query_count_is_constant(self, api_client, user_factory, cx_factory, empire_factory):
+        user = user_factory(id=1)
+        cx = cx_factory(user=user)
+        for _ in range(5):
+            empire_factory(user=user, cx=cx)
+
+        with CaptureQueriesContext(connection) as ctx:
+            api_client.as_user(user).get(reverse('planning:cx-detail', kwargs={'pk': str(cx.uuid)}))
+
+        assert len(ctx.captured_queries) == 3
+
+    @pytest.mark.xfail(strict=True, reason='audit: empire_state is loaded for every nested empire but never serialized')
+    def test_list_does_not_load_empire_state(self, api_client, user_factory, cx_factory, empire_factory):
+        user = user_factory(id=1)
+        empire_factory(user=user, cx=cx_factory(user=user))
+
+        with CaptureQueriesContext(connection) as ctx:
+            api_client.as_user(user).get(reverse('planning:cx'))
+
+        assert not any('empire_state' in q['sql'] for q in ctx.captured_queries)

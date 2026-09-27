@@ -1,4 +1,6 @@
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from planning.models import PlanningEmpirePlan, PlanningPlan
 from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
@@ -146,3 +148,60 @@ class TestPlanViewSetClone:
         assert response.data['plan_name'] == 'Original (Clone)'
         assert response.data['uuid'] != str(plan.uuid)
         assert PlanningPlan.objects.filter(user=user).count() == 2
+
+
+class TestPlanViewSetQueries:
+    def test_list_query_count_is_constant(
+        self, api_client, user_factory, plan_factory, empire_factory, cx_factory, django_assert_num_queries
+    ):
+        user = user_factory(id=1)
+        for _ in range(5):
+            empire = empire_factory(user=user, cx=cx_factory(user=user))
+            empire.plans.add(plan_factory(user=user), through_defaults={'user': user})
+
+        # plans, empires prefetch with joined cx
+        with django_assert_num_queries(2):
+            response = api_client.as_user(user).get(reverse('planning:plan'))
+
+        assert len(response.data) == 5
+
+    @pytest.mark.xfail(strict=True, reason='audit: empire_state is loaded for every nested empire but never serialized')
+    def test_list_does_not_load_empire_state(self, api_client, user_factory, plan_factory, empire_factory):
+        user = user_factory(id=1)
+        empire = empire_factory(user=user)
+        empire.plans.add(plan_factory(user=user), through_defaults={'user': user})
+
+        with CaptureQueriesContext(connection) as ctx:
+            api_client.as_user(user).get(reverse('planning:plan'))
+
+        assert not any('empire_state' in q['sql'] for q in ctx.captured_queries)
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason='audit: full cx_data is repeated for every empire of every plan; API change, check frontend usage',
+    )
+    def test_list_does_not_repeat_cx_data_per_empire(
+        self, api_client, user_factory, plan_factory, empire_factory, cx_factory
+    ):
+        user = user_factory(id=1)
+        empire = empire_factory(user=user, cx=cx_factory(user=user))
+        empire.plans.add(plan_factory(user=user), through_defaults={'user': user})
+
+        response = api_client.as_user(user).get(reverse('planning:plan'))
+
+        assert 'cx_data' not in response.data[0]['empires'][0]['cx']
+
+
+class TestPlanViewSetCacheHeaders:
+    @pytest.mark.xfail(
+        strict=True,
+        reason="audit: per-user plan lists are sent with 'Cache-Control: public', browsers serve them stale for 1h",
+    )
+    def test_list_response_is_private(self, api_client, user_factory, plan_factory):
+        user = user_factory(id=1)
+        plan_factory(user=user)
+
+        response = api_client.as_user(user).get(reverse('planning:plan'))
+
+        assert 'private' in response['Cache-Control']
+        assert 'public' not in response['Cache-Control']

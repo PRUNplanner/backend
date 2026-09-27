@@ -1,7 +1,8 @@
 from uuid import uuid4
 
 import pytest
-from gamedata.models import GameBuilding, GameBuildingCost
+from django.db import models
+from gamedata.models import GameBuilding, GameBuildingCost, GameExchangeCXPC
 
 pytestmark = pytest.mark.django_db
 
@@ -33,3 +34,17 @@ def test_model_gamebuildingcost(building_factory, building_cost_factory):
     buildingcost = GameBuildingCost.objects.get(building_cost_id=cost_uuid)
 
     assert str(buildingcost) == 'HBB (Foo) (1xMCG)'
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason='audit: idx_ticker_exchange duplicates the leading columns of unique_ticker_exchange_date',
+)
+def test_cxpc_has_no_index_covered_by_its_unique_constraint():
+    unique_fields = [
+        tuple(c.fields) for c in GameExchangeCXPC._meta.constraints if isinstance(c, models.UniqueConstraint)
+    ]
+
+    for index in GameExchangeCXPC._meta.indexes:
+        index_fields = tuple(index.fields)
+        assert not any(fields[: len(index_fields)] == index_fields for fields in unique_fields), index.name

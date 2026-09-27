@@ -7,7 +7,15 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from gamedata.models.game_exchange import GameExchange
+from gamedata.models.game_planet import GamePlanet
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_csv.renderers import CSVRenderer
+from tests.fixtures.fxt_fio_ship_data import fio_ship_data
+from tests.fixtures.fxt_fio_sites_data import fio_sites_data
+from tests.fixtures.fxt_fio_storage_data import fio_storage_data
+from tests.fixtures.fxt_fio_warehouse_data import fio_warehouse_data
+from user.models import User
 from user.models.configs import GlobalConfigWebhook, WebhookSenderChoices
 
 pytestmark = pytest.mark.django_db
@@ -160,3 +168,194 @@ class TestFIOWebhookIngest:
         config.refresh_from_db()
         assert config.total_calls == 4
         assert config.last_received_at is not None
+
+
+def _search_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        'materials': [],
+        'cogc_programs': [],
+        'must_be_fertile': False,
+        'environment_rocky': True,
+        'environment_gaseous': True,
+        'environment_low_gravity': True,
+        'environment_high_gravity': True,
+        'environment_low_pressure': True,
+        'environment_high_pressure': True,
+        'environment_low_temperature': True,
+        'environment_high_temperature': True,
+        'must_have_localmarket': False,
+        'must_have_chamberofcommerce': False,
+        'must_have_warehouse': False,
+        'must_have_administrationcenter': False,
+        'must_have_shipyard': False,
+    }
+    payload.update(overrides)
+    return payload
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestGamePlanetViewSetAbuseProtection:
+    """
+    Planet search endpoints are public and every distinct request body is a
+    cache miss that serializes planets through nested DRF serializers.
+
+    Contract for the fix: these endpoints are throttled under the scope
+    `planet_search`; `multiple` accepts at most 100 planet ids.
+    """
+
+    @pytest.fixture
+    def tight_planet_search_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(ScopedRateThrottle.THROTTLE_RATES, 'planet_search', '2/min')
+
+    @pytest.mark.usefixtures('tight_planet_search_rate')
+    @pytest.mark.xfail(strict=True, reason='audit: planet search is public and unthrottled')
+    def test_search_is_throttled(self, api_client: APIClient) -> None:
+        statuses = [
+            api_client.post(
+                reverse('data:planet-search'), data=_search_payload(materials=[f'M{i}']), format='json'
+            ).status_code
+            for i in range(3)
+        ]
+
+        assert statuses == [200, 200, 429]
+
+    @pytest.mark.usefixtures('tight_planet_search_rate')
+    @pytest.mark.xfail(strict=True, reason='audit: planet multiple is public and unthrottled')
+    def test_multiple_is_throttled(self, api_client: APIClient) -> None:
+        statuses = [
+            api_client.post(reverse('data:planet-multiple'), data=[f'AB-{i:03d}c'], format='json').status_code
+            for i in range(3)
+        ]
+
+        assert statuses == [200, 200, 429]
+
+    @pytest.mark.usefixtures('tight_planet_search_rate')
+    @pytest.mark.xfail(strict=True, reason='audit: planet term search is public and unthrottled')
+    def test_search_single_is_throttled(self, api_client: APIClient) -> None:
+        statuses = [
+            api_client.get(reverse('data:planet-search-single', kwargs={'search_term': f'term{i}'})).status_code
+            for i in range(3)
+        ]
+
+        assert statuses == [200, 200, 429]
+
+    @pytest.mark.xfail(strict=True, reason='audit: planet multiple accepts an unbounded id list')
+    def test_multiple_rejects_more_than_100_ids(self, api_client: APIClient) -> None:
+        ids = [f'AB-{i:03d}c' for i in range(101)]
+
+        response = api_client.post(reverse('data:planet-multiple'), data=ids, format='json')
+
+        assert response.status_code == 400
+
+    def test_multiple_accepts_100_ids(self, api_client: APIClient) -> None:
+        ids = [f'AB-{i:03d}c' for i in range(100)]
+
+        response = api_client.post(reverse('data:planet-multiple'), data=ids, format='json')
+
+        assert response.status_code == 200
+
+    @pytest.mark.xfail(strict=True, reason='audit: multiple cache key depends on id order and duplicates')
+    def test_multiple_cache_key_ignores_order_and_duplicates(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet_factory(planet_natural_id='AB-001c')
+        planet_factory(planet_natural_id='AB-002c')
+        url = reverse('data:planet-multiple')
+
+        assert api_client.post(url, data=['AB-001c', 'AB-002c'], format='json')['X-Cache-Hit'] == '0'
+        assert api_client.post(url, data=['AB-002c', 'AB-001c'], format='json')['X-Cache-Hit'] == '1'
+        assert api_client.post(url, data=['AB-002c', 'AB-001c', 'AB-001c'], format='json')['X-Cache-Hit'] == '1'
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestGamedataCacheHits:
+    def test_planet_list_cache_hit_runs_no_queries(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet], django_assert_num_queries
+    ) -> None:
+        planet_factory(planet_natural_id='AB-001c')
+        url = reverse('data:planet-list')
+        api_client.get(url)
+
+        with django_assert_num_queries(0):
+            response = api_client.get(url)
+
+        assert response['X-Cache-Hit'] == '1'
+
+    @pytest.mark.xfail(strict=True, reason='audit: latest_popr looks the planet up before checking the cache')
+    def test_latest_popr_cache_hit_runs_no_queries(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        popr_factory: Callable[..., object],
+        django_assert_num_queries,
+    ) -> None:
+        popr_factory(planet=planet_factory(planet_natural_id='AB-001c'))
+        url = reverse('data:planet-infrastructure', kwargs={'planet_natural_id': 'AB-001c'})
+        api_client.get(url)
+
+        with django_assert_num_queries(0):
+            response = api_client.get(url)
+
+        assert response['X-Cache-Hit'] == '1'
+
+    @pytest.mark.xfail(strict=True, reason='audit: CSV is parsed from JSON and re-rendered on every cache hit')
+    def test_exchange_csv_cache_hit_is_not_rerendered(
+        self, api_client: APIClient, exchange_analytics_factory: Callable[..., object]
+    ) -> None:
+        exchange_analytics_factory(ticker='FUEL', exchange_code='AI1', date_epoch=12345)
+        url = _exchange_csv_url()
+        first = api_client.get(url)
+
+        with patch.object(CSVRenderer, 'render', autospec=True, side_effect=CSVRenderer.render) as render:
+            second = api_client.get(url)
+
+        assert second['X-Cache-Hit'] == '1'
+        assert second.content == first.content
+        render.assert_not_called()
+
+
+class TestGameStorageCacheHeaders:
+    @pytest.mark.usefixtures('locmem_cache')
+    @pytest.mark.xfail(strict=True, reason="audit: per-user storage is sent with 'Cache-Control: public'")
+    def test_storage_response_is_private(
+        self,
+        api_client: APIClient,
+        user_factory: Callable[..., User],
+        fio_playerdata_factory: Callable[..., object],
+    ) -> None:
+        user = user_factory()
+        fio_playerdata_factory(
+            user=user,
+            storage_data=fio_storage_data,
+            site_data=fio_sites_data,
+            warehouse_data=fio_warehouse_data,
+            ship_data=fio_ship_data,
+        )
+
+        response = api_client.as_user(user).get(reverse('data:storage-retrieve'))  # ty:ignore[unresolved-attribute]
+
+        assert response.status_code == 200
+        assert 'private' in response['Cache-Control']
+        assert 'public' not in response['Cache-Control']
+
+
+class TestFIOWebhookIngestConcurrency:
+    @pytest.mark.xfail(strict=True, reason='audit: total_calls is a read-modify-write and loses concurrent increments')
+    def test_counter_increment_is_atomic(
+        self, api_client: APIClient, webhook_config_factory: Callable[..., GlobalConfigWebhook]
+    ) -> None:
+        config = webhook_config_factory(sender=WebhookSenderChoices.FIOAPI, is_active=True, total_calls=3)
+        stale_config = GlobalConfigWebhook.objects.get(pk=config.pk)
+
+        # other requests increment the counter after this request loaded its row
+        GlobalConfigWebhook.objects.filter(pk=config.pk).update(total_calls=10)
+
+        with (
+            patch('gamedata.api.viewsets.get_object_or_404', return_value=stale_config),
+            patch('gamedata.api.viewsets.gamedata_process_fio_webhook.delay'),
+        ):
+            response = api_client.post(_webhook_url(config.path), data={'Data': []}, format='json')
+
+        assert response.status_code == 202
+        config.refresh_from_db()
+        assert config.total_calls == 11
