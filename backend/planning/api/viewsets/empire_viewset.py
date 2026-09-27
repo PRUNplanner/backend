@@ -36,6 +36,7 @@ class EmpireViewSet(
     def get_queryset(self):
         return (
             PlanningEmpire.objects.filter(user=self.request.user)
+            .defer('empire_state')
             .prefetch_related('plans', 'cx')
             .order_by('empire_name')
         )

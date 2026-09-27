@@ -238,7 +238,6 @@ class TestEmpireViewSetQueries:
 
         assert len(response.data) == 5
 
-    @pytest.mark.xfail(strict=True, reason='audit: empire_state is loaded for every empire but never serialized')
     def test_list_does_not_load_empire_state(self, api_client, user_factory, empire_factory):
         user = user_factory(id=1)
         empire_factory(user=user)

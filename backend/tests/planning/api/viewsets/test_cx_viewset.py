@@ -149,15 +149,7 @@ class TestCXViewSetSyncJunctions:
 
 
 class TestCXViewSetQueries:
-    @pytest.mark.parametrize(
-        'empire_count',
-        [
-            1,
-            pytest.param(
-                5, marks=pytest.mark.xfail(strict=True, reason='audit: N+1 on empire.plans in nested serializer')
-            ),
-        ],
-    )
+    @pytest.mark.parametrize('empire_count', [1, 5])
     def test_list_query_count_is_constant(
         self, empire_count, api_client, user_factory, cx_factory, empire_factory, plan_factory
     ):
@@ -174,7 +166,6 @@ class TestCXViewSetQueries:
         # cx, empires prefetch, plans prefetch
         assert len(ctx.captured_queries) == 3
 
-    @pytest.mark.xfail(strict=True, reason='audit: N+1, nested empire serializer reads empire.plans unprefetched')
     def test_retrieve_query_count_is_constant(self, api_client, user_factory, cx_factory, empire_factory):
         user = user_factory(id=1)
         cx = cx_factory(user=user)
@@ -186,7 +177,6 @@ class TestCXViewSetQueries:
 
         assert len(ctx.captured_queries) == 3
 
-    @pytest.mark.xfail(strict=True, reason='audit: empire_state is loaded for every nested empire but never serialized')
     def test_list_does_not_load_empire_state(self, api_client, user_factory, cx_factory, empire_factory):
         user = user_factory(id=1)
         empire_factory(user=user, cx=cx_factory(user=user))

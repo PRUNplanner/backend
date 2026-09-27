@@ -102,7 +102,6 @@ class TestSharedViewSetRetrieve:
             empire.plans.add(plan, through_defaults={'user': user})
         return shared_factory(user=user, plan=plan)
 
-    @pytest.mark.xfail(strict=True, reason='audit: N+1, cx is fetched per nested empire on the public shared view')
     def test_retrieve_query_count_is_constant(
         self, api_client, user_factory, plan_factory, empire_factory, cx_factory, shared_factory
     ):
