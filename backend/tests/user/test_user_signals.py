@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
@@ -21,8 +23,10 @@ class TestUserPreSaveCost:
     def test_email_change_still_resets_verification(self) -> None:
         user: User = baker.make('user.User', email='old@example.com', is_email_verified=True)
 
-        user.email = 'new@example.com'
-        user.save()
+        with patch('user.tasks.send_email_verification_code.apply_async') as mock_send:
+            user.email = 'new@example.com'
+            user.save()
 
         user.refresh_from_db()
         assert user.is_email_verified is False
+        mock_send.assert_called_once()
