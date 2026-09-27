@@ -2,6 +2,8 @@ from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework import exceptions
 from rest_framework.request import Request
@@ -97,3 +99,24 @@ class TestUserAPIKeyAuthentication:
 
         result = auth.authenticate(request)
         assert result[0] == user
+
+
+class TestUserAPIKeyAuthenticationCost:
+    @pytest.mark.xfail(
+        strict=True,
+        reason='audit: every API-key request writes last_used and lazily loads the user in a second query',
+    )
+    def test_recently_used_key_authenticates_with_a_single_read(self):
+        from model_bakery import baker
+
+        user = baker.make('user.User', last_login=timezone.now())
+        api_key, key = UserAPIKey.objects.create_key(name='script', user=user)
+        UserAPIKey.objects.filter(pk=api_key.pk).update(last_used=timezone.now())
+
+        request = Request(APIRequestFactory().get('/', HTTP_AUTHORIZATION=f'Api-Key {key}'))
+
+        with CaptureQueriesContext(connection) as ctx:
+            authenticated_user, _ = UserAPIKeyAuthentication().authenticate(request)
+
+        assert authenticated_user == user
+        assert len(ctx.captured_queries) == 1

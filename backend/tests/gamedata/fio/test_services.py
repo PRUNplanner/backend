@@ -120,3 +120,15 @@ class TestFIOService:
         with get_fio_service() as service:
             with pytest.raises(httpx.HTTPStatusError):
                 service.get_all_materials()
+
+
+class TestFIOServiceConnectionReuse:
+    @pytest.mark.xfail(strict=True, reason='audit: every task builds a new httpx client, no TLS/connection reuse')
+    def test_services_share_one_open_client(self):
+        with get_fio_service() as first:
+            first_client = first.client
+        with get_fio_service() as second:
+            second_client = second.client
+
+        assert second_client is first_client
+        assert not second_client.is_closed

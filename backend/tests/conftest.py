@@ -1,8 +1,13 @@
+from collections.abc import Iterator
+from typing import cast
+
 import orjson
 import pytest
+from django.core.cache import caches
 from django.test import Client
 from model_bakery import baker
 from rest_framework.test import APIClient
+from tests.cache_backends import PatternLocMemCache
 
 
 @pytest.fixture
@@ -50,3 +55,22 @@ def user_factory(**kwargs):
     # admin: is_superuser = True
     # staff: is_staff = True
     return lambda **kwargs: baker.make('user.User', **kwargs)
+
+
+@pytest.fixture
+def locmem_cache(settings) -> Iterator[PatternLocMemCache]:
+    """
+    Swaps the DummyCache of the test settings for a real, pattern-capable
+    in-memory cache. Required by every test asserting cache hits or invalidation.
+    """
+    settings.CACHES = {
+        'default': {'BACKEND': 'tests.cache_backends.PatternLocMemCache', 'LOCATION': 'tests-locmem'},
+    }
+    backend = cast(PatternLocMemCache, caches['default'])
+    backend.clear()
+    PatternLocMemCache.pattern_calls.clear()
+
+    yield backend
+
+    backend.clear()
+    PatternLocMemCache.pattern_calls.clear()

@@ -92,3 +92,23 @@ class TestGamedataTasks:
 
         assert 'Dispatched 1' in gamedata_dispatch_fio_updates()
         assert mock_async.called
+
+
+@pytest.mark.django_db
+class TestDispatchFioUpdatesPayload:
+    @pytest.mark.xfail(strict=True, reason='audit: the FIO api key is sent through the broker as a task argument')
+    def test_dispatched_task_does_not_carry_the_api_key(self):
+        user = baker.make('user.User', prun_username='T', fio_apikey='secret-key', last_login=timezone.now())
+        baker.make(
+            'gamedata.GameFIOPlayerData',
+            user=user,
+            automation_error_count=0,
+            automation_refresh_status='ok',
+            automation_last_refreshed_at=timezone.now() - timedelta(hours=7),
+        )
+
+        with patch('gamedata.tasks.gamedata_refresh_user_fiodata.apply_async') as mock_async:
+            gamedata_dispatch_fio_updates()
+
+        mock_async.assert_called_once()
+        assert 'secret-key' not in repr(mock_async.call_args)

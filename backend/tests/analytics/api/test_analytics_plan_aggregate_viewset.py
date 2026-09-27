@@ -118,3 +118,19 @@ class TestAnalyticsPlanAggregateViewSetRetrieve:
         response = api_client.get(_detail_url('OT-580b'))
 
         assert response.status_code == 404
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestAnalyticsPlanAggregateViewSetCaching:
+    @pytest.mark.xfail(strict=True, reason='audit: planet existence is checked in the DB before the cache lookup')
+    def test_cache_hit_runs_no_queries(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet], django_assert_num_queries
+    ) -> None:
+        planet = planet_factory(planet_natural_id='OT-580b')
+        url = _detail_url(planet.planet_natural_id)
+        api_client.get(url)
+
+        with django_assert_num_queries(0):
+            response = api_client.get(url)
+
+        assert response['X-Cache-Hit'] == '1'

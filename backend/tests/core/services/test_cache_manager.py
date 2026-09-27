@@ -1,4 +1,7 @@
 import decimal
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -76,3 +79,27 @@ class TestCacheManager:
         assert response.data == data
         assert response['X-Cache-Hit'] == '0'
         assert 'max-age=500' in response['Cache-Control']
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestCacheManagerConcurrency:
+    @pytest.mark.xfail(strict=True, reason='audit: no stampede protection, concurrent cache misses all rebuild')
+    def test_concurrent_misses_rebuild_once(self) -> None:
+        workers = 5
+        build_calls: list[int] = []
+        barrier = threading.Barrier(workers)
+
+        def build() -> dict[str, bool]:
+            build_calls.append(1)
+            time.sleep(0.2)  # a slow rebuild, e.g. the full planet list
+            return {'ok': True}
+
+        def request() -> bytes:
+            barrier.wait()
+            return CacheManager.get_or_set_response('stampede', build, timeout=60).content
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            bodies = list(pool.map(lambda _: request(), range(workers)))
+
+        assert bodies == [b'{"ok":true}'] * workers
+        assert len(build_calls) == 1
