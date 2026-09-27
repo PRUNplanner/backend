@@ -1,4 +1,5 @@
 import decimal
+import time
 from collections.abc import Callable
 from typing import Any, cast
 from uuid import UUID
@@ -17,6 +18,11 @@ cache = cast(RedisCache, django_cache)
 
 class CacheManager:
     BASE_KEY = 'BASE'
+
+    # stampede protection: one request rebuilds a missing key, the others poll for its result
+    REBUILD_LOCK_TIMEOUT = 30
+    REBUILD_WAIT_SECONDS = 3.0
+    REBUILD_POLL_SECONDS = 0.05
 
     @classmethod
     def make_key(cls, *parts: str | int | UUID) -> str:
@@ -72,22 +78,38 @@ class CacheManager:
         return response
 
     @classmethod
-    def get_or_set_response(
-        cls, key: str, func: Callable[[], Any], timeout: int = 300, fmt: str = 'json'
-    ) -> HttpResponse:
-        cached_data = cls.get(key)
+    def _rebuild(cls, key: str, func: Callable[[], Any], timeout: int) -> bytes:
+        """Builds and caches the payload. Concurrent misses wait for a single builder instead of all rebuilding."""
+        lock_key = f'{key}:rebuild-lock'
+        owns_lock = cls.add(lock_key, 1, cls.REBUILD_LOCK_TIMEOUT)
 
-        if cached_data:
-            data_to_return = cached_data
-        else:
-            raw_data = func()
-            data_to_return = orjson.dumps(
-                raw_data,
+        if not owns_lock:
+            deadline = time.monotonic() + cls.REBUILD_WAIT_SECONDS
+            while time.monotonic() < deadline:
+                time.sleep(cls.REBUILD_POLL_SECONDS)
+                if cached_data := cls.get(key):
+                    return cached_data
+            # the builder is slow or died, build ourselves
+
+        try:
+            data = orjson.dumps(
+                func(),
                 default=lambda obj: (
                     float(obj) if isinstance(obj, decimal.Decimal) else str(obj) if isinstance(obj, UUID) else None
                 ),
             )
-            cls.set(key, data_to_return, timeout)
+            cls.set(key, data, timeout)
+            return data
+        finally:
+            if owns_lock:
+                cache.delete(lock_key)
+
+    @classmethod
+    def get_or_set_response(
+        cls, key: str, func: Callable[[], Any], timeout: int = 300, fmt: str = 'json'
+    ) -> HttpResponse:
+        cached_data = cls.get(key)
+        data_to_return = cached_data or cls._rebuild(key, func, timeout)
 
         # csv data
         if fmt == 'csv':

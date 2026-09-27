@@ -83,7 +83,6 @@ class TestCacheManager:
 
 @pytest.mark.usefixtures('locmem_cache')
 class TestCacheManagerConcurrency:
-    @pytest.mark.xfail(strict=True, reason='audit: no stampede protection, concurrent cache misses all rebuild')
     def test_concurrent_misses_rebuild_once(self) -> None:
         workers = 5
         build_calls: list[int] = []
