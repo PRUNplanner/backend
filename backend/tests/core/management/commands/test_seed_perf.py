@@ -8,7 +8,7 @@ from core.management.commands.seed_perf import SCALES, USERNAME_PREFIX
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from gamedata.models import GameExchange, GameExchangeCXPC, GameMaterial, GamePlanet, GameRecipe
-from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
+from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.schemas.latest_schemas import LATEST_SCHEMA
 from pytest_django.fixtures import SettingsWrapper
 from user.models import User
@@ -52,6 +52,16 @@ class TestSeedPerf:
 
         for plan in PlanningPlan.objects.all():
             LATEST_SCHEMA['PLANNING_DATA'].model_validate(plan.plan_data)
+
+    def test_cx_data_has_every_field_of_the_current_cx_schema(self, perf_mode: SettingsWrapper) -> None:
+        # the API returns cx_data as stored, and the frontend requires every field
+        call_command('seed_perf', '--scale', 'tiny')
+
+        fields = set(LATEST_SCHEMA['CX_DATA'].model_fields)
+        assert PlanningCX.objects.exists()
+        for cx in PlanningCX.objects.all():
+            assert set(cx.cx_data) == fields
+            LATEST_SCHEMA['CX_DATA'].model_validate(cx.cx_data)
 
     def test_same_seed_gives_same_targets(self, perf_mode: SettingsWrapper, tmp_path: Path) -> None:
         first, second = tmp_path / 'first.json', tmp_path / 'second.json'
