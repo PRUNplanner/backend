@@ -36,10 +36,6 @@ def test_model_gamebuildingcost(building_factory, building_cost_factory):
     assert str(buildingcost) == 'HBB (Foo) (1xMCG)'
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason='audit: idx_ticker_exchange duplicates the leading columns of unique_ticker_exchange_date',
-)
 def test_cxpc_has_no_index_covered_by_its_unique_constraint():
     unique_fields = [
         tuple(c.fields) for c in GameExchangeCXPC._meta.constraints if isinstance(c, models.UniqueConstraint)
