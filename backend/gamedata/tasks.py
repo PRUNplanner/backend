@@ -254,6 +254,7 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
         task_category='gamedata_refresh_cxpc',
     )
 
+    from gamedata.fio.importers import cxpc_objects
     from gamedata.models import GameExchangeCXPC
 
     log = logger.bind(name='fetch_create_exchange_cxpc', ticker=ticker, exchange_code=exchange_code)
@@ -262,23 +263,7 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
         with get_fio_service() as fio:
             cxpc_data = fio.get_cxpc(ticker, exchange_code)
 
-        objs = [
-            (
-                GameExchangeCXPC(
-                    ticker=ticker,
-                    exchange_code=exchange_code,
-                    date_epoch=item.date_epoch,
-                    open_p=item.open,
-                    close_p=item.close,
-                    high_p=item.high,
-                    low_p=item.low,
-                    volume=item.volume,
-                    traded=item.traded,
-                )
-            )
-            for item in cxpc_data
-            if item.interval == 'DAY_ONE'
-        ]
+        objs = cxpc_objects(ticker, exchange_code, cxpc_data)
 
         if not objs:
             log.info('no_data_to_process')
