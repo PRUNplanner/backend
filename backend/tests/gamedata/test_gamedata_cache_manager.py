@@ -57,7 +57,7 @@ class TestGamedataCacheManager:
             ('get_recipe_list_response', [], 86400),
             ('get_building_list_response', [], 86400),
             ('get_exchange_list_response', [], 86400),
-            ('get_planet_list_response', [], 86400),
+            ('get_planet_list_response', [], 900),
             ('get_planet_get_response', ['M1'], 86400),
             ('get_planet_multiple_response', [['M1']], 1800),
             ('get_storage_response', [1], 10800),

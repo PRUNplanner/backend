@@ -50,8 +50,6 @@ def import_planet(planet_natural_id: str) -> bool:
 
             planet_instance.update_refresh_result()
 
-            transaction.on_commit(lambda: GamedataCacheManager.delete(GamedataCacheManager.key_planet_list()))
-
             return True
 
         except Exception as exc:

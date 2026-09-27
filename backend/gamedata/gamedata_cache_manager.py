@@ -122,7 +122,8 @@ class GamedataCacheManager(CacheManager):
     @classmethod
     def get_planet_list_response(cls, func: Callable[[], Any]) -> Response | HttpResponse:
         key = cls.key_planet_list()
-        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT_1DAY)
+        # short ttl instead of invalidating per import: a planet refreshes every ~9s, the full list is costly to build
+        return cls.get_or_set_response(key, func, timeout=cls.CACHE_TIMEOUT)
 
     @classmethod
     def get_planet_get_response(cls, planet_natural_id: str, func: Callable[[], Any]) -> Response | HttpResponse:

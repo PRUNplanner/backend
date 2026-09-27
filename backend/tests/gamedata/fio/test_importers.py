@@ -74,9 +74,10 @@ class TestImporterCacheInvalidation:
         assert GamedataCacheManager.get(key) is None
 
     @pytest.mark.usefixtures('montem_response')
-    def test_import_planet_invalidates_planet_list(self, django_capture_on_commit_callbacks):
+    def test_import_planet_leaves_planet_list_to_its_ttl(self, django_capture_on_commit_callbacks):
+        # planets refresh every ~9s; the list expires on its short ttl instead of being rebuilt per import
         key = GamedataCacheManager.key_planet_list()
-        GamedataCacheManager.set(key, b'stale', timeout=60)
+        GamedataCacheManager.set(key, b'cached', timeout=60)
 
         with (
             patch('gamedata.models.GameMaterial.material_id_ticker_map', return_value={}),
@@ -84,7 +85,7 @@ class TestImporterCacheInvalidation:
         ):
             assert import_planet('OT-580b') is True
 
-        assert GamedataCacheManager.get(key) is None
+        assert GamedataCacheManager.get(key) == b'cached'
 
     def test_import_all_materials_invalidates_material_list(self):
         key = GamedataCacheManager.key_material_list()
