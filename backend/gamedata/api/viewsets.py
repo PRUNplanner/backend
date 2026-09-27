@@ -435,9 +435,9 @@ class FIOWebhookIngest(APIView):
             return Response(status=400)
 
         # update webhook config stats
-        config.total_calls += 1
-        config.last_received_at = timezone.now()
-        config.save(update_fields=['total_calls', 'last_received_at'])
+        GlobalConfigWebhook.objects.filter(pk=config.pk).update(
+            total_calls=F('total_calls') + 1, last_received_at=timezone.now()
+        )
 
         # handoff to celery
         gamedata_process_fio_webhook.delay(request.data)

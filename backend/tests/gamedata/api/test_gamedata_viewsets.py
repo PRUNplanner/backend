@@ -283,7 +283,6 @@ class TestGameStorageCacheHeaders:
 
 
 class TestFIOWebhookIngestConcurrency:
-    @pytest.mark.xfail(strict=True, reason='audit: total_calls is a read-modify-write and loses concurrent increments')
     def test_counter_increment_is_atomic(
         self, api_client: APIClient, webhook_config_factory: Callable[..., GlobalConfigWebhook]
     ) -> None:
