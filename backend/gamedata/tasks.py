@@ -66,11 +66,11 @@ def gamedata_refresh_planet() -> bool:
     gamedata_refresh_planet_infrastructure.delay(to_update.planet_natural_id)
 
     to_update.automation_refresh_status = 'pending'
-    to_update.save()
+    to_update.save(update_fields=['automation_refresh_status'])
 
     try:
+        # records its own refresh result, success or error
         import_planet(to_update.planet_natural_id)
-        to_update.update_refresh_result()
 
         return True
 

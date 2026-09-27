@@ -1,9 +1,11 @@
+from collections.abc import Callable
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.utils import timezone
+from gamedata.models.game_planet import GamePlanet
 from gamedata.models.game_playerdata import GameFIOPlayerData
 from gamedata.tasks import (
     gamedata_clean_user_fiodata,
@@ -171,3 +173,36 @@ class TestRefreshCXPCHistory:
         self._run(full=True)
 
         assert self._has_history()
+
+
+@pytest.mark.django_db
+class TestRefreshPlanetResult:
+    @staticmethod
+    def _run(import_side_effect: Callable[[str], bool]) -> None:
+        with (
+            patch('gamedata.fio.importers.import_planet', side_effect=import_side_effect),
+            patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+        ):
+            gamedata_refresh_planet()
+
+    def test_failed_import_keeps_its_recorded_error(self) -> None:
+        planet: GamePlanet = baker.make('gamedata.GamePlanet', planet_natural_id='M', automation_error_count=0)
+
+        def import_that_records_an_error(planet_natural_id: str) -> bool:
+            GamePlanet.objects.get(planet_natural_id=planet_natural_id).update_refresh_result(error=Exception('boom'))
+            return False
+
+        self._run(import_that_records_an_error)
+
+        planet.refresh_from_db()
+        assert planet.automation_refresh_status == 'retrying'
+        assert planet.automation_error == 'boom'
+
+    def test_pending_mark_saves_only_the_status(self) -> None:
+        baker.make('gamedata.GamePlanet', planet_natural_id='M', automation_error_count=0)
+
+        with patch.object(GamePlanet, 'save', autospec=True) as save:
+            self._run(lambda _planet_natural_id: True)
+
+        save.assert_called_once()
+        assert save.call_args.kwargs == {'update_fields': ['automation_refresh_status']}
