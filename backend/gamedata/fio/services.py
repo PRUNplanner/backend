@@ -85,12 +85,28 @@ class FIOURL:
 logger = structlog.get_logger(__name__)
 
 
+_shared_client: httpx.Client | None = None
+
+
+def get_shared_client() -> httpx.Client:
+    """One client per process, reusing its connections across tasks. Created lazily, so prefork children
+    build their own after the fork instead of inheriting the parent's sockets."""
+    global _shared_client
+    if _shared_client is None or _shared_client.is_closed:
+        _shared_client = httpx.Client()
+    return _shared_client
+
+
+def close_shared_client() -> None:
+    global _shared_client
+    if _shared_client is not None:
+        _shared_client.close()
+        _shared_client = None
+
+
 class FIOService:
     def __init__(self) -> None:
-        self.client = httpx.Client()
-
-    def close(self) -> None:
-        self.client.close()
+        self.client = get_shared_client()
 
     def _get_auth_headers(self, apikey: str | None) -> dict[str, str]:
         headers = {'X-FIO-Application': 'PRUNplanner'}
@@ -191,8 +207,5 @@ class FIOService:
 
 @contextmanager
 def get_fio_service() -> Generator[FIOService, None, None]:
-    service = FIOService()
-    try:
-        yield service
-    finally:
-        service.close()
+    # the shared client stays open, it is closed on worker process shutdown
+    yield FIOService()

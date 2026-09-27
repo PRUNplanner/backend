@@ -123,7 +123,6 @@ class TestFIOService:
 
 
 class TestFIOServiceConnectionReuse:
-    @pytest.mark.xfail(strict=True, reason='audit: every task builds a new httpx client, no TLS/connection reuse')
     def test_services_share_one_open_client(self):
         with get_fio_service() as first:
             first_client = first.client
