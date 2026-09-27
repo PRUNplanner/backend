@@ -2,11 +2,13 @@ from abc import ABC, abstractmethod
 
 import orjson
 import structlog
+from core.services.cache_manager import CacheManager
 from django.utils import timezone
 from django_redis import get_redis_connection
 from structlog.typing import FilteringBoundLogger
 
 from gamedata.fio.schemas.fio_webhook import FIOWebhookExchangeEndpointSchema
+from gamedata.gamedata_cache_manager import EXCHANGES
 from gamedata.models.game_exchange import GameExchange
 
 
@@ -58,6 +60,7 @@ class FIOCXWebhookHandler(BaseFIOWebhookHandler):
         # persisting
         if to_update_db:
             GameExchange.objects.bulk_update(to_update_db, fields=self.SYNC_FIELDS)
+            CacheManager.invalidate(EXCHANGES)
 
         if redis_payloads:
             self._push_to_redis(redis_payloads)

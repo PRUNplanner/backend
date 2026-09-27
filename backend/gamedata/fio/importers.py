@@ -1,3 +1,4 @@
+from core.services.cache_manager import CacheManager
 from django.db import transaction
 from django.db.models import Max
 
@@ -15,7 +16,7 @@ from gamedata.fio.schemas.fio_planet import (
     FIOPlanetResourceSchema,
 )
 from gamedata.fio.services import get_fio_service
-from gamedata.gamedata_cache_manager import GamedataCacheManager
+from gamedata.gamedata_cache_manager import BUILDINGS, EXCHANGES, MATERIALS, PLANET, PLANET_LIST, RECIPES
 from gamedata.models import (
     GameBuilding,
     GameBuildingCost,
@@ -252,7 +253,7 @@ def save_planets(planets: list[FIOPlanetSchema]) -> None:
         GamePlanetProductionFee.objects.bulk_create(fee_objs, ignore_conflicts=True)
         GamePlanetCOGCProgram.objects.bulk_create(program_objs, ignore_conflicts=True)
 
-    GamedataCacheManager.delete_pattern('*planet*')
+    CacheManager.invalidate(PLANET_LIST)  # single planets are invalidated by their post_delete signal
 
 
 def import_planet_infrastructure(planet_natural_id: str) -> bool:
@@ -293,7 +294,7 @@ def import_planet_infrastructure(planet_natural_id: str) -> bool:
         min_period = min(fetched_periods)
         planet.popr_reports.filter(simulation_period__lt=min_period).delete()
 
-    GamedataCacheManager.delete(GamedataCacheManager.key_planet_popr(planet_natural_id))
+    CacheManager.invalidate(PLANET, planet_natural_id)
 
     return True
 
@@ -333,8 +334,7 @@ def save_exchanges(exchanges: list[FIOExchangeSchema]) -> None:
         )
 
     # clear cache as live data changes
-    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='json'))
-    GamedataCacheManager.delete(GamedataCacheManager.key_exchange_list(fmt='csv'))
+    CacheManager.invalidate(EXCHANGES)
 
 
 def cxpc_objects(ticker: str, exchange_code: str, cxpc_data: list[FIOExchangeCXPC]) -> list[GameExchangeCXPC]:
@@ -400,7 +400,7 @@ def save_recipes(recipes: list[FIORecipeSchema]) -> tuple[int, int, int]:
 
         GameRecipeOutput.objects.bulk_create(output_objs, ignore_conflicts=True)
 
-    GamedataCacheManager.delete(GamedataCacheManager.key_recipe_list())
+    CacheManager.invalidate(RECIPES)
 
     return len(recipe_objs), len(input_objs), len(output_objs)
 
@@ -420,7 +420,7 @@ def save_materials(fio_materials: list[FIOMaterialSchema]) -> tuple[int, int]:
 
         GameMaterial.objects.bulk_create(material_objs)
 
-    GamedataCacheManager.delete(GamedataCacheManager.key_material_list())
+    CacheManager.invalidate(MATERIALS)
 
     return deleted_count, len(material_objs)
 
@@ -456,6 +456,6 @@ def save_buildings(fio_buildings: list[FIOBuildingSchema]) -> tuple[int, int]:
 
         GameBuildingCost.objects.bulk_create(cost_objs, ignore_conflicts=True)
 
-    GamedataCacheManager.delete(GamedataCacheManager.key_building_list())
+    CacheManager.invalidate(BUILDINGS)
 
     return len(building_objs), len(cost_objs)

@@ -83,11 +83,16 @@ same internal shape; match it for any new app or module:
   `latest_schemas.py` (`LATEST_SCHEMA` dict) — never mutate a shipped schema
   in place.
 - `services/` — business logic decoupled from the API/task layer.
-- `<app>_cache_manager.py` — a subclass of `core.services.cache_manager.CacheManager`
-  for apps that cache response payloads, with `key_for_*`/`key_*` classmethods
-  building cache keys and a `get_or_set_response` per endpoint.
-- `signals.py` — `post_save`/`post_delete` receivers that invalidate cache
-  keys via `transaction.on_commit(...)`, each with an explicit `dispatch_uid`.
+- `<app>_cache_manager.py` — only the app's `CacheNamespace` constants
+  (name, TTL, `private`). Viewsets cache with
+  `CacheManager.respond(request, NS, '<endpoint>', *parts, build=..., scope=...)`;
+  private namespaces pass the user id as `scope`. Keys hash the parts, so
+  request input never lands in a key. Invalidate only with
+  `CacheManager.invalidate(NS, scope)` (a version bump); never delete keys or
+  scan patterns. Every cache entry has a TTL; version counters must not.
+- `signals.py` — `post_save`/`post_delete` receivers that call
+  `CacheManager.invalidate_on_commit(NS, scope)`, each with an explicit
+  `dispatch_uid`.
 - `migrations/` — generated only, via `makemigrations`; never hand-edited.
 
 Tests mirror this exactly under `backend/tests/<app>/`, path-for-path

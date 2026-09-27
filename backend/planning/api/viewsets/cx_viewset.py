@@ -1,8 +1,10 @@
 from typing import cast
 from uuid import UUID
 
+from core.services.cache_manager import CacheManager
 from django.db import transaction
 from django.db.models import Case, Prefetch, Value, When
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
@@ -11,7 +13,7 @@ from planning.api.serializers import (
     PlanningCXJunctionUpdateSerializer,
 )
 from planning.models import PlanningCX, PlanningEmpire
-from planning.planning_cache_manager import PlanningCacheManager
+from planning.planning_cache_manager import PLANNING
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -40,13 +42,13 @@ class CXViewSet(
         )
 
     @extend_schema(summary='List all cx preferences')
-    def list(self, request, *args, **kwargs) -> Response:
+    def list(self, request, *args, **kwargs) -> HttpResponse:
         user_id = request.user.id
 
         def fetch_data():
             return self.get_serializer(self.get_queryset(), many=True).data
 
-        return PlanningCacheManager.get_cx_list_response(user_id=user_id, func=fetch_data)
+        return CacheManager.respond(request, PLANNING, 'cx-list', build=fetch_data, scope=user_id)
 
     @extend_schema(summary='Get a users specific cx preference')
     def retrieve(self, request, *args, **kwargs):
@@ -56,7 +58,7 @@ class CXViewSet(
         def fetch_data():
             return self.get_serializer(get_object_or_404(self.get_queryset(), pk=pk)).data
 
-        return PlanningCacheManager.get_cx_retrieve_response(user_id=user_id, cx_id=pk, func=fetch_data)
+        return CacheManager.respond(request, PLANNING, 'cx-retrieve', pk, build=fetch_data, scope=user_id)
 
     @extend_schema(summary='Creates a new cx preference')
     def create(self, request, *args, **kwargs):
@@ -115,6 +117,6 @@ class CXViewSet(
         with transaction.atomic():
             PlanningEmpire.objects.filter(user=user).update(cx_id=Case(*update_conditions, default=None))
 
-        PlanningCacheManager.invalidate_user(user.id)
+        CacheManager.invalidate(PLANNING, user.id)
 
         return self.list(request)

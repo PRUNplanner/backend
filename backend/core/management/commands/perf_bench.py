@@ -169,7 +169,9 @@ class Command(BaseCommand):
         elif only:
             endpoints = [e for e in endpoints if any(part in e.name for part in only)]
 
-        client = Client(raise_request_exception=False)  # a crashing endpoint is reported, not fatal
+        client = Client(
+            raise_request_exception=False, HTTP_ACCEPT_ENCODING='gzip'
+        )  # a crashing endpoint is reported, not fatal
         token = str(AccessToken.for_user(User.objects.get(username=f'{USERNAME_PREFIX}0')))
 
         def call(endpoint: Endpoint) -> HttpResponse:

@@ -542,7 +542,12 @@ class Seeder:
             cx.user.pk: cx
             for cx in self._bulk(
                 PlanningCX,
-                [PlanningCX(user=user, cx_name=f'{user.username} CX', cx_data={}) for user in users],
+                [
+                    PlanningCX(
+                        user=user, cx_name=f'{user.username} CX', cx_data=LATEST_SCHEMA['CX_DATA']().model_dump()
+                    )
+                    for user in users
+                ],
             )
         }
 

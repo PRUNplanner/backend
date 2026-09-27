@@ -2,6 +2,7 @@ from datetime import timedelta
 
 import structlog
 from celery import shared_task
+from core.services.cache_manager import CacheManager
 from django.db.models import Count, Q
 from django.utils import timezone
 from gamedata.models import (
@@ -22,6 +23,7 @@ from planning.services.empire_state_service import EmpireStateService
 from user.models import User
 
 from analytics.models import AppStatistic
+from analytics.services.analytics_cache_manager import MATERIALS_INSIGHT
 from analytics.services.planinsight_aggregator_service import PlanInsightAggregatorService
 
 logger = structlog.get_logger(__name__)
@@ -142,5 +144,8 @@ def analytics_bulk_materialize_empire_snapshots():
         except Exception as exc:
             error_count += 1
             log.error('exception', exc_info=exc)
+
+    if processed_count:
+        CacheManager.invalidate(MATERIALS_INSIGHT)
 
     log.info('completed', processed=processed_count, errors=error_count)

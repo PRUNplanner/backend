@@ -3,6 +3,7 @@ from itertools import chain
 from typing import Any, cast
 
 import structlog
+from core.services.cache_manager import CacheManager
 from django.db import connection
 from django.db.models import Case, CharField, F, Q, QuerySet, Value, When
 from django.db.models.functions import Concat
@@ -29,7 +30,7 @@ from gamedata.fio.schemas import (
     FIOUserStorageSchema,
     FIOWebhookRootSchema,
 )
-from gamedata.gamedata_cache_manager import GamedataCacheManager
+from gamedata.gamedata_cache_manager import BUILDINGS, CXPC, EXCHANGES, MATERIALS, PLANET, PLANET_LIST, RECIPES, STORAGE
 from gamedata.models import (
     GameBuilding,
     GameExchange,
@@ -67,7 +68,7 @@ class GameRecipeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         def fetch_data() -> Any:
             return self.get_serializer(self.get_queryset(), many=True).data
 
-        return GamedataCacheManager.get_recipe_list_response(fetch_data)
+        return CacheManager.respond(request, RECIPES, 'list', build=fetch_data)
 
 
 class GameMaterialViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
@@ -80,7 +81,7 @@ class GameMaterialViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         def fetch_data() -> Any:
             return self.get_serializer(self.get_queryset(), many=True).data
 
-        return GamedataCacheManager.get_material_list_response(fetch_data)
+        return CacheManager.respond(request, MATERIALS, 'list', build=fetch_data)
 
 
 class GameBuildingViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
@@ -92,7 +93,7 @@ class GameBuildingViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
         def fetch_data() -> Any:
             return self.get_serializer(self.get_queryset(), many=True).data
 
-        return GamedataCacheManager.get_building_list_response(fetch_data)
+        return CacheManager.respond(request, BUILDINGS, 'list', build=fetch_data)
 
 
 class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
@@ -109,7 +110,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         def fetch_data() -> Any:
             return self.get_serializer(self.get_queryset(), many=True).data
 
-        return GamedataCacheManager.get_planet_list_response(fetch_data)
+        return CacheManager.respond(request, PLANET_LIST, 'list', build=fetch_data)
 
     @extend_schema(auth=[], summary='Fetch a single planet by its Planet Natural Id')
     def retrieve(self, request, *args, **kwargs):
@@ -119,7 +120,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             planet = get_object_or_404(self.get_queryset(), planet_natural_id=planet_natural_id)
             return self.get_serializer(planet).data
 
-        return GamedataCacheManager.get_planet_get_response(planet_natural_id, fetch_data)
+        return CacheManager.respond(request, PLANET, 'retrieve', build=fetch_data, scope=planet_natural_id)
 
     @extend_schema(auth=[], summary='Search a single planet by its Planet Natural Id or Name')
     def search_single(self, request, *args, **kwargs):
@@ -128,11 +129,8 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         if not search_term or len(search_term.strip()) < 3:
             raise ValidationError({'search_term': 'Search term must be at least 3 characters long.'})
 
-        def fetch_data(search_term: str):
-            result = GamePlanetSearchService.search_by_term(search_term)
-            return self.get_serializer(result, many=True).data
-
-        return GamedataCacheManager.get_planet_searchterm(search_term, lambda: fetch_data(search_term))
+        result = GamePlanetSearchService.search_by_term(search_term)
+        return Response(self.get_serializer(result, many=True).data)
 
     @extend_schema(
         auth=[],
@@ -144,13 +142,8 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         serializer = PlanetIdsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        ids = serializer.validated_data
-
-        def fetch_data(ids: list[str]) -> Any:
-            result = GamePlanetSearchService.search_by_planet_natural_id(ids)
-            return self.get_serializer(result, many=True).data
-
-        return GamedataCacheManager.get_planet_multiple_response(ids, lambda: fetch_data(ids))
+        result = GamePlanetSearchService.search_by_planet_natural_id(serializer.validated_data)
+        return Response(self.get_serializer(result, many=True).data)
 
     @extend_schema(
         auth=[],
@@ -162,13 +155,8 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         serializer = PlanetSearchSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        data = serializer.validated_data
-
-        def fetch_data(data: Any) -> Any:
-            result = GamePlanetSearchService.search(data)
-            return GamePlanetSerializer(result, many=True).data
-
-        return GamedataCacheManager.get_planet_search_response(data, lambda: fetch_data(data))
+        result = GamePlanetSearchService.search(serializer.validated_data)
+        return Response(GamePlanetSerializer(result, many=True).data)
 
     @extend_schema(
         auth=[],
@@ -186,7 +174,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
 
             return GamePlanetInfrastructureReportSerializer(latest_report).data
 
-        return GamedataCacheManager.get_planet_latest_popr(planet_natural_id, fetch_data)
+        return CacheManager.respond(request, PLANET, 'popr', build=fetch_data, scope=planet_natural_id)
 
 
 class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
@@ -265,7 +253,7 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
             return analytics_list
 
         csv_header = self.get_renderer_context().get('header')
-        return GamedataCacheManager.get_exchange_list_response(fetch_data, fmt, csv_header)
+        return CacheManager.respond(request, EXCHANGES, 'list', build=fetch_data, fmt=fmt, csv_header=csv_header)
 
 
 @extend_schema(
@@ -361,7 +349,7 @@ class GameStorageViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
             serializer = self.get_serializer(response_data)
             return serializer.data
 
-        return GamedataCacheManager.get_storage_response(request.user.id, fetch_data)
+        return CacheManager.respond(request, STORAGE, 'retrieve', build=fetch_data, scope=request.user.id)
 
 
 class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
@@ -384,7 +372,7 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             )
 
-        return GamedataCacheManager.get_exchange_cxpc_response(ticker, exchange_code, fetch_data)
+        return CacheManager.respond(self.request, CXPC, 'market-data', ticker, exchange_code, build=fetch_data)
 
     @extend_schema(
         auth=[],

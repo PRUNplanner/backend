@@ -203,16 +203,21 @@ class TestGamePlanetViewSetMultiple:
 
         assert response.status_code == 200
 
-    def test_multiple_cache_key_ignores_order_and_duplicates(
+    def test_multiple_and_retrieve_never_share_an_entry(
         self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
     ) -> None:
-        planet_factory(planet_natural_id='AB-001c')
-        planet_factory(planet_natural_id='AB-002c')
-        url = reverse('data:planet-multiple')
+        planet_factory(planet_natural_id='OT-580b')
+        multiple_url = reverse('data:planet-multiple')
+        detail_url = reverse('data:planet-detail', kwargs={'planet_natural_id': 'OT-580b'})
 
-        assert api_client.post(url, data=['AB-001c', 'AB-002c'], format='json')['X-Cache-Hit'] == '0'
-        assert api_client.post(url, data=['AB-002c', 'AB-001c'], format='json')['X-Cache-Hit'] == '1'
-        assert api_client.post(url, data=['AB-002c', 'AB-001c', 'AB-001c'], format='json')['X-Cache-Hit'] == '1'
+        assert isinstance(api_client.post(multiple_url, data=['OT-580b'], format='json').data, list)
+        assert isinstance(api_client.get(detail_url).data, dict)
+        assert isinstance(api_client.get(detail_url).data, dict)
+        assert isinstance(api_client.post(multiple_url, data=['OT-580b'], format='json').data, list)
+
+    def test_multiple_is_not_cached(self, api_client: APIClient) -> None:
+        response = api_client.post(reverse('data:planet-multiple'), data=['AB-001c'], format='json')
+        assert not response.has_header('X-Cache-Hit')
 
 
 @pytest.mark.usefixtures('locmem_cache')
