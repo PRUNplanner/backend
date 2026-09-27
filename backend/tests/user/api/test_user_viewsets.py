@@ -104,6 +104,78 @@ class TestUserPreferenceViewSet:
         preference = UserPreference.objects.get(user=user)
         assert preference.preferences['locale'] == 'de_DE'
 
+    @pytest.mark.parametrize(
+        'payload',
+        [{'planOverrides': None}, {'layoutNavigationStyle': 'x'}],
+    )
+    def test_update_rejects_invalid_values(self, api_client, user_factory, payload):
+        user = user_factory(id=1)
+
+        response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
+
+        assert response.status_code == 400
+
+    def test_retrieve_repairs_invalid_stored_values(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'plan_overrides': None, 'layout_navigation_style': 'x'})
+
+        response = api_client.as_user(user).get(reverse('user:user_preferences'))
+
+        assert response.status_code == 200
+        assert response.data['planOverrides'] == {}
+        assert response.data['layoutNavigationStyle'] == 'full'
+
+    def test_partial_update_keeps_omitted_keys(self, api_client, user_factory):
+        user = user_factory(id=1)
+        stored = {
+            'locale': 'de_DE',
+            'default_empire_uuid': '4b3c9d2e-0f1a-4b5c-8d7e-6f5a4b3c2d1e',
+            'burn_days_red': 7,
+            'burn_origin': 'Moria Station Warehouse',
+            'layout_navigation_style': 'collapsed',
+            'plan_overrides': {
+                'p1': {'include_cm': True, 'visitation_material_exclusions': [], 'auto_optimize_habs': False}
+            },
+        }
+        baker.make(UserPreference, user=user, preferences=stored)
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'burnDaysRed': 3}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert response.data['burnDaysRed'] == 3
+        assert response.data['locale'] == 'de_DE'
+        assert UserPreference.objects.get(user=user).preferences == {**stored, 'burn_days_red': 3}
+
+    def test_partial_update_replaces_plan_overrides(self, api_client, user_factory):
+        user = user_factory(id=1)
+        override = {'include_cm': False, 'visitation_material_exclusions': [], 'auto_optimize_habs': True}
+        baker.make(UserPreference, user=user, preferences={'plan_overrides': {'p1': override, 'p2': override}})
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'),
+            data={'planOverrides': {'p2': {'includeCM': False, 'autoOptimizeHabs': True}}},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert list(response.data['planOverrides']) == ['p2']
+        assert list(UserPreference.objects.get(user=user).preferences['plan_overrides']) == ['p2']
+
+    def test_partial_update_null_clears_default_uuid(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(
+            UserPreference, user=user, preferences={'default_empire_uuid': '4b3c9d2e-0f1a-4b5c-8d7e-6f5a4b3c2d1e'}
+        )
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'defaultEmpireUuid': None}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert response.data['defaultEmpireUuid'] is None
+
 
 class TestUserRegisterViewSet:
     def _payload(self, **overrides):

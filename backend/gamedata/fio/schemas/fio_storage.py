@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class FIOUserStorageItemSchema(BaseModel):
@@ -32,7 +32,13 @@ class FIOUserStorageSchema(BaseModel):
     VolumeLoad: float = Field(...)
 
     # 1:n
-    StorageItems: list[FIOUserStorageItemSchema] | None = Field(None)
+    StorageItems: list[FIOUserStorageItemSchema] = Field(default_factory=list)
+
+    @field_validator('StorageItems', mode='before')
+    @classmethod
+    def none_to_list(cls, v: list[dict] | None) -> list[dict]:
+        # FIO sends null for empty storages
+        return [] if v is None else v
 
     def to_game_storage_dict(self):
         data = self.model_dump(
