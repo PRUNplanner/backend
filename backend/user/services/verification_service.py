@@ -30,9 +30,9 @@ class VerificationService:
             VerificationCode.objects.create(user=user, code=code_str, purpose=purpose)
 
         if purpose == VerificationeCodeChoices.EMAIL_VERIFICATION:
-            send_email_verification_code.apply_async(args=[user.id, user.username, user.email, code_str], priority=10)
+            send_email_verification_code.apply_async(args=[user.id, user.username, user.email, code_str])
         elif purpose == VerificationeCodeChoices.PASSWORD_RESET:
-            send_password_reset_code.apply_async(args=[user.id, user.username, user.email, code_str], priority=10)
+            send_password_reset_code.apply_async(args=[user.id, user.username, user.email, code_str])
 
     @classmethod
     def set_code_used(cls, code_obj: VerificationCode):
