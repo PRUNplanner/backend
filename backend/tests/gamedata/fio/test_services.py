@@ -2,6 +2,7 @@ import httpx
 import pytest
 from gamedata.fio.schemas.fio_planet import FIOPlanetSchema
 from gamedata.fio.services import FIOURL, FIOService, get_fio_service
+from pydantic import ValidationError
 
 
 class TestFIOURL:
@@ -144,3 +145,50 @@ class TestFIOServiceConnectionReuse:
 
         assert second_client is first_client
         assert not second_client.is_closed
+
+
+class TestFIOServiceLogging:
+    @staticmethod
+    def events(caplog: pytest.LogCaptureFixture) -> list[tuple[str, str, object]]:
+        return [
+            (r.msg['event'], r.levelname, r.msg.get('status_code')) for r in caplog.records if isinstance(r.msg, dict)
+        ]
+
+    def test_error_status_logs_one_completed_line(self, httpx_mock, caplog: pytest.LogCaptureFixture) -> None:
+        httpx_mock.add_response(status_code=401)
+
+        with get_fio_service() as service, pytest.raises(httpx.HTTPStatusError):
+            service.get_planet('ANY')
+
+        assert self.events(caplog) == [('fio_request_completed', 'INFO', 401)]
+
+    def test_no_response_logs_a_failed_warning(self, httpx_mock, caplog: pytest.LogCaptureFixture) -> None:
+        httpx_mock.add_exception(httpx.ReadTimeout('slow'))
+
+        with get_fio_service() as service, pytest.raises(httpx.ReadTimeout):
+            service.get_planet('ANY')
+
+        assert self.events(caplog) == [('fio_request_failed', 'WARNING', None)]
+
+    def test_success_skips_the_httpx_line(self, httpx_mock, caplog: pytest.LogCaptureFixture) -> None:
+        httpx_mock.add_response(status_code=200, json=[])
+
+        with get_fio_service() as service:
+            service.get_all_materials()
+
+        assert [r for r in caplog.records if r.name == 'httpx'] == []
+
+    def test_serialization_error_logs_the_message_without_traceback(
+        self, httpx_mock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        httpx_mock.add_response(json={'invalid_field': 'data'})
+
+        with get_fio_service() as service, pytest.raises(ValidationError):
+            service.get_planet('OT-580b')
+
+        [record] = [
+            r for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'fio_serialization_failed'
+        ]
+        assert record.exc_info is None
+        assert isinstance(record.msg, dict)
+        assert 'validation error' in record.msg['error']

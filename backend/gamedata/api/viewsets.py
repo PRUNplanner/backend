@@ -422,7 +422,7 @@ class FIOWebhookIngest(APIView):
         try:
             FIOWebhookRootSchema.model_validate(request.data)
         except Exception as err:
-            logger.error('fio_webhook_ingest_failed', exc_info=err)
+            logger.warning('fio_webhook_ingest_failed', error=str(err))
             return Response(status=400)
 
         # update webhook config stats

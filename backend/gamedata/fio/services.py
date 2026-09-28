@@ -1,3 +1,4 @@
+import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Literal, TypeVar
@@ -122,12 +123,13 @@ class FIOService:
         try:
             return TypeAdapter(typed).validate_json(raw_bytes)
         except ValidationError as val_error:
-            logger.error('fio_serialization_failed', schema=str(typed), exc_info=val_error)
+            # the message says what FIO sent; the caller logs the traceback where it handles the failure
+            logger.error('fio_serialization_failed', schema=str(typed), error=str(val_error))
             raise val_error
 
     def _execute_request(self, url: str, endpoint: Endpoint, header: dict[str, str]) -> httpx.Response:
         log = logger.bind(method='GET', url=url, endpoint=endpoint)
-        log.info('fio_request_started')
+        started = time.perf_counter()
 
         try:
             response = self.client.get(
@@ -135,18 +137,20 @@ class FIOService:
                 timeout=FIOURL.get_timeout(endpoint),
                 headers=header,
             )
-            log.info(
-                'fio_request_completed',
-                status_code=response.status_code,
-                duration=response.elapsed.total_seconds(),
-                bytes=len(response.content),
-            )
-            response.raise_for_status()
-            return response
+        except httpx.HTTPError as e:
+            # no response (timeout, connection error); the caller logs what it does about it
+            log.warning('fio_request_failed', error=repr(e), duration=round(time.perf_counter() - started, 3))
+            raise
 
-        except Exception as e:
-            log.error('fio_request_failed', exc_info=e)
-            raise e
+        # error statuses included, raise_for_status leaves the logging to the caller
+        log.info(
+            'fio_request_completed',
+            status_code=response.status_code,
+            duration=response.elapsed.total_seconds(),
+            bytes=len(response.content),
+        )
+        response.raise_for_status()
+        return response
 
     def _fetch(self, endpoint: Endpoint, schema: type[TSchema], path_suffix: str = '', apikey: str | None = None):
         url = f'{FIOURL.get_url(endpoint)}{path_suffix}'

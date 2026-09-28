@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from celery.canvas import Signature
 from django.utils import timezone
@@ -60,6 +61,25 @@ class TestGamedataTasks:
         mock_fio.get_user_storage.return_value = [MagicMock(model_dump=lambda **k: {})]
 
         assert gamedata_refresh_user_fiodata(user.id) is (True if scenario == 'success' else False)
+
+    @pytest.mark.parametrize(
+        'error, level',
+        [
+            (httpx.HTTPStatusError('401', request=MagicMock(), response=MagicMock(status_code=401)), 'WARNING'),
+            (ValueError('bug'), 'ERROR'),
+        ],
+    )
+    @patch('gamedata.tasks.get_fio_service')
+    def test_refresh_user_fiodata_logs_a_rejected_key_as_warning(
+        self, mock_get_fio, error: Exception, level: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        user = baker.make('user.User')
+        mock_get_fio.return_value.__enter__.return_value.get_user_storage.side_effect = error
+
+        assert gamedata_refresh_user_fiodata(user.id) is False
+        assert [
+            r.levelname for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'fio_refresh_failed'
+        ] == [level]
 
     @patch('gamedata.tasks.get_fio_service')
     def test_refresh_user_fiodata_loads_credentials_and_accepts_legacy_args(self, mock_get_fio):

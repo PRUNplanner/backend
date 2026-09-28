@@ -31,10 +31,6 @@ logger = structlog.get_logger(__name__)
 
 @shared_task(name='update_daily_stats')
 def update_daily_stats():
-    structlog.contextvars.bind_contextvars(
-        task_category='update_daily_stats',
-    )
-
     now = timezone.now()
     today_date = now.date()
     yesterday_date = today_date - timedelta(days=1)
@@ -42,7 +38,7 @@ def update_daily_stats():
     seven_days_ago = now - timedelta(days=7)
     thirty_days_ago = now - timedelta(days=30)
 
-    log = logger.bind(name='update_daily_stats', today_date=today_date)
+    log = logger.bind(today_date=today_date)
 
     try:
         yesterday = AppStatistic.objects.filter(date=yesterday_date).first()
@@ -100,37 +96,25 @@ def update_daily_stats():
 
         return f'Stats updated successfully for {now.date()}'
 
-    except Exception as exc:
-        log.error('Failed to update daily statistics', exc_info=exc)
+    except Exception:
+        log.exception('daily_stats_failed')
         return f'Failed to update stats at {now.date()}'
 
 
 @shared_task(name='analytics_update_plan_insight_aggregates')
 def analytics_update_plan_insight_aggregates():
-    structlog.contextvars.bind_contextvars(
-        task_category='analytics_update_plan_insight_aggregates',
-    )
-
-    log = logger.bind(name='analytics_update_plan_insight_aggregates')
-
     try:
         aggregator = PlanInsightAggregatorService()
         processed, deleted = aggregator.aggregate_all_plans()
 
-        log.info('completed', processed=processed, deleted=deleted)
+        logger.info('plan_insights_aggregated', processed=processed, deleted=deleted)
 
-    except Exception as exc:
-        log.error('exception', exc_info=exc)
+    except Exception:
+        logger.exception('plan_insight_aggregation_failed')
 
 
 @shared_task(name='analytics_bulk_materialize_empire_snapshots')
 def analytics_bulk_materialize_empire_snapshots():
-    structlog.contextvars.bind_contextvars(
-        task_category='analytics_bulk_materialize_empire_snapshots',
-    )
-
-    log = logger.bind(name='analytics_bulk_materialize_empire_snapshots')
-
     # find all dirty PlanningEmpire and process in chunks
     dirty_empires = PlanningEmpire.objects.filter(needs_state_sync=True).iterator(chunk_size=100)
 
@@ -146,11 +130,11 @@ def analytics_bulk_materialize_empire_snapshots():
 
             processed_count += 1
 
-        except Exception as exc:
+        except Exception:
             error_count += 1
-            log.error('exception', exc_info=exc)
+            logger.exception('empire_snapshot_failed', empire_id=empire.pk)
 
     if processed_count:
         CacheManager.invalidate(MATERIALS_INSIGHT)
 
-    log.info('completed', processed=processed_count, errors=error_count)
+    logger.info('empire_snapshots_materialized', processed=processed_count, errors=error_count)

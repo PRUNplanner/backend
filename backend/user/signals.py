@@ -67,12 +67,12 @@ def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
         # trigger refresh on every save (last_login update), unless a recent refresh still holds the lock;
         # a read only, the task itself takes the lock
         if not GamedataCacheManager.has_fio_refresh_lock(instance.pk):
-            logger.info('signal:trigger_fio_refresh', user=instance.id, task='gamedata_refresh_user_fiodata')
+            logger.info('fio_refresh_queued', user_id=instance.id)
             transaction.on_commit(lambda: gamedata_refresh_user_fiodata.delay(instance.id))
 
     elif fio_existed_before:
         # user had fio, but not anymore, so we clean the users data
-        logger.info('signal:trigger_fio_refresh', user=instance.id, task='gamedata_clean_user_fiodata')
+        logger.info('fio_data_cleanup_queued', user_id=instance.id)
 
         # clean up refresh lock
         GamedataCacheManager.delete_fio_refresh_lock(instance.pk)
@@ -83,7 +83,7 @@ def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
 def cleanup_fio_on_delete(sender: type[User], instance: User, **kwargs: Any):
     from gamedata.tasks import gamedata_clean_user_fiodata
 
-    logger.info('signal:cleanup_fio_on_delete', user=instance.id, task='gamedata_clean_user_fiodata')
+    logger.info('fio_data_cleanup_queued', user_id=instance.id)
     transaction.on_commit(lambda: gamedata_clean_user_fiodata.delay(instance.id))
 
 
@@ -96,11 +96,7 @@ def handle_email_verification_trigger(sender, instance, created, **kwargs):
     if getattr(instance, '_email_changed', False) or (created and instance.email and not instance.is_email_verified):
         VerificationService.create_and_send_code(instance, VerificationeCodeChoices.EMAIL_VERIFICATION)
 
-        logger.info(
-            'signal:handle_email_verification_trigger',
-            user=instance.id,
-            task='VerificationService.create_and_send_code',
-        )
+        logger.info('email_verification_queued', user_id=instance.id)
 
         if hasattr(instance, '_email_changed'):
             del instance._email_changed

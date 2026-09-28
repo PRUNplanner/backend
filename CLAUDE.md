@@ -100,6 +100,28 @@ Tests mirror this exactly under `backend/tests/<app>/`, path-for-path
 `tests/planning/api/viewsets/test_plan_viewset.py`), with an app-local
 `conftest.py` for fixtures that don't belong in the root one.
 
+## Logging
+
+Logs are JSON lines on stdout (structlog, `core/config/settings/logging.py`),
+shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
+
+- `logger = structlog.get_logger(__name__)`; log an event name, not a
+  sentence: snake_case `<noun>_<past verb>` (`fio_refresh_failed`,
+  `planet_search_completed`), details as keyword fields.
+- Standard keys: `user_id`, `duration_ms`, `ticker`, `exchange_code`,
+  `planet_natural_id`. Requests already carry `request_id`, `user_id`, `ip`,
+  `route`, `duration_ms`; tasks carry `task`, `task_id` and the queuing
+  request's `request_id`. Don't bind these again.
+- Levels: `info` for a business event, `warning` for an expected failure
+  (bad user FIO key, invalid webhook payload), `logger.exception` inside
+  `except` for what needs a look. Log a failure once, where it's handled.
+- No start/finish pairs: one line when done, with `duration_ms`.
+- No secrets, emails, API keys or tokens (the webhook path token is redacted
+  by a processor). No unbounded dicts: every key becomes an Axiom column.
+- `fio_request_completed` / `fio_request_failed` fields (`endpoint`, `url`,
+  `status_code`, `duration` in seconds, `bytes`) back Axiom dashboards;
+  don't rename them.
+
 ## Definition of Done
 
 Before considering a change complete:

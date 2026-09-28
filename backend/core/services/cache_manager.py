@@ -68,7 +68,7 @@ class CacheManager:
         # no TTL: a counter that expires starts over at 1 and serves entries from before the last bump
         if not cache.add(key, 2, timeout=None):
             cache.incr(key)
-        logger.info('cache_invalidated', cache_ns=ns.name, scope=scope)
+        logger.debug('cache_invalidated', cache_ns=ns.name, scope=scope)
 
     @classmethod
     def invalidate_on_commit(cls, ns: CacheNamespace, scope: int | str | None = None) -> None:

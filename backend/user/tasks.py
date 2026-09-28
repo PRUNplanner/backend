@@ -13,10 +13,7 @@ logger = structlog.get_logger(__name__)
 
 @shared_task(name='user_send_email_verification_code')
 def send_email_verification_code(user_id: int, user_username: str, user_email: str, code_str: str):
-    structlog.contextvars.bind_contextvars(
-        task_category='user_send_email_verification_code',
-    )
-    log = logger.bind(name='send_email_verification_code', user_id=user_id)
+    log = logger.bind(user_id=user_id, email_kind='verification')
 
     context = {
         'username': user_username,
@@ -37,19 +34,16 @@ def send_email_verification_code(user_id: int, user_username: str, user_email: s
 
     try:
         message.send()
-        log.info('email_send')
+        log.info('email_sent')
         return True
-    except Exception as exc:
-        log.error('email_send_exception', exc_info=exc)
+    except Exception:
+        log.exception('email_send_failed')
         return False
 
 
 @shared_task(name='user_send_password_reset_code')
 def send_password_reset_code(user_id: int, user_username: str, user_email: str, code_str: str):
-    structlog.contextvars.bind_contextvars(
-        task_category='user_send_password_reset_code',
-    )
-    log = logger.bind(name='send_password_reset_code', user_id=user_id)
+    log = logger.bind(user_id=user_id, email_kind='password_reset')
 
     context = {
         'username': user_username,
@@ -70,19 +64,15 @@ def send_password_reset_code(user_id: int, user_username: str, user_email: str, 
 
     try:
         message.send()
-        log.info('email_send')
+        log.info('email_sent')
         return True
-    except Exception as exc:
-        log.error('email_send_exception', exc_info=exc)
+    except Exception:
+        log.exception('email_send_failed')
         return False
 
 
 @shared_task(name='user_handle_post_refresh', ignore_result=True)
 def user_handle_post_refresh(user_id: int):
-    structlog.contextvars.bind_contextvars(
-        task_category='user_handle_post_refresh',
-    )
-
     try:
         user = User.objects.get(id=user_id)
 

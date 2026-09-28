@@ -55,7 +55,7 @@ services:
   backend:
     image: ghcr.io/prunplanner/prunplanner-backend:latest
     container_name: prunplanner-backend
-    command: uv run gunicorn --pythonpath backend core.wsgi:application --bind 0.0.0.0:8000 --preload --workers 3 --threads 2 --access-logfile - --error-logfile -
+    command: uv run gunicorn -c backend/gunicorn.conf.py
 
   # Celery Beat
   beat:
