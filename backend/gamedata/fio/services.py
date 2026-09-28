@@ -136,7 +136,10 @@ class FIOService:
                 headers=header,
             )
             log.info(
-                'fio_request_completed', status_code=response.status_code, duration=response.elapsed.total_seconds()
+                'fio_request_completed',
+                status_code=response.status_code,
+                duration=response.elapsed.total_seconds(),
+                bytes=len(response.content),
             )
             response.raise_for_status()
             return response
@@ -175,8 +178,10 @@ class FIOService:
     def get_full_exchanges(self) -> list[FIOExchangeFullSChema]:
         return self._fetch(endpoint='fullexchange', schema=list[FIOExchangeFullSChema])
 
-    def get_cxpc(self, ticker, exchange_code) -> list[FIOExchangeCXPC]:
-        return self._fetch(endpoint='cxpc', schema=list[FIOExchangeCXPC], path_suffix=f'{ticker}.{exchange_code}')
+    def get_cxpc(self, ticker: str, exchange_code: str, since_ms: int | None = None) -> list[FIOExchangeCXPC]:
+        # with since_ms, FIO returns only the entries from that time on (inclusive)
+        suffix = f'{ticker}.{exchange_code}' if since_ms is None else f'{ticker}.{exchange_code}/{since_ms}'
+        return self._fetch(endpoint='cxpc', schema=list[FIOExchangeCXPC], path_suffix=suffix)
 
     def get_all_recipes(self) -> list[FIORecipeSchema]:
         return self._fetch(endpoint='allrecipes', schema=list[FIORecipeSchema])
