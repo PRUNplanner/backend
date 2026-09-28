@@ -113,6 +113,19 @@ class TestFIOService:
             assert 'X-FIO-Application' in request.headers
             assert request.headers['X-FIO-Application'] == 'PRUNplanner'
 
+    @pytest.mark.parametrize(
+        'since_ms, url',
+        [
+            (None, 'https://rest.fnar.net/exchange/cxpc/RAT.NC1'),
+            (1_790_294_400_000, 'https://rest.fnar.net/exchange/cxpc/RAT.NC1/1790294400000'),
+        ],
+    )
+    def test_get_cxpc_url(self, httpx_mock, since_ms: int | None, url: str) -> None:
+        httpx_mock.add_response(url=url, json=[])
+
+        with get_fio_service() as service:
+            assert service.get_cxpc('RAT', 'NC1', since_ms) == []
+
     def test_fio_service_error_handling_parameterized(self, httpx_mock):
         """Verifies all methods raise HTTPStatusError on 500 responses."""
         httpx_mock.add_response(status_code=500)

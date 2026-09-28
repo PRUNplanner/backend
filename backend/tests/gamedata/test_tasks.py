@@ -1,12 +1,19 @@
 from collections.abc import Callable
 from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from celery.canvas import Signature
 from django.utils import timezone
+from gamedata.fio.importers import cxpc_objects
+from gamedata.fio.schemas import FIOExchangeCXPC, FIOExchangeFullSChema
+from gamedata.models import GameExchangeCXPC
 from gamedata.models.game_planet import GamePlanet
 from gamedata.models.game_playerdata import GameFIOPlayerData
+from gamedata.services.cxpc_refresh import cxpc_window_start_ms
 from gamedata.tasks import (
     gamedata_clean_user_fiodata,
     gamedata_dispatch_fio_updates,
@@ -19,6 +26,7 @@ from gamedata.tasks import (
     refresh_exchanges,
 )
 from model_bakery import baker
+from pydantic import TypeAdapter
 
 
 @pytest.mark.django_db
@@ -66,8 +74,8 @@ class TestGamedataTasks:
     @patch('gamedata.tasks.chord')
     def test_cxpc_logic(self, mock_chord, mock_get_fio):
         # Trigger logic
-        mock_get_fio.return_value.__enter__.return_value.get_all_exchanges.return_value = [
-            SimpleNamespace(ticker='F', exchange_code='A')
+        mock_get_fio.return_value.__enter__.return_value.get_full_exchanges.return_value = [
+            SimpleNamespace(ticker='F', exchange_code='A', price_time_epochms=1)
         ]
         gamedata_trigger_refresh_cxpc()
         assert mock_chord.called
@@ -173,6 +181,222 @@ class TestRefreshCXPCHistory:
         self._run(full=True)
 
         assert self._has_history()
+
+
+DAY = 86_400_000
+CXPC_ROW_FIELDS = ('ticker', 'exchange_code', 'date_epoch', 'open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded')
+
+
+def _full_exchange(ticker: str, last_trade: int | None) -> FIOExchangeFullSChema:
+    return FIOExchangeFullSChema.model_validate(
+        {
+            'MaterialTicker': ticker,
+            'ExchangeCode': 'NC1',
+            'PriceAverage': 1.0,
+            'Traded': 0,
+            'VolumeAmount': 0,
+            'PriceTimeEpochMs': last_trade,
+        }
+    )
+
+
+def _candle(date_epoch: int, interval: str = 'DAY_ONE', close: float = 2) -> FIOExchangeCXPC:
+    return FIOExchangeCXPC.model_validate(
+        {
+            'Interval': interval,
+            'DateEpochMs': date_epoch,
+            'Open': 1,
+            'Close': close,
+            'High': 3,
+            'Low': 1,
+            'Volume': 10,
+            'Traded': 5,
+        }
+    )
+
+
+@pytest.mark.django_db
+class TestTriggerRefreshCXPC:
+    @staticmethod
+    def _run(exchanges: list[FIOExchangeFullSChema], full: bool = False) -> tuple[MagicMock, MagicMock]:
+        with (
+            patch('gamedata.tasks.get_fio_service') as mock_get_fio,
+            patch('gamedata.tasks.chord') as mock_chord,
+            patch('gamedata.tasks.refresh_exchange_analytics.si') as mock_callback,
+        ):
+            mock_get_fio.return_value.__enter__.return_value.get_full_exchanges.return_value = exchanges
+            gamedata_trigger_refresh_cxpc(full=full)
+        return mock_chord, mock_callback
+
+    @staticmethod
+    def _queued(mock_chord: MagicMock) -> list[tuple[tuple[str, ...], dict[str, object]]]:
+        header = mock_chord.call_args.args[0]
+        return [(tuple(s.args), dict(s.kwargs)) for s in header]
+
+    def test_queues_only_pairs_that_can_have_new_candles(self) -> None:
+        window = cxpc_window_start_ms()
+        baker.make('gamedata.GameExchangeCXPC', ticker='WIN', exchange_code='NC1', date_epoch=window + DAY)
+        baker.make('gamedata.GameExchangeCXPC', ticker='OLD', exchange_code='NC1', date_epoch=window - 10 * DAY)
+
+        mock_chord, mock_callback = self._run(
+            [
+                _full_exchange('NEV', None),  # no rows, never traded
+                _full_exchange('NEW', window - 50 * DAY),  # no rows, traded
+                _full_exchange('WIN', None),  # candle in window, stale last trade
+                _full_exchange('OLD', window - 20 * DAY),  # nothing new
+            ]
+        )
+
+        assert self._queued(mock_chord) == [
+            (('NEW', 'NC1'), {'full': False, 'since_ms': None}),
+            (('WIN', 'NC1'), {'full': False, 'since_ms': window}),
+        ]
+        mock_chord.return_value.assert_called_once_with(mock_callback.return_value)
+        mock_callback.return_value.delay.assert_not_called()
+
+    def test_nothing_to_fetch_still_refreshes_analytics(self) -> None:
+        mock_chord, mock_callback = self._run([_full_exchange('NEV', None)])
+
+        mock_chord.assert_not_called()
+        mock_callback.return_value.delay.assert_called_once_with()
+
+    def test_full_queues_every_pair_with_full_history(self) -> None:
+        baker.make('gamedata.GameExchangeCXPC', ticker='OLD', exchange_code='NC1', date_epoch=1_000)
+
+        mock_chord, _ = self._run([_full_exchange('NEV', None), _full_exchange('OLD', None)], full=True)
+
+        assert self._queued(mock_chord) == [
+            (('NEV', 'NC1'), {'full': True, 'since_ms': None}),
+            (('OLD', 'NC1'), {'full': True, 'since_ms': None}),
+        ]
+
+
+@pytest.mark.django_db
+class TestRefreshCXPCSince:
+    def test_upserts_every_day_one_candle_since(self) -> None:
+        window = cxpc_window_start_ms()
+        baker.make(
+            'gamedata.GameExchangeCXPC', ticker='RAT', exchange_code='NC1', date_epoch=window, close_p=Decimal(99)
+        )
+
+        with patch('gamedata.tasks.get_fio_service') as mock_get_fio:
+            mock_fio = mock_get_fio.return_value.__enter__.return_value
+            mock_fio.get_cxpc.return_value = [
+                _candle(window),
+                _candle(window + DAY),
+                _candle(window + DAY, interval='HOUR_ONE'),
+            ]
+            assert gamedata_refresh_cxpc('RAT', 'NC1', since_ms=window) is True
+
+        mock_fio.get_cxpc.assert_called_once_with('RAT', 'NC1', window)
+        rows = GameExchangeCXPC.objects.filter(ticker='RAT', exchange_code='NC1').order_by('date_epoch')
+        assert [(r.date_epoch, r.close_p) for r in rows] == [(window, Decimal(2)), (window + DAY, Decimal(2))]
+
+
+@pytest.mark.django_db
+class TestRefreshCXPCParity:
+    """The regular run with since_ms stores what the full-history path stores (recorded live RAT.NC1)."""
+
+    @staticmethod
+    def _fixture() -> list[FIOExchangeCXPC]:
+        raw = TypeAdapter(list[FIOExchangeCXPC]).validate_json(
+            Path('backend/tests/fixtures/fxt_fio_cxpc_rat_nc1.json').read_bytes()
+        )
+        # move the recorded days so the newest candle is today
+        today = cxpc_window_start_ms() + 3 * DAY
+        shift = today - max(c.date_epoch for c in raw if c.interval == 'DAY_ONE')
+        return [c.model_copy(update={'date_epoch': c.date_epoch + shift}) for c in raw]
+
+    @staticmethod
+    def _seed(candles: list[FIOExchangeCXPC], until: int | None, stale_from: int | None = None) -> None:
+        GameExchangeCXPC.objects.all().delete()
+        if until is None:
+            return
+        rows = cxpc_objects('RAT', 'NC1', [c for c in candles if c.date_epoch <= until])
+        for row in rows:
+            if stale_from is not None and row.date_epoch >= stale_from:
+                row.close_p = Decimal(-1)
+        GameExchangeCXPC.objects.bulk_create(rows)
+
+    @staticmethod
+    def _rows() -> list[tuple[object, ...]]:
+        return list(GameExchangeCXPC.objects.order_by('date_epoch').values_list(*CXPC_ROW_FIELDS))
+
+    @staticmethod
+    def _old_path(candles: list[FIOExchangeCXPC], full: bool = False) -> None:
+        with patch('gamedata.tasks.get_fio_service') as mock_get_fio:
+            mock_get_fio.return_value.__enter__.return_value.get_cxpc.return_value = candles
+            assert gamedata_refresh_cxpc('RAT', 'NC1', full=full) is True
+
+    @staticmethod
+    def _new_path(candles: list[FIOExchangeCXPC], last_trade: int) -> None:
+        def get_cxpc(ticker: str, exchange_code: str, since_ms: int | None = None) -> list[FIOExchangeCXPC]:
+            # what exchange/cxpc/{T.CX}/{since_ms} returns
+            return [c for c in candles if since_ms is None or c.date_epoch >= since_ms]
+
+        def run_chord(header: list[Signature]) -> MagicMock:
+            # run the header tasks in-process, the analytics callback is not part of the parity
+            for sig in header:
+                gamedata_refresh_cxpc(*sig.args, **sig.kwargs)
+            return MagicMock()
+
+        with (
+            patch('gamedata.tasks.get_fio_service') as mock_get_fio,
+            patch('gamedata.tasks.chord', side_effect=run_chord) as mock_chord,
+        ):
+            mock_fio = mock_get_fio.return_value.__enter__.return_value
+            mock_fio.get_full_exchanges.return_value = [_full_exchange('RAT', last_trade)]
+            mock_fio.get_cxpc.side_effect = get_cxpc
+            gamedata_trigger_refresh_cxpc()
+
+        assert mock_chord.called
+
+    def test_pair_with_candles_in_window_matches_old_path(self) -> None:
+        candles = self._fixture()
+        window = cxpc_window_start_ms()
+        yesterday = window + 2 * DAY
+
+        self._seed(candles, until=yesterday, stale_from=window)
+        self._old_path(candles)
+        old = self._rows()
+
+        self._seed(candles, until=yesterday, stale_from=window)
+        self._new_path(candles, last_trade=window + 3 * DAY)
+
+        assert self._rows() == old
+        assert all(row[4] != Decimal(-1) for row in old)
+
+    def test_pair_without_rows_is_backfilled_like_old_path(self) -> None:
+        candles = self._fixture()
+
+        self._seed(candles, until=None)
+        self._old_path(candles)
+        old = self._rows()
+
+        self._seed(candles, until=None)
+        self._new_path(candles, last_trade=cxpc_window_start_ms())
+
+        assert self._rows() == old
+        assert len(old) == 30
+
+    def test_late_candle_matches_full_refresh(self) -> None:
+        candles = self._fixture()
+        window = cxpc_window_start_ms()
+        cursor = window - 4 * DAY  # 7 days ago, older than the window
+
+        self._seed(candles, until=cursor)
+        self._old_path(candles)
+        old = self._rows()
+
+        self._seed(candles, until=cursor)
+        self._old_path(candles, full=True)
+        full = self._rows()
+
+        self._seed(candles, until=cursor)
+        self._new_path(candles, last_trade=window - 2 * DAY)
+
+        assert self._rows() == full
+        assert len(full) > len(old)  # the regular run without since_ms never stores the late days
 
 
 @pytest.mark.django_db

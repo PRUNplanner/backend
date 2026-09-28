@@ -45,6 +45,8 @@ class FIOExchangeFullSChema(FIOExchangeSchema):
     last_price: float | None = Field(None, ge=0.0, alias='Price')
     traded: int = Field(ge=0, alias='Traded')
     volume_amount: float = Field(ge=0, alias='VolumeAmount')
+    # time of the pair's last trade, null if it never traded
+    price_time_epochms: int | None = Field(None, alias='PriceTimeEpochMs')
 
 
 class FIOExchangeCXPC(BaseModel):

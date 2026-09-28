@@ -1,0 +1,342 @@
+[
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788048000000,
+    "Open": 224.0,
+    "Close": 228.0,
+    "High": 228.0,
+    "Low": 220.0,
+    "Volume": 24277942.0,
+    "Traded": 107563
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788134400000,
+    "Open": 228.0,
+    "Close": 218.0,
+    "High": 229.0,
+    "Low": 218.0,
+    "Volume": 17599974.0,
+    "Traded": 77402
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788220800000,
+    "Open": 225.0,
+    "Close": 232.0,
+    "High": 232.0,
+    "Low": 221.0,
+    "Volume": 16889548.0,
+    "Traded": 73861
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788307200000,
+    "Open": 232.0,
+    "Close": 232.0,
+    "High": 232.0,
+    "Low": 219.0,
+    "Volume": 8828403.0,
+    "Traded": 38578
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788393600000,
+    "Open": 232.0,
+    "Close": 232.0,
+    "High": 232.0,
+    "Low": 225.0,
+    "Volume": 15865777.0,
+    "Traded": 68461
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788480000000,
+    "Open": 232.0,
+    "Close": 231.0,
+    "High": 234.0,
+    "Low": 220.0,
+    "Volume": 8374199.0,
+    "Traded": 36186
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788566400000,
+    "Open": 231.0,
+    "Close": 235.0,
+    "High": 235.0,
+    "Low": 230.0,
+    "Volume": 11149566.0,
+    "Traded": 47876
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788652800000,
+    "Open": 235.0,
+    "Close": 242.0,
+    "High": 242.0,
+    "Low": 230.0,
+    "Volume": 13134207.0,
+    "Traded": 55498
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788739200000,
+    "Open": 242.0,
+    "Close": 246.0,
+    "High": 247.0,
+    "Low": 237.0,
+    "Volume": 32953532.0,
+    "Traded": 136270
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788825600000,
+    "Open": 246.0,
+    "Close": 240.0,
+    "High": 246.0,
+    "Low": 231.0,
+    "Volume": 10255464.0,
+    "Traded": 42032
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788912000000,
+    "Open": 240.0,
+    "Close": 232.0,
+    "High": 243.0,
+    "Low": 230.0,
+    "Volume": 14205160.0,
+    "Traded": 58904
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1788998400000,
+    "Open": 241.0,
+    "Close": 242.0,
+    "High": 242.0,
+    "Low": 237.0,
+    "Volume": 12580388.0,
+    "Traded": 52061
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789084800000,
+    "Open": 242.0,
+    "Close": 244.0,
+    "High": 244.0,
+    "Low": 236.0,
+    "Volume": 10661474.0,
+    "Traded": 43933
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789171200000,
+    "Open": 244.0,
+    "Close": 248.0,
+    "High": 248.0,
+    "Low": 236.0,
+    "Volume": 12394099.0,
+    "Traded": 50836
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789257600000,
+    "Open": 248.0,
+    "Close": 248.0,
+    "High": 248.0,
+    "Low": 236.0,
+    "Volume": 13842513.0,
+    "Traded": 56052
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789344000000,
+    "Open": 248.0,
+    "Close": 247.0,
+    "High": 248.0,
+    "Low": 237.0,
+    "Volume": 12378477.0,
+    "Traded": 50166
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789430400000,
+    "Open": 247.0,
+    "Close": 247.0,
+    "High": 248.0,
+    "Low": 207.0,
+    "Volume": 15851313.0,
+    "Traded": 64469
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789516800000,
+    "Open": 247.0,
+    "Close": 245.0,
+    "High": 247.0,
+    "Low": 225.0,
+    "Volume": 11690541.0,
+    "Traded": 47890
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789603200000,
+    "Open": 240.0,
+    "Close": 242.0,
+    "High": 247.0,
+    "Low": 234.0,
+    "Volume": 18369684.0,
+    "Traded": 74883
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789689600000,
+    "Open": 241.0,
+    "Close": 239.0,
+    "High": 241.0,
+    "Low": 209.0,
+    "Volume": 11048692.0,
+    "Traded": 46548
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789776000000,
+    "Open": 239.0,
+    "Close": 241.0,
+    "High": 241.0,
+    "Low": 216.0,
+    "Volume": 14147593.0,
+    "Traded": 59397
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789862400000,
+    "Open": 241.0,
+    "Close": 242.0,
+    "High": 242.0,
+    "Low": 216.0,
+    "Volume": 19089864.0,
+    "Traded": 79598
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1789948800000,
+    "Open": 242.0,
+    "Close": 242.0,
+    "High": 242.0,
+    "Low": 234.0,
+    "Volume": 11198586.0,
+    "Traded": 46398
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1790035200000,
+    "Open": 242.0,
+    "Close": 242.0,
+    "High": 242.0,
+    "Low": 238.0,
+    "Volume": 18303762.0,
+    "Traded": 76002
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1790121600000,
+    "Open": 242.0,
+    "Close": 241.0,
+    "High": 242.0,
+    "Low": 238.0,
+    "Volume": 11990633.0,
+    "Traded": 49802
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1790208000000,
+    "Open": 241.0,
+    "Close": 242.0,
+    "High": 242.0,
+    "Low": 232.0,
+    "Volume": 12276490.0,
+    "Traded": 50915
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1790294400000,
+    "Open": 241.0,
+    "Close": 239.0,
+    "High": 242.0,
+    "Low": 216.0,
+    "Volume": 11927799.0,
+    "Traded": 49989
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1790380800000,
+    "Open": 239.0,
+    "Close": 239.0,
+    "High": 240.0,
+    "Low": 225.0,
+    "Volume": 8949307.0,
+    "Traded": 37555
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1790467200000,
+    "Open": 239.0,
+    "Close": 239.0,
+    "High": 240.0,
+    "Low": 218.0,
+    "Volume": 10395677.0,
+    "Traded": 43550
+  },
+  {
+    "Interval": "DAY_ONE",
+    "DateEpochMs": 1790553600000,
+    "Open": 239.0,
+    "Close": 239.0,
+    "High": 240.0,
+    "Low": 239.0,
+    "Volume": 2116428.0,
+    "Traded": 8842
+  },
+  {
+    "Interval": "HOUR_TWELVE",
+    "DateEpochMs": 1790424000000,
+    "Open": 240.0,
+    "Close": 239.0,
+    "High": 240.0,
+    "Low": 235.0,
+    "Volume": 4665378.0,
+    "Traded": 19521
+  },
+  {
+    "Interval": "HOUR_TWELVE",
+    "DateEpochMs": 1790467200000,
+    "Open": 239.0,
+    "Close": 239.0,
+    "High": 240.0,
+    "Low": 238.0,
+    "Volume": 5592848.0,
+    "Traded": 23387
+  },
+  {
+    "Interval": "HOUR_TWELVE",
+    "DateEpochMs": 1790510400000,
+    "Open": 239.0,
+    "Close": 239.0,
+    "High": 239.0,
+    "Low": 218.0,
+    "Volume": 4802829.0,
+    "Traded": 20163
+  },
+  {
+    "Interval": "HOUR_TWELVE",
+    "DateEpochMs": 1790553600000,
+    "Open": 239.0,
+    "Close": 239.0,
+    "High": 240.0,
+    "Low": 239.0,
+    "Volume": 2116428.0,
+    "Traded": 8842
+  }
+]

@@ -1,3 +1,4 @@
+from collections import Counter
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Literal
@@ -6,12 +7,13 @@ import structlog
 from celery import chord, shared_task
 from core.services.cache_manager import CacheManager
 from django.db import connection, transaction
-from django.db.models import F, Q
+from django.db.models import F, Max, Q
 from django.utils import timezone
 
 from gamedata.fio.schemas import FIOWebhookRootSchema
 from gamedata.fio.services import get_fio_service
 from gamedata.gamedata_cache_manager import CXPC, EXCHANGES, GamedataCacheManager
+from gamedata.services.cxpc_refresh import CXPCFetch, cxpc_window_start_ms, select_cxpc_pairs
 
 logger = structlog.get_logger(__name__)
 
@@ -276,20 +278,40 @@ def gamedata_trigger_refresh_cxpc(full: bool = False):
         task_category='gamedata_trigger_refresh_cxpc',
     )
 
-    with get_fio_service() as fio:
-        exchanges_all = fio.get_all_exchanges()
+    from gamedata.models import GameExchangeCXPC
 
-    # create material ticker + exchange code pairs
-    header = [gamedata_refresh_cxpc.s(p.ticker, p.exchange_code, full=full) for p in exchanges_all]
+    with get_fio_service() as fio:
+        exchanges = fio.get_full_exchanges()
+
+    if full:
+        plan = [CXPCFetch(p.ticker, p.exchange_code, 'backfill') for p in exchanges]
+    else:
+        # newest stored candle per pair
+        cursors = {
+            (c['ticker'], c['exchange_code']): c['last']
+            for c in GameExchangeCXPC.objects.values('ticker', 'exchange_code').annotate(last=Max('date_epoch'))
+        }
+        plan = select_cxpc_pairs(exchanges, cursors, cxpc_window_start_ms())
+
+    header = [
+        gamedata_refresh_cxpc.s(p.ticker, p.exchange_code, full=full, since_ms=p.since_ms) for p in plan if p.fetch
+    ]
+    logger.info(
+        'cxpc_refresh_summary', full=full, pairs=len(plan), queued=len(header), **Counter(p.branch for p in plan)
+    )
 
     # execute all tasks, then run the materialized view refresh
     callback = refresh_exchange_analytics.si()
 
-    chord(header)(callback)
+    # a chord needs at least one header task
+    if header:
+        chord(header)(callback)
+    else:
+        callback.delay()
 
 
 @shared_task(name='gamedata_refresh_cxpc')
-def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
+def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False, since_ms: int | None = None):
     structlog.contextvars.bind_contextvars(
         task_category='gamedata_refresh_cxpc',
     )
@@ -301,7 +323,7 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
 
     try:
         with get_fio_service() as fio:
-            cxpc_data = fio.get_cxpc(ticker, exchange_code)
+            cxpc_data = fio.get_cxpc(ticker, exchange_code, since_ms)
 
         objs = cxpc_objects(ticker, exchange_code, cxpc_data)
 
@@ -313,8 +335,8 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
         unique_fields = ['ticker', 'exchange_code', 'date_epoch']
 
         with transaction.atomic():
-            # full refresh, upsert everything
-            if full:
+            # full refresh, or only the days since since_ms (never later than the window start): upsert everything
+            if full or since_ms is not None:
                 GameExchangeCXPC.objects.bulk_create(
                     objs,
                     update_conflicts=True,
@@ -322,15 +344,11 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False):
                     update_fields=update_fields,
                     batch_size=1000,
                 )
-                log.info('objects_processed_full_update', objs=len(objs))
+                log.info('objects_processed_full_update', objs=len(objs), since_ms=since_ms)
 
-            # optimized refresh, only upsert 3 days ago
+            # full history of a regular run, only upsert the window
             else:
-                # Calculate threshold for 3 days ago
-                now = timezone.now()
-                today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-                three_days_ago = today_midnight - timedelta(days=3)
-                three_days_ago_ms = int(three_days_ago.timestamp() * 1000)
+                three_days_ago_ms = cxpc_window_start_ms()
 
                 recent_objs = [o for o in objs if o.date_epoch >= three_days_ago_ms]
                 historical_objs = [o for o in objs if o.date_epoch < three_days_ago_ms]
