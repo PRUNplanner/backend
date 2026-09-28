@@ -337,7 +337,7 @@ class TestRefreshCXPCParity:
         def run_chord(header: list[Signature]) -> MagicMock:
             # run the header tasks in-process, the analytics callback is not part of the parity
             for sig in header:
-                sig.apply()
+                gamedata_refresh_cxpc(*sig.args, **sig.kwargs)
             return MagicMock()
 
         with (
