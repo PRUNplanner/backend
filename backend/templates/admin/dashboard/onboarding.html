@@ -1,0 +1,18 @@
+{% load unfold %}
+
+<section class="mb-6" aria-label="Onboarding">
+  {% if onboarding %}
+    <div class="bg-base-900 border border-base-800 rounded-default p-4 flex flex-col gap-4">
+      <h3 class="font-semibold text-important text-sm">Onboarding, users who signed up in the last {{ range_days }} days</h3>
+      {% for row in onboarding.rows %}
+        {% if row.href %}<a href="{{ row.href }}">{% endif %}
+          {% component "unfold/components/progress.html" with title=row.label description=row.text value=row.pct %}
+          {% endcomponent %}
+        {% if row.href %}</a>{% endif %}
+      {% endfor %}
+      <p class="text-xs text-subtle">Median time from signup to first plan: {{ onboarding.median_to_first_plan }}. "Set up" and "customised" mean changed from the signup defaults.</p>
+    </div>
+  {% else %}
+    {% include "admin/dashboard/unavailable.html" with title="Onboarding" %}
+  {% endif %}
+</section>

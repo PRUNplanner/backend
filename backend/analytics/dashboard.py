@@ -6,6 +6,7 @@ never a 500. The whole context is cached for 60 s per range (`admin:dashboard:<d
 `?range=7|30|90|365` picks the window.
 """
 
+import statistics
 import time
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
@@ -18,14 +19,16 @@ from core.models import CeleryAutomationModel
 from core.services.task_health import TaskHealth, is_overdue, task_health_rows
 from django.core.cache import cache
 from django.db import connection
-from django.db.models import Count, Exists, Min, OuterRef, QuerySet
+from django.db.models import Count, Exists, F, IntegerField, Min, OuterRef, Q, QuerySet, Subquery, Value
+from django.db.models.functions import Coalesce
 from django.http import HttpRequest
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.timesince import timesince
 from django_celery_beat.models import PeriodicTask
 from gamedata.models import GameFIOPlayerData, GamePlanet
-from planning.models import PlanningCX, PlanningEmpire, PlanningPlan, PlanningShared
+from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan, PlanningShared
+from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_EMPIRE
 from redis import Redis
 from user.models import GlobalConfigWebhook, User, UserAPIKey
 from user.models.user import FIO_LINKED_Q
@@ -39,6 +42,8 @@ DEFAULT_RANGE = 30
 CACHE_TTL_SECONDS = 60
 LONG_QUERY_SECONDS = 30
 TOP_LIST_SIZE = 10
+# rows created this long after their owner's signup were created by the user, not seeded by signup
+SIGNUP_SEED_WINDOW = timedelta(seconds=60)
 API_KEY_ACTIVE_DAYS = 30
 # plans per user histogram: (label, lowest count, highest count or None)
 PLAN_BUCKETS = (('0', 0, 0), ('1', 1, 1), ('2–5', 2, 5), ('6–20', 6, 20), ('21+', 21, None))
@@ -105,6 +110,46 @@ def stuck_planets_chip() -> Chip:
 
 
 # ---------------------------------------------------------------------------
+# deliberate use: every signup gets an empire and a CX preference (`planning.signup_defaults`), so owning one says
+# nothing. These count users who changed or added to what signup gave them, each as a correlated subquery on User.
+
+
+def _owned_count(model: type[PlanningEmpire] | type[PlanningCX]) -> Coalesce:
+    rows = model.objects.filter(user=OuterRef('pk')).order_by().values('user').annotate(n=Count('pk')).values('n')
+    return Coalesce(Subquery(rows[:1], output_field=IntegerField()), Value(0))
+
+
+def empire_set_up() -> QuerySet[User]:
+    """Users with 2+ empires, or an empire whose name, faction or permits differ from the signup defaults."""
+    changed = PlanningEmpire.objects.filter(user=OuterRef('pk')).exclude(**SIGNUP_EMPIRE)
+    return User.objects.alias(empire_count=_owned_count(PlanningEmpire)).filter(
+        Q(empire_count__gte=2) | Exists(changed)
+    )
+
+
+def empire_in_use() -> QuerySet[User]:
+    """Users with an empire linked to 2+ plans."""
+    busy = (
+        PlanningEmpirePlan.objects.filter(user=OuterRef('pk'))
+        .order_by()
+        .values('empire')
+        .annotate(n=Count('pk'))
+        .filter(n__gte=2)
+    )
+    return User.objects.filter(Exists(busy))
+
+
+def pricing_customised() -> QuerySet[User]:
+    """Users with 2+ CX preferences, or one whose data differs from the signup default."""
+    changed = PlanningCX.objects.filter(user=OuterRef('pk')).exclude(cx_data=SIGNUP_CX_DATA)
+    return User.objects.alias(cx_count=_owned_count(PlanningCX)).filter(Q(cx_count__gte=2) | Exists(changed))
+
+
+def created_after_signup(queryset: QuerySet) -> QuerySet:
+    return queryset.filter(created_at__gt=F('user__date_joined') + SIGNUP_SEED_WINDOW)
+
+
+# ---------------------------------------------------------------------------
 # rows 2 and 3: headline tiles and growth, from the daily AppStatistic snapshots
 
 
@@ -141,8 +186,17 @@ def headline(days: int) -> dict[str, object]:
             tile('Users', 'user_count', changelist_url(User)),
             active,
             tile('Plans', 'plan_count', changelist_url(PlanningPlan)),
-            tile('Empires', 'empire_count', changelist_url(PlanningEmpire)),
-            tile('CX preferences', 'cx_count', changelist_url(PlanningCX)),
+            # live, no history: AppStatistic's empire_count / cx_count only track signups
+            {
+                'label': 'Empires set up',
+                'value': f'{empire_set_up().count():,}',
+                'href': changelist_url(PlanningEmpire),
+            },
+            {
+                'label': 'Pricing customised',
+                'value': f'{pricing_customised().count():,}',
+                'href': changelist_url(PlanningCX),
+            },
         ],
     }
 
@@ -228,18 +282,24 @@ def engagement(days: int) -> list[Tile]:
 
 
 def activity(days: int) -> list[Chart]:
+    # empires and CX preferences seeded by signup don't count
     sources = (
-        ('Signups', User.objects.all(), 'date_joined'),
-        ('Plans', PlanningPlan.objects.all(), 'created_at'),
-        ('Empires', PlanningEmpire.objects.all(), 'created_at'),
-        ('CX preferences', PlanningCX.objects.all(), 'created_at'),
+        ('Signups', 'New signups per day', User.objects.all(), 'date_joined'),
+        ('Plans', 'New plans per day', PlanningPlan.objects.all(), 'created_at'),
+        ('Empires', 'Empires created by users', created_after_signup(PlanningEmpire.objects.all()), 'created_at'),
+        (
+            'CX preferences',
+            'CX preferences created by users',
+            created_after_signup(PlanningCX.objects.all()),
+            'created_at',
+        ),
     )
     charts: list[Chart] = []
-    for name, queryset, field in sources:
+    for name, title, queryset, field in sources:
         labels, values = daily_counts(queryset, field, days)
         charts.append(
             {
-                'title': f'New {name.lower()} per day ({sum(values):,} in {days} d)',
+                'title': f'{title} ({sum(values):,} in {days} d)',
                 'kind': 'bar',
                 'config': bar(labels, [(name, values)]),
                 'height': 140,
@@ -292,8 +352,9 @@ def feature_adoption() -> dict[str, object]:
     api_since = timezone.now() - timedelta(days=API_KEY_ACTIVE_DAYS)
     features = (
         ('Plans', _users_with(PlanningPlan.objects.all()), changelist_url(PlanningPlan)),
-        ('Empires', _users_with(PlanningEmpire.objects.all()), changelist_url(PlanningEmpire)),
-        ('CX preferences', _users_with(PlanningCX.objects.all()), changelist_url(PlanningCX)),
+        ('Empire set up', empire_set_up().count(), changelist_url(PlanningEmpire)),
+        ('Empire with 2+ plans', empire_in_use().count(), changelist_url(PlanningEmpire)),
+        ('Pricing customised', pricing_customised().count(), changelist_url(PlanningCX)),
         ('Shared plans', _users_with(PlanningShared.objects.all()), changelist_url(PlanningShared)),
         (
             f'API key used in {API_KEY_ACTIVE_DAYS} d',
@@ -321,6 +382,48 @@ def feature_adoption() -> dict[str, object]:
         }
     )
     return {'rows': rows, 'users': f'{users:,}'}
+
+
+class Funnel(TypedDict):
+    rows: list[Adoption]
+    median_to_first_plan: str
+
+
+def onboarding_funnel(days: int) -> Funnel:
+    """How far users who signed up in the range got: empire set up, first plan, pricing customised."""
+    start = timezone.now() - timedelta(days=days)
+    joined = User.objects.filter(date_joined__gte=start)
+    signups = joined.count()
+    steps = (
+        (
+            'Signed up',
+            signups,
+            changelist_url(User, f'date_joined_from_0={start:%Y-%m-%d}&date_joined_from_1={start:%H:%M:%S}'),
+        ),
+        ('Set up their empire', empire_set_up().filter(date_joined__gte=start).count(), ''),
+        ('Created a plan', joined.filter(Exists(PlanningPlan.objects.filter(user=OuterRef('pk')))).count(), ''),
+        ('Customised pricing', pricing_customised().filter(date_joined__gte=start).count(), ''),
+    )
+    rows: list[Adoption] = []
+    for label, count, href in steps:
+        pct, text = _share(count, signups)
+        rows.append({'label': label, 'pct': pct, 'text': text, 'href': href})
+
+    waits = list(
+        joined.annotate(wait=Min('plans__created_at') - F('date_joined'))
+        .filter(wait__isnull=False)
+        .values_list('wait', flat=True)
+    )
+    return {'rows': rows, 'median_to_first_plan': _duration(statistics.median(waits)) if waits else '—'}
+
+
+def _duration(delta: timedelta) -> str:
+    minutes = int(delta.total_seconds() // 60)
+    if minutes < 60:
+        return f'{minutes} min'
+    if minutes < 48 * 60:
+        return f'{minutes / 60:.1f} h'
+    return f'{minutes / 1440:.1f} d'
 
 
 # ---------------------------------------------------------------------------
@@ -530,6 +633,7 @@ def build_dashboard(days: int) -> dict[str, object]:
         'plans_per_user': safe(plans_per_user),
         'feature_adoption': safe(feature_adoption),
         'engagement': safe(lambda: engagement(days)),
+        'onboarding': safe(lambda: onboarding_funnel(days)),
         'webhooks': safe(webhooks),
         'top_planets': safe(top_planets),
         'top_shared': safe(top_shared),

@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -14,7 +15,9 @@ from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from gamedata.models import GamePlanet
 from model_bakery import baker
-from planning.models import PlanningPlan
+from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan
+from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_EMPIRE
+from user.api.serializer import UserRegisterSerializer
 from user.models import User
 
 INDEX = reverse('admin:index')
@@ -210,7 +213,8 @@ class TestEngagementAndAdoption:
         rows = {row['label']: row for row in admin_client.get(INDEX).context['feature_adoption']['rows']}
 
         assert rows['Plans']['text'] == '33.3% · 1'
-        assert rows['Empires']['text'] == '0.0% · 0'
+        assert rows['Empire set up']['text'] == '0.0% · 0'
+        assert 'Empires' not in rows and 'CX preferences' not in rows
         assert rows['API key used in 30 d']['text'] == '33.3% · 1'
         assert rows['FIO credentials']['text'] == '33.3% · 1'
         assert rows['FIO users syncing OK']['text'] == '100.0% · 1'
@@ -221,3 +225,180 @@ class TestEngagementAndAdoption:
         (row,) = admin_client.get(INDEX).context['webhooks']
 
         assert row == ('FIO API', 'active', '1,234', 'never')
+
+
+def seeded_empire(user: User) -> PlanningEmpire:
+    """Another empire identical to the one signup seeds."""
+    return baker.make(
+        PlanningEmpire,
+        user=user,
+        empire_name='My Empire',
+        empire_faction='NONE',
+        empire_permits_used=1,
+        empire_permits_total=2,
+    )
+
+
+def signup(username: str) -> User:
+    """A user created the way registration creates one: seeded CX preference and empire, no plans."""
+    serializer = UserRegisterSerializer(
+        data={'username': username, 'password': 'a-long-pass-123', 'planet_id': 'UV-351c', 'planet_input': 'umbra'}
+    )
+    serializer.is_valid(raise_exception=True)
+    return serializer.save()
+
+
+def adoption_rows(client: Client) -> dict[str, str]:
+    return {row['label']: row['text'] for row in client.get(INDEX).context['feature_adoption']['rows']}
+
+
+@pytest.mark.django_db
+class TestDeliberateUse:
+    """Seeded signup rows don't count as using empires or CX preferences; changing or adding to them does."""
+
+    def test_signup_creates_exactly_the_defaults(self) -> None:
+        user = signup('fresh')
+
+        (empire,) = PlanningEmpire.objects.filter(user=user)
+        (cx,) = PlanningCX.objects.filter(user=user)
+        assert {field: getattr(empire, field) for field in SIGNUP_EMPIRE} == SIGNUP_EMPIRE
+        assert empire.cx == cx
+        assert cx.cx_data == SIGNUP_CX_DATA
+
+    def test_a_fresh_signup_counts_as_nothing(self) -> None:
+        user = signup('fresh')
+
+        assert not dashboard.empire_set_up().filter(pk=user.pk).exists()
+        assert not dashboard.empire_in_use().filter(pk=user.pk).exists()
+        assert not dashboard.pricing_customised().filter(pk=user.pk).exists()
+
+    @pytest.mark.parametrize(
+        'change',
+        [
+            {'empire_name': 'Test Empire'},
+            {'empire_faction': 'MORIA'},
+            {'empire_permits_used': 2},
+            {'empire_permits_total': 3},
+        ],
+    )
+    def test_changing_the_empire_sets_it_up(self, change: dict[str, str | int]) -> None:
+        user = signup('fresh')
+        PlanningEmpire.objects.filter(user=user).update(**change)
+
+        assert list(dashboard.empire_set_up()) == [user]
+        assert not dashboard.pricing_customised().exists()
+
+    def test_a_second_empire_sets_it_up(self) -> None:
+        user = signup('fresh')
+        seeded_empire(user)
+
+        assert list(dashboard.empire_set_up()) == [user]
+
+    def test_editing_or_adding_a_cx_customises_pricing(self) -> None:
+        edited, added = signup('edited'), signup('added')
+        PlanningCX.objects.filter(user=edited).update(cx_data={**SIGNUP_CX_DATA, 'cx_empire': []})
+        baker.make(PlanningCX, user=added, cx_data=SIGNUP_CX_DATA)
+
+        assert set(dashboard.pricing_customised()) == {edited, added}
+        assert not dashboard.empire_set_up().exists()
+
+    def test_an_empire_with_two_plans_is_in_use(self) -> None:
+        busy, single = signup('busy'), signup('single')
+        for user, plans in ((busy, 2), (single, 1)):
+            empire = PlanningEmpire.objects.get(user=user)
+            for plan in baker.make(PlanningPlan, user=user, plan_permits_used=1, _quantity=plans):
+                baker.make(PlanningEmpirePlan, user=user, empire=empire, plan=plan)
+
+        assert list(dashboard.empire_in_use()) == [busy]
+
+    def test_feature_adoption_rows(self, admin_client: Client) -> None:
+        signup('fresh')
+        PlanningEmpire.objects.filter(user=signup('configured')).update(empire_name='Mine')
+
+        rows = adoption_rows(admin_client)
+
+        # 3 users with the superuser
+        assert rows['Empire set up'] == '33.3% · 1'
+        assert rows['Empire with 2+ plans'] == '0.0% · 0'
+        assert rows['Pricing customised'] == '0.0% · 0'
+
+    def test_headline_counts_deliberate_use(self, admin_client: Client) -> None:
+        PlanningCX.objects.filter(user=signup('pricer')).update(cx_data={})
+        signup('fresh')
+
+        tiles = {tile['label']: tile for tile in admin_client.get(INDEX).context['headline']['tiles']}
+
+        assert tiles['Empires set up']['value'] == '0'
+        assert tiles['Pricing customised']['value'] == '1'
+        assert 'Empires' not in tiles and 'CX preferences' not in tiles
+
+    def test_activity_skips_rows_seeded_by_signup(self, admin_client: Client) -> None:
+        user = signup('fresh')
+        later = seeded_empire(user)
+        PlanningEmpire.objects.filter(pk=later.pk).update(created_at=user.date_joined + timedelta(hours=1))
+
+        charts = admin_client.get(INDEX, {'range': '7'}).context['activity']
+        titles = [chart['title'] for chart in charts]
+
+        assert titles[2] == 'Empires created by users (1 in 7 d)'
+        assert titles[3] == 'CX preferences created by users (0 in 7 d)'
+
+
+@pytest.mark.django_db
+class TestOnboardingFunnel:
+    def test_steps_and_median(self, admin_client: Client) -> None:
+        now = timezone.now()
+        # joined before the window: not counted
+        User.objects.filter(pk=signup('old').pk).update(date_joined=now - timedelta(days=30))
+        signup('idle')
+        PlanningEmpire.objects.filter(user=signup('configured')).update(empire_faction='HORTUS')
+        for name, wait in (('fast', timedelta(minutes=10)), ('slow', timedelta(hours=3))):
+            user = signup(name)
+            plan = baker.make(PlanningPlan, user=user, plan_permits_used=1)
+            PlanningPlan.objects.filter(pk=plan.pk).update(created_at=user.date_joined + wait)
+            PlanningCX.objects.filter(user=user).update(cx_data={})
+
+        funnel = admin_client.get(INDEX, {'range': '7'}).context['onboarding']
+        rows = {row['label']: row for row in funnel['rows']}
+
+        # idle, configured, fast, slow and the superuser
+        assert rows['Signed up']['text'] == '100.0% · 5'
+        assert 'date_joined_from_0=' in rows['Signed up']['href']
+        assert rows['Set up their empire']['text'] == '20.0% · 1'
+        assert rows['Created a plan']['text'] == '40.0% · 2'
+        assert rows['Customised pricing']['text'] == '40.0% · 2'
+        # median of 10 min and 3 h
+        assert funnel['median_to_first_plan'] == '1.6 h'
+
+    def test_no_signups(self) -> None:
+        User.objects.all().delete()
+
+        funnel = dashboard.onboarding_funnel(7)
+
+        assert funnel['median_to_first_plan'] == '—'
+        assert all(row['text'] == '0.0% · 0' for row in funnel['rows'])
+
+
+@pytest.mark.django_db
+class TestQueryCounts:
+    """Each metric is a fixed number of queries, whatever the number of users."""
+
+    @pytest.mark.parametrize(
+        ('card', 'queries'),
+        [
+            (dashboard.feature_adoption, 9),
+            (lambda: dashboard.onboarding_funnel(30), 5),
+            (lambda: dashboard.headline(30), 4),
+        ],
+    )
+    @pytest.mark.parametrize('users', [1, 5])
+    def test_fixed_query_count(
+        self, django_assert_num_queries: Callable, card: Callable[[], object], queries: int, users: int
+    ) -> None:
+        for n in range(users):
+            user = signup(f'user{n}')
+            PlanningEmpire.objects.filter(user=user).update(empire_name=f'Empire {n}')
+            baker.make(PlanningPlan, user=user, plan_permits_used=1)
+
+        with django_assert_num_queries(queries):
+            card()
