@@ -77,7 +77,7 @@
     </table>
   </div>
   <p class="mt-3 text-xs text-subtle">
-    Overdue: the run after the missed one is due too (more than one interval late). Failing: the last failure is newer than the last success.
+    Overdue: the run after the missed one is due too (more than one interval late, plus 3 min for beat saving its last run lazily). Failing: the last failure is newer than the last success.
     Tracker cells: <span style="color: {{ 'good'|status_colour }}">■</span> ok,
     <span style="color: {{ 'critical'|status_colour }}">■</span> any failure, grey no runs.
   </p>

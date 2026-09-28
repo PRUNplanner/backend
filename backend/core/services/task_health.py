@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta
 from typing import TYPE_CHECKING, cast
 
 import structlog
+from celery.beat import Scheduler
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from redis import Redis
@@ -28,6 +29,10 @@ TRACKER_DAYS = 14
 ERROR_MAX_CHARS = 500
 
 STATES = ('paused', 'ok', 'overdue', 'failing')
+
+# beat keeps `last_run_at` in memory and writes it to the DB only every `sync_every` (3 min), so the DB value lags
+# by up to that much; without this grace any interval under ~90s reads as overdue most of the time.
+BEAT_SYNC_LAG = timedelta(seconds=Scheduler.sync_every)
 
 # task id -> monotonic start, filled by task_prerun and emptied by task_postrun in the same worker process
 _started: dict[str, float] = {}
@@ -128,8 +133,9 @@ class TaskHealth:
 
 def is_overdue(periodic_task: 'PeriodicTask', now: datetime) -> bool:
     """
-    Overdue when the run after the missed one is due too, i.e. more than one interval late. Works for interval and
-    crontab schedules alike, since both answer `remaining_estimate`; anything else is never overdue.
+    Overdue when the run after the missed one is due too, i.e. more than one interval late, plus `BEAT_SYNC_LAG`
+    since the DB `last_run_at` trails the real one. Works for interval and crontab schedules alike, since both
+    answer `remaining_estimate`; anything else is never overdue.
     """
     if not periodic_task.enabled:
         return False
@@ -139,7 +145,7 @@ def is_overdue(periodic_task: 'PeriodicTask', now: datetime) -> bool:
         due = now + schedule.remaining_estimate(reference)
         if due >= now:
             return False
-        return schedule.remaining_estimate(due) < timedelta(0)
+        return schedule.remaining_estimate(due) < -BEAT_SYNC_LAG
     except Exception:
         logger.exception('task_health_schedule_failed', task=periodic_task.name)
         return False
