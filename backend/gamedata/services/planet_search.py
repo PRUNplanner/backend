@@ -32,9 +32,6 @@ class GamePlanetSearchService:
     @staticmethod
     def search(search_request: SearchRequestType) -> list[GamePlanet]:
         start_time = time.perf_counter()
-        log = logger.bind(search_request=search_request)
-        log.info('planet_search_started')
-
         # annotated with active_cogc_program_type
         queryset = queryset_gameplanet()
 
@@ -106,9 +103,10 @@ class GamePlanetSearchService:
         # execute, transform to list
         data = list(queryset)
 
-        duration = (time.perf_counter() - start_time) * 1000
-
-        log.info('planet_search_completed', results=len(data), duration=duration)
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.info(
+            'planet_search_completed', search_request=search_request, results=len(data), duration_ms=duration_ms
+        )
 
         return data
 

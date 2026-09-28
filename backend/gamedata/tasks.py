@@ -3,6 +3,7 @@ from collections.abc import Callable
 from datetime import timedelta
 from typing import Literal
 
+import httpx
 import structlog
 from celery import chord, shared_task
 from core.services.cache_manager import CacheManager
@@ -20,9 +21,6 @@ logger = structlog.get_logger(__name__)
 
 @shared_task(name='gamedata_refresh_exchanges')
 def refresh_exchanges() -> bool:
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_exchanges',
-    )
     from gamedata.fio.importers import import_all_exchanges
 
     return import_all_exchanges()
@@ -30,25 +28,18 @@ def refresh_exchanges() -> bool:
 
 @shared_task(name='gamedata_refresh_planet_infrastructure')
 def gamedata_refresh_planet_infrastructure(planet_natural_id: str) -> bool:
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_planet_infrastructure',
-    )
-
     from gamedata.fio.importers import import_planet_infrastructure
 
     try:
         import_planet_infrastructure(planet_natural_id)
         return True
     except Exception:
+        logger.exception('planet_infrastructure_refresh_failed', planet_natural_id=planet_natural_id)
         return False
 
 
 @shared_task(name='gamedata_refresh_planet')
 def gamedata_refresh_planet() -> bool:
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_planet',
-    )
-
     from gamedata.fio.importers import import_planet
     from gamedata.models import GamePlanet
 
@@ -89,10 +80,6 @@ def gamedata_refresh_planet() -> bool:
 
 @shared_task(name='gamedata_refresh_single_planet')
 def gamedata_refresh_single_planet(planet_natural_id: str) -> bool:
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_single_planet',
-    )
-
     from gamedata.fio.importers import import_planet
 
     # records its own refresh result, success or error
@@ -104,10 +91,6 @@ type AdminImportKind = Literal['materials', 'buildings', 'recipes', 'planets', '
 
 @shared_task(name='gamedata_admin_import')
 def gamedata_admin_import(kind: AdminImportKind) -> str:
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_admin_import',
-    )
-
     from gamedata.fio import importers
 
     runners: dict[str, Callable[[], object]] = {
@@ -125,10 +108,6 @@ def gamedata_admin_import(kind: AdminImportKind) -> str:
 
 @shared_task(name='gamedata_dispatch_fio_updates')
 def gamedata_dispatch_fio_updates():
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_dispatch_fio_updates',
-    )
-
     """
     Identifies users eligible for an FIO data refresh based on activity
     and staleness, then dispatches worker tasks with appropriate priorities.
@@ -184,10 +163,6 @@ def gamedata_dispatch_fio_updates():
 
 @shared_task(name='gamedata_clean_user_fiodata')
 def gamedata_clean_user_fiodata(user_id: int) -> None:
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_clean_user_fiodata',
-    )
-
     from gamedata.models import GameFIOPlayerData
 
     GameFIOPlayerData.objects.filter(user_id=user_id).delete()
@@ -197,15 +172,11 @@ def gamedata_clean_user_fiodata(user_id: int) -> None:
 def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
     # credentials are loaded here, so the FIO api key never passes through the broker.
     # _legacy_args: (prun_username, fio_apikey) of tasks queued before this change, ignored; remove next release
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_user_fiodata',
-    )
-
-    log = logger.bind(name='gamedata_refresh_user_fiodata', user=user_id)
+    log = logger.bind(user_id=user_id)
 
     # SUBSEQUENT REFRESH LOCK
     if not GamedataCacheManager.set_fio_refresh_lock(user_id):
-        log.info('Skip user fio refresh, still within cooldown period')
+        log.info('fio_refresh_skipped', reason='cooldown')
         return False
 
     # STORAGE REFRESH LOGIC
@@ -219,12 +190,10 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
         if user is None:
             # user does not exist anymore, clean up lock key and return
             GamedataCacheManager.delete_fio_refresh_lock(user_id)
-            log.info('Skip user fio refresh, user does not exist anymore')
+            log.info('fio_refresh_skipped', reason='user_missing')
             return False
 
         to_update, _ = GameFIOPlayerData.objects.get_or_create(user_id=user_id)
-
-        log.info('Update GameFIOPlayerData', uuid=to_update.uuid)
 
         try:
             with get_fio_service() as fio:
@@ -257,7 +226,11 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
             return True
 
         except Exception as exc:
-            log.error('Exception in update', exc_info=exc)
+            if isinstance(exc, httpx.HTTPStatusError):
+                # expected for a wrong or revoked FIO key; fio_request_completed has the response
+                log.warning('fio_refresh_failed', status_code=exc.response.status_code)
+            else:
+                log.exception('fio_refresh_failed')
             to_update.update_refresh_result(error=exc)
             # remove lock key, so retry is possible
             GamedataCacheManager.delete_fio_refresh_lock(user_id)
@@ -274,10 +247,6 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
 
 @shared_task(name='gamedata_trigger_refresh_cxpc')
 def gamedata_trigger_refresh_cxpc(full: bool = False):
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_trigger_refresh_cxpc',
-    )
-
     from gamedata.models import GameExchangeCXPC
 
     with get_fio_service() as fio:
@@ -312,14 +281,10 @@ def gamedata_trigger_refresh_cxpc(full: bool = False):
 
 @shared_task(name='gamedata_refresh_cxpc')
 def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False, since_ms: int | None = None):
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_cxpc',
-    )
-
     from gamedata.fio.importers import cxpc_objects
     from gamedata.models import GameExchangeCXPC
 
-    log = logger.bind(name='fetch_create_exchange_cxpc', ticker=ticker, exchange_code=exchange_code)
+    log = logger.bind(ticker=ticker, exchange_code=exchange_code)
 
     try:
         with get_fio_service() as fio:
@@ -380,8 +345,8 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False, s
                     historical=len(historical_objs),
                 )
 
-    except Exception as exc:
-        log.error('exception', exc_info=exc)
+    except Exception:
+        log.exception('cxpc_refresh_failed')
         return False
 
     return True
@@ -389,10 +354,6 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False, s
 
 @shared_task(name='gamedata_refresh_exchange_analytics')
 def refresh_exchange_analytics():
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_refresh_exchange_analytics',
-    )
-
     # update materialized view
     with connection.cursor() as cursor:
         cursor.execute('REFRESH MATERIALIZED VIEW CONCURRENTLY prunplanner_game_exchanges_analytics;')
@@ -405,13 +366,7 @@ def refresh_exchange_analytics():
 
 @shared_task(name='gamedata_process_fio_webhook')
 def gamedata_process_fio_webhook(payload):
-    structlog.contextvars.bind_contextvars(
-        task_category='gamedata_process_fio_webhook',
-    )
-
     from gamedata.services.fio_webhook_dispatcher import FIOWebhookDispatcher
-
-    log = logger.bind(name='gamedata_process_fio_webhook')
 
     try:
         # validate data
@@ -420,5 +375,5 @@ def gamedata_process_fio_webhook(payload):
         # hand-off to webhook dispatcher
         FIOWebhookDispatcher.dispatch(validated_data)
 
-    except Exception as exc:
-        log.error('exception', exc_info=exc)
+    except Exception:
+        logger.exception('fio_webhook_processing_failed')

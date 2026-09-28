@@ -15,8 +15,7 @@ preload_app = True
 max_requests = 2000
 max_requests_jitter = 200
 
-# logging
-accesslog = '-'
+# logging: no access log, django_structlog's request_finished is the JSON one
 errorlog = '-'
 loglevel = 'info'
 

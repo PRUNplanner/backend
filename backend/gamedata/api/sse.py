@@ -30,8 +30,9 @@ async def sse_stream_view(request):
     redis_url = settings.CACHES['default']['LOCATION']
 
     async def event_generator():
-        log = logger.bind(name='data_stream', channels=channels)
-        log.info(action='stream_open')
+        log = logger.bind(channels=channels)
+        log.info('sse_stream_opened')
+        started = time.monotonic()
 
         # initiate redis, pubsub and subscribe to channels
         redis = await aioredis.from_url(redis_url)
@@ -55,6 +56,7 @@ async def sse_stream_view(request):
                             redis_keys[stream_name.decode('utf-8')] = last_id
 
                             payload = data[b'payload'].decode('utf-8')
+                            total_sent_count += 1
                             yield f'id: {last_id}\ndata: {payload}\n\n'
                 else:
                     # keep-alive + heartbeat in redis
@@ -75,7 +77,11 @@ async def sse_stream_view(request):
 
             await redis.close()
 
-            log.info(action='stream_close', messages_sent=total_sent_count)
+            log.info(
+                'sse_stream_closed',
+                messages_sent=total_sent_count,
+                duration_ms=round((time.monotonic() - started) * 1000),
+            )
 
     response = StreamingHttpResponse(event_generator(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
