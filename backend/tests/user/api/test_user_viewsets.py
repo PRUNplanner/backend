@@ -88,6 +88,7 @@ class TestUserPreferenceViewSet:
         assert response.status_code == 200
         assert response.data['locale'] == 'en_US'
         assert response.data['burnDaysRed'] == 5
+        assert response.data['colorPalette'] == 'default'
         assert UserPreference.objects.filter(user=user).exists()
 
     def test_update_persists_preferences(self, api_client, user_factory):
@@ -104,9 +105,20 @@ class TestUserPreferenceViewSet:
         preference = UserPreference.objects.get(user=user)
         assert preference.preferences['locale'] == 'de_DE'
 
+    def test_update_persists_color_palette(self, api_client, user_factory):
+        user = user_factory(id=1)
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'colorPalette': 'colorblind'}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert response.data['colorPalette'] == 'colorblind'
+        assert UserPreference.objects.get(user=user).preferences['color_palette'] == 'colorblind'
+
     @pytest.mark.parametrize(
         'payload',
-        [{'planOverrides': None}, {'layoutNavigationStyle': 'x'}],
+        [{'planOverrides': None}, {'layoutNavigationStyle': 'x'}, {'colorPalette': 'x'}],
     )
     def test_update_rejects_invalid_values(self, api_client, user_factory, payload):
         user = user_factory(id=1)
@@ -117,13 +129,18 @@ class TestUserPreferenceViewSet:
 
     def test_retrieve_repairs_invalid_stored_values(self, api_client, user_factory):
         user = user_factory(id=1)
-        baker.make(UserPreference, user=user, preferences={'plan_overrides': None, 'layout_navigation_style': 'x'})
+        baker.make(
+            UserPreference,
+            user=user,
+            preferences={'plan_overrides': None, 'layout_navigation_style': 'x', 'color_palette': 'x'},
+        )
 
         response = api_client.as_user(user).get(reverse('user:user_preferences'))
 
         assert response.status_code == 200
         assert response.data['planOverrides'] == {}
         assert response.data['layoutNavigationStyle'] == 'full'
+        assert response.data['colorPalette'] == 'default'
 
     def test_partial_update_keeps_omitted_keys(self, api_client, user_factory):
         user = user_factory(id=1)
