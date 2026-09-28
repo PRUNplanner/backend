@@ -3,7 +3,8 @@ import copy
 from api.mixins import JSONSafeSerializerMixin
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from planning.models import PlanningCX, PlanningEmpire, PlanningFactionChoices
+from planning.models import PlanningCX, PlanningEmpire
+from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_CX_NAME, SIGNUP_EMPIRE
 from rest_framework import serializers
 from user.models import User, UserAPIKey
 from user.services.verification_service import VerificationService
@@ -123,25 +124,8 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             user = User.objects.create_user(**validated_data)
 
             # create a cx and an empire, cx first and assign its cx
-            cx = PlanningCX.objects.create(
-                user=user,
-                cx_name='My Exchange Preference',
-                cx_data={
-                    'cx_empire': [{'type': 'BOTH', 'exchange': 'UNIVERSE_30D'}],
-                    'cx_planets': [],
-                    'ticker_empire': [],
-                    'ticker_planets': [],
-                },
-            )
-
-            _empire = PlanningEmpire.objects.create(
-                user=user,
-                cx=cx,
-                empire_name='My Empire',
-                empire_faction=PlanningFactionChoices.NONE,
-                empire_permits_used=1,
-                empire_permits_total=2,
-            )
+            cx = PlanningCX.objects.create(user=user, cx_name=SIGNUP_CX_NAME, cx_data=copy.deepcopy(SIGNUP_CX_DATA))
+            PlanningEmpire.objects.create(user=user, cx=cx, **SIGNUP_EMPIRE)
 
         return user
 
