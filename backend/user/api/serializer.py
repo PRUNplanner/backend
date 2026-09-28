@@ -141,6 +141,7 @@ def deep_merge(base, overrides):
 
 
 LAYOUT_NAVIGATION_STYLES = ['full', 'collapsed']
+COLOR_PALETTES = ['default', 'colorblind']
 
 DEFAULT_PREFERENCES = {
     'locale': 'en_US',
@@ -153,6 +154,7 @@ DEFAULT_PREFERENCES = {
     'burn_origin': 'Antares Station Warehouse',
     'supply_cart_days': 20,
     'layout_navigation_style': 'full',
+    'color_palette': 'default',
     'plan_overrides': {},
 }
 
@@ -180,6 +182,7 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     layoutNavigationStyle = serializers.ChoiceField(
         source='layout_navigation_style', choices=LAYOUT_NAVIGATION_STYLES, required=False
     )
+    colorPalette = serializers.ChoiceField(source='color_palette', choices=COLOR_PALETTES, required=False)
 
     planOverrides = serializers.DictField(source='plan_overrides', child=PlanOverrideSerializer(), required=False)
 
@@ -191,6 +194,8 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
             merged['plan_overrides'] = {}
         if merged['layout_navigation_style'] not in LAYOUT_NAVIGATION_STYLES:
             merged['layout_navigation_style'] = 'full'
+        if merged['color_palette'] not in COLOR_PALETTES:
+            merged['color_palette'] = 'default'
         return super().to_representation(merged)
 
 
