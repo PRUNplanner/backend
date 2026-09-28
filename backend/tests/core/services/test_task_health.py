@@ -147,6 +147,22 @@ class TestOverdue:
 
         assert is_overdue(task, now) is expected
 
+    @pytest.mark.parametrize(
+        'last_run_seconds_ago, expected',
+        [
+            (60, False),  # beat saves last_run_at every 3 min, so a stale DB value is normal
+            (600, True),  # past two intervals plus the sync lag
+        ],
+    )
+    def test_short_interval_allows_beat_sync_lag(self, last_run_seconds_ago: int, expected: bool) -> None:
+        every_9s = baker.make(IntervalSchedule, every=9, period=IntervalSchedule.SECONDS)
+        now = timezone.now()
+        task = baker.make(
+            PeriodicTask, interval=every_9s, enabled=True, last_run_at=now - timedelta(seconds=last_run_seconds_ago)
+        )
+
+        assert is_overdue(task, now) is expected
+
     def test_paused_is_never_overdue(self, hourly: IntervalSchedule) -> None:
         now = timezone.now()
         task = baker.make(PeriodicTask, interval=hourly, enabled=False, last_run_at=now - timedelta(days=3))
