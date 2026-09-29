@@ -5,7 +5,7 @@ from typing import Any, cast
 import structlog
 from core.services.cache_manager import CacheManager
 from django.db import connection
-from django.db.models import Case, CharField, F, Q, QuerySet, Value, When
+from django.db.models import Case, CharField, F, Prefetch, Q, QuerySet, Value, When
 from django.db.models.functions import Concat
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -21,6 +21,7 @@ from gamedata.api.serializer import (
     GameRecipeSerializer,
     GameStorageSerializer,
     PlanetIdsSerializer,
+    PlanetSearchIndexSerializer,
     PlanetSearchSerializer,
 )
 from gamedata.fio.schemas import (
@@ -30,7 +31,17 @@ from gamedata.fio.schemas import (
     FIOUserStorageSchema,
     FIOWebhookRootSchema,
 )
-from gamedata.gamedata_cache_manager import BUILDINGS, CXPC, EXCHANGES, MATERIALS, PLANET, PLANET_LIST, RECIPES, STORAGE
+from gamedata.gamedata_cache_manager import (
+    BUILDINGS,
+    CXPC,
+    EXCHANGES,
+    MATERIALS,
+    PLANET,
+    PLANET_LIST,
+    PLANET_SEARCH_INDEX,
+    RECIPES,
+    STORAGE,
+)
 from gamedata.models import (
     GameBuilding,
     GameExchange,
@@ -39,6 +50,7 @@ from gamedata.models import (
     GameFIOPlayerData,
     GameMaterial,
     GamePlanet,
+    GamePlanetCOGCProgram,
     GameRecipe,
     queryset_gameplanet,
 )
@@ -111,6 +123,22 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             return self.get_serializer(self.get_queryset(), many=True).data
 
         return CacheManager.respond(request, PLANET_LIST, 'list', build=fetch_data)
+
+    @extend_schema(
+        auth=[],
+        responses=PlanetSearchIndexSerializer(many=True),
+        summary='Slim index of all planets for the client-side planet search',
+    )
+    def search_index(self, request, *args, **kwargs):
+        def fetch_data() -> object:
+            now_ms = int(timezone.now().timestamp() * 1000)
+            queryset = GamePlanet.objects.prefetch_related(
+                'resources',
+                Prefetch('cogc_programs', queryset=GamePlanetCOGCProgram.objects.filter(end_epochms__gte=now_ms)),
+            )
+            return PlanetSearchIndexSerializer(queryset, many=True).data
+
+        return CacheManager.respond(request, PLANET_SEARCH_INDEX, 'index', build=fetch_data)
 
     @extend_schema(auth=[], summary='Fetch a single planet by its Planet Natural Id')
     def retrieve(self, request, *args, **kwargs):

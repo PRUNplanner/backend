@@ -186,6 +186,52 @@ class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
         return {'currency': obj.currency_code, 'fees': fee_map}
 
 
+class RoundedFloatField(serializers.FloatField):
+    """Four decimals: keeps the search index's payload about 20% smaller without a visible difference."""
+
+    def to_representation(self, value: float) -> float:
+        return round(super().to_representation(value), 4)
+
+
+class PlanetSearchIndexResourceSerializer(serializers.ModelSerializer):
+    daily_extraction = RoundedFloatField(read_only=True)
+    max_daily_extraction = RoundedFloatField(read_only=True)
+
+    class Meta:
+        model = GamePlanetResource
+        fields = ['material_ticker', 'resource_type', 'daily_extraction', 'max_daily_extraction']
+
+
+class PlanetSearchIndexSerializer(BlankAsNullMixin, serializers.ModelSerializer):
+    """Slim planet shape for the client-side planet search; cogc_programs are expected prefetched unexpired."""
+
+    blank_as_null_fields = ('cogc_program_status',)
+    fertility = RoundedFloatField(read_only=True)
+    resources = PlanetSearchIndexResourceSerializer(many=True, read_only=True)
+    cogc_programs = GamePlanetCOGCProgramSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = GamePlanet
+        fields = [
+            'planet_natural_id',
+            'planet_name',
+            'system_id',
+            'surface',
+            'gravity_type',
+            'pressure_type',
+            'temperature_type',
+            'fertility',
+            'has_localmarket',
+            'has_chamberofcommerce',
+            'has_warehouse',
+            'has_administrationcenter',
+            'has_shipyard',
+            'cogc_program_status',
+            'cogc_programs',
+            'resources',
+        ]
+
+
 class PlanetIdsSerializer(serializers.ListSerializer):
     child = serializers.CharField(min_length=7, max_length=7)
 
