@@ -93,7 +93,7 @@ class SharedViewSet(
         with transaction.atomic():
             cloned_plan = PlanningPlan.objects.create(
                 user=request.user,
-                plan_name=f'{original_plan.planet_natural_id} (Shared Clone)',
+                plan_name=f'{original_plan.plan_name[:192]} (Clone)',
                 planet_natural_id=original_plan.planet_natural_id,
                 plan_permits_used=original_plan.plan_permits_used,
                 plan_cogc=original_plan.plan_cogc,

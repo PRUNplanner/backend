@@ -79,7 +79,7 @@ class TestSharedViewSet:
     def test_shared_clone(self, api_client, user_factory, plan_factory, shared_factory):
 
         user_1 = user_factory(id=1)
-        plan_1 = plan_factory(user=user_1, plan_data=plan_data_vallis)
+        plan_1 = plan_factory(user=user_1, plan_name='Vallis Base', plan_data=plan_data_vallis)
         shared_1 = shared_factory(user=user_1, plan=plan_1)
 
         url_clone = reverse('planning:shared-clone', kwargs={'pk': str(shared_1.uuid)})
@@ -91,6 +91,19 @@ class TestSharedViewSet:
         # clone auth
         response_clone = api_client.as_user(user_1).post(url_clone)
         assert response_clone.status_code == 201
+        assert response_clone.data['plan_name'] == 'Vallis Base (Clone)'
+
+    def test_shared_clone_keeps_long_names_within_limit(self, api_client, user_factory, plan_factory, shared_factory):
+        user_1 = user_factory(id=1)
+        plan_1 = plan_factory(user=user_1, plan_name='x' * 200, plan_data=plan_data_vallis)
+        shared_1 = shared_factory(user=user_1, plan=plan_1)
+
+        response_clone = api_client.as_user(user_1).post(
+            reverse('planning:shared-clone', kwargs={'pk': str(shared_1.uuid)})
+        )
+
+        assert response_clone.status_code == 201
+        assert response_clone.data['plan_name'] == f'{"x" * 192} (Clone)'
 
 
 class TestSharedViewSetRetrieve:
