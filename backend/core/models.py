@@ -45,6 +45,16 @@ class CeleryAutomationModel(models.Model):
             models.Index(fields=['automation_last_refreshed_at'], name='%(class)s_last_run_idx'),
         ]
 
+    AUTOMATION_FIELDS = frozenset(
+        {
+            'automation_refresh_status',
+            'automation_error',
+            'automation_last_refreshed_at',
+            'automation_next_retry_at',
+            'automation_error_count',
+        }
+    )
+
     RETRY_DELAY_MINUTES = 15
     MAX_RETRIES = 10
     # a row marked pending holds its next_retry_at as a lease; a worker that dies leaves it to expire
@@ -86,12 +96,4 @@ class CeleryAutomationModel(models.Model):
                 self.automation_next_retry_at = now + timedelta(minutes=self.RETRY_DELAY_MINUTES)
 
         if commit:
-            self.save(
-                update_fields=[
-                    'automation_refresh_status',
-                    'automation_error',
-                    'automation_last_refreshed_at',
-                    'automation_next_retry_at',
-                    'automation_error_count',
-                ]
-            )
+            self.save(update_fields=self.AUTOMATION_FIELDS)
