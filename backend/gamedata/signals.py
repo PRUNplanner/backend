@@ -10,6 +10,10 @@ from gamedata.models import GameFIOPlayerData, GamePlanet
 
 @receiver([post_save, post_delete], sender=GamePlanet)
 def invalidate_planet_cache(sender: type[GamePlanet], instance: GamePlanet, **kwargs: Any) -> None:
+    update_fields = kwargs.get('update_fields')
+    if update_fields and GamePlanet.AUTOMATION_FIELDS.issuperset(update_fields):
+        return  # refresh bookkeeping only, nothing the planet endpoints serve
+
     CacheManager.invalidate_on_commit(PLANET, instance.planet_natural_id)
 
 

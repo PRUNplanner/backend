@@ -55,21 +55,44 @@ def import_planet(planet_natural_id: str) -> bool:
 
     with transaction.atomic():
         try:
-            # delete existing data, cascades children
-            planet_instance, _created = GamePlanet.objects.update_or_create(
-                planet_natural_id=data.planet_natural_id,
-                defaults=data.model_dump(exclude={'resources', 'cogc_programs', 'production_fees'}),
+            defaults = data.model_dump(exclude={'resources', 'cogc_programs', 'production_fees'})
+            # row lock: a concurrent refresh of the same planet waits instead of racing the child syncs
+            planet_instance = (
+                GamePlanet.objects.select_for_update().filter(planet_natural_id=data.planet_natural_id).first()
             )
+
+            # only write what differs: every save of the planet invalidates its cache (post_save receiver)
+            if planet_instance is None:
+                planet_instance = GamePlanet.objects.create(**defaults)
+                planet_changed = True
+            else:
+                dirty = [name for name, value in defaults.items() if getattr(planet_instance, name) != value]
+                for name in dirty:
+                    setattr(planet_instance, name, defaults[name])
+                if dirty:
+                    planet_instance.save(update_fields=dirty)
+                planet_changed = bool(dirty)
 
             # Get Material ticker map once
             material_map = GameMaterial.material_id_ticker_map()
 
             # Synchronize all 1:n relationships
-            planet_sync_resources(planet_instance, data.resources, material_map)
-            planet_sync_cogc_programs(planet_instance, data.cogc_programs)
-            planet_sync_production_fees(planet_instance, data.production_fees)
+            resources_changed = planet_sync_resources(planet_instance, data.resources, material_map)
+            programs_changed = planet_sync_cogc_programs(planet_instance, data.cogc_programs)
+            fees_changed = planet_sync_production_fees(planet_instance, data.production_fees)
+            children_changed = resources_changed or programs_changed or fees_changed
+
+            if children_changed and not planet_changed:
+                # the planet row wasn't saved, so its receiver didn't invalidate
+                CacheManager.invalidate_on_commit(PLANET, planet_instance.planet_natural_id)
 
             planet_instance.update_refresh_result()
+
+            logger.info(
+                'planet_refresh_completed',
+                planet_natural_id=planet_natural_id,
+                changed=planet_changed or children_changed,
+            )
 
             return True
 
@@ -85,7 +108,8 @@ def import_planet(planet_natural_id: str) -> bool:
     return False
 
 
-def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResourceSchema], material_map: dict):
+def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResourceSchema], material_map: dict) -> bool:
+    """Returns whether a resource was created, updated or deleted."""
 
     existing_objs = {r.material_id: r for r in planet.resources.all()}
 
@@ -116,12 +140,20 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
 
         if m_id in existing_objs:
             obj = existing_objs[m_id]
-            obj.factor = item.factor
-            obj.resource_type = item.resource_type
-            obj.daily_extraction = daily_ext
-            obj.max_daily_extraction = max_val
-            obj.material_ticker = ticker
-            to_update.append(obj)
+            stored = (
+                obj.factor,
+                obj.resource_type,
+                obj.daily_extraction,
+                obj.max_daily_extraction,
+                obj.material_ticker,
+            )
+            if stored != (item.factor, item.resource_type, daily_ext, max_val, ticker):
+                obj.factor = item.factor
+                obj.resource_type = item.resource_type
+                obj.daily_extraction = daily_ext
+                obj.max_daily_extraction = max_val
+                obj.material_ticker = ticker
+                to_update.append(obj)
         else:
             to_create.append(
                 GamePlanetResource(
@@ -143,10 +175,13 @@ def planet_sync_resources(planet: GamePlanet, resource_data: list[FIOPlanetResou
     if to_create:
         GamePlanetResource.objects.bulk_create(to_create)
 
-    planet.resources.exclude(material_id__in=seen_material_ids).delete()
+    deleted, _ = planet.resources.exclude(material_id__in=seen_material_ids).delete()
+
+    return bool(to_update or to_create or deleted)
 
 
-def planet_sync_cogc_programs(planet: GamePlanet, cogc_data: list[FIOPlanetCOGCProgramSchema]):
+def planet_sync_cogc_programs(planet: GamePlanet, cogc_data: list[FIOPlanetCOGCProgramSchema]) -> bool:
+    """Returns whether a program was created or deleted."""
     existing = {(p.program_type, p.start_epochms, p.end_epochms): p.pk for p in planet.cogc_programs.all()}
 
     ids_to_keep = []
@@ -164,13 +199,13 @@ def planet_sync_cogc_programs(planet: GamePlanet, cogc_data: list[FIOPlanetCOGCP
         new_objs = GamePlanetCOGCProgram.objects.bulk_create(to_create)
         ids_to_keep.extend([obj.pk for obj in new_objs])
 
-    if not ids_to_keep:
-        planet.cogc_programs.all().delete()
-    else:
-        planet.cogc_programs.exclude(pk__in=ids_to_keep).delete()
+    deleted, _ = planet.cogc_programs.exclude(pk__in=ids_to_keep).delete()
+
+    return bool(to_create or deleted)
 
 
-def planet_sync_production_fees(planet: GamePlanet, fee_data: list[FIOPlanetProductionFeeSchema]):
+def planet_sync_production_fees(planet: GamePlanet, fee_data: list[FIOPlanetProductionFeeSchema]) -> bool:
+    """Returns whether a fee was created, updated or deleted."""
     existing = {(f.category, f.workforce_level): f for f in planet.production_fees.all()}
 
     to_create = []
@@ -182,9 +217,10 @@ def planet_sync_production_fees(planet: GamePlanet, fee_data: list[FIOPlanetProd
 
         if key in existing:
             obj = existing[key]
-            obj.fee_amount = item.fee_amount
-            obj.fee_currency = item.fee_currency
-            to_update.append(obj)
+            if (obj.fee_amount, obj.fee_currency) != (item.fee_amount, item.fee_currency):
+                obj.fee_amount = item.fee_amount
+                obj.fee_currency = item.fee_currency
+                to_update.append(obj)
             ids_to_keep.append(obj.pk)
         else:
             to_create.append(GamePlanetProductionFee(planet=planet, **item.model_dump()))
@@ -196,10 +232,9 @@ def planet_sync_production_fees(planet: GamePlanet, fee_data: list[FIOPlanetProd
         returned_objs = GamePlanetProductionFee.objects.bulk_create(to_create)
         ids_to_keep.extend([obj.pk for obj in returned_objs])
 
-    if not ids_to_keep:
-        planet.production_fees.all().delete()
-    else:
-        planet.production_fees.exclude(pk__in=ids_to_keep).delete()
+    deleted, _ = planet.production_fees.exclude(pk__in=ids_to_keep).delete()
+
+    return bool(to_update or to_create or deleted)
 
 
 def import_all_planets() -> bool:
@@ -303,11 +338,20 @@ def import_planet_infrastructure(planet_natural_id: str) -> bool:
         GamePlanetInfrastructureReport.objects.bulk_create(to_create)
 
     # cleanup: delete all that are not in our top 10 periods
+    deleted = 0
     if fetched_periods:
         min_period = min(fetched_periods)
-        planet.popr_reports.filter(simulation_period__lt=min_period).delete()
+        deleted, _ = planet.popr_reports.filter(simulation_period__lt=min_period).delete()
 
-    CacheManager.invalidate(PLANET, planet_natural_id)
+    if to_create or deleted:
+        CacheManager.invalidate(PLANET, planet_natural_id)
+
+    logger.info(
+        'planet_infrastructure_refresh_completed',
+        planet_natural_id=planet_natural_id,
+        created=len(to_create),
+        deleted=deleted,
+    )
 
     return True
 
