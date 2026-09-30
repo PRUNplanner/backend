@@ -156,9 +156,11 @@ class TestTaskLog:
         assert self.start(SimpleNamespace())['task'] == 'gamedata_refresh_cxpc'
 
     def test_published_task_logs_its_queue_wait(self) -> None:
-        # a mock producer: the publish signals fire, nothing reaches a broker
+        # a mock producer: the publish signals fire, nothing reaches a broker. AsyncResult would load the result
+        # backend, which CI does not configure.
         producer = MagicMock()
-        gamedata_clean_user_fiodata.apply_async(args=[1], producer=producer)
+        with patch.object(gamedata_clean_user_fiodata, 'AsyncResult'):
+            gamedata_clean_user_fiodata.apply_async(args=[1], producer=producer)
         headers = producer.publish.call_args.kwargs['headers']
 
         with patch('core.config.settings.logging.time.time', return_value=headers['published_at_ms'] / 1000 + 1.5):
