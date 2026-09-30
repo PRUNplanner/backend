@@ -42,6 +42,7 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
 CELERY_TASK_QUEUE_MAX_PRIORITY = 10
 CELERY_TASK_DEFAULT_PRIORITY = 5
 
+# a lower number is served first: kombu's Redis transport pops the per-priority lists in ascending order
 CELERY_TASK_ANNOTATIONS = {
     # user
     'user_send_email_verification_code': {
@@ -57,7 +58,8 @@ CELERY_TASK_ANNOTATIONS = {
         'priority': 5,
         'rate_limit': '2/s',
     },
-    'gamedata_process_fio_webhook': {'priority': 4},
+    # ahead of user FIO refreshes (3), so a webhook never waits behind them
+    'gamedata_process_fio_webhook': {'priority': 2},
     'gamedata_dispatch_fio_updates': {'priority': 3},
     'gamedata_refresh_user_fiodata': {
         'priority': 3,

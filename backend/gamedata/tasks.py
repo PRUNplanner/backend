@@ -115,11 +115,25 @@ def gamedata_admin_import(kind: AdminImportKind) -> str:
     return f'{kind}: {result}'
 
 
+# scheduled refreshes run below planet refreshes (5) and above CXPC (9); login and credential refreshes keep 3
+DISPATCH_PRIORITY = 7
+DISPATCH_STAGGER_SECONDS = 3
+
+
 @shared_task(name='gamedata_dispatch_fio_updates')
 def gamedata_dispatch_fio_updates():
     """
     Identifies users eligible for an FIO data refresh based on activity
-    and staleness, then dispatches worker tasks with appropriate priorities.
+    and staleness, then dispatches worker tasks with a low priority, one
+    every DISPATCH_STAGGER_SECONDS.
+
+    Users without a login in the last 7 days are skipped; their next login
+    refreshes them (request_fio_refresh).
+
+    Assumes a full batch (100 x 3 s, about 5 min) is shorter than the
+    dispatch interval (production: about every 12 min). The priority only
+    orders a task until the worker has received it; from then on the
+    countdown is what spaces the work.
     """
 
     from gamedata.models import GameFIOPlayerData
@@ -130,6 +144,7 @@ def gamedata_dispatch_fio_updates():
     active_cut = now - timedelta(minutes=30)
     inactive_cut = now - timedelta(hours=6)
     recent_login_threshold = now - timedelta(days=1)
+    idle_cut = now - timedelta(days=7)
 
     # User Base
     eligible_base = (
@@ -152,20 +167,27 @@ def gamedata_dispatch_fio_updates():
     candidates = candidates.filter(automation_error_count__lt=GameFIOPlayerData.MAX_RETRIES)
 
     # timing filters
-    candidates = candidates.filter(
+    due = candidates.filter(
         Q(automation_last_refreshed_at__isnull=True)
         | Q(user__last_login__gte=recent_login_threshold, automation_last_refreshed_at__lte=active_cut)
         | Q(automation_last_refreshed_at__lte=inactive_cut)
     )
 
+    # idle users (no login within 7 days, or never) are not refreshed on a schedule
+    skipped_idle = due.exclude(user__last_login__gte=idle_cut).count()
+    candidates = due.filter(user__last_login__gte=idle_cut)
+
     candidates = candidates.order_by(F('automation_last_refreshed_at').asc(nulls_first=True))[:100]
 
     # Dispatch
     dispatched_count = 0
-    for user_id in candidates.values_list('user_id', flat=True):
-        # Trigger task
-        gamedata_refresh_user_fiodata.apply_async(args=[user_id])
+    for i, user_id in enumerate(candidates.values_list('user_id', flat=True)):
+        gamedata_refresh_user_fiodata.apply_async(
+            args=[user_id], priority=DISPATCH_PRIORITY, countdown=i * DISPATCH_STAGGER_SECONDS
+        )
         dispatched_count += 1
+
+    logger.info('fio_dispatch_completed', dispatched=dispatched_count, skipped_idle=skipped_idle)
 
     return f'Dispatched {dispatched_count} FIO refresh tasks.'
 
