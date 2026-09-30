@@ -52,6 +52,33 @@ class TestGamedataTasks:
         ):
             assert gamedata_refresh_planet() is (True if scenario == 'success' else False)
 
+    @pytest.mark.parametrize(
+        'error, level',
+        [
+            (httpx.HTTPStatusError('503', request=MagicMock(), response=MagicMock(status_code=503)), 'WARNING'),
+            (ValueError('bug'), 'ERROR'),
+        ],
+    )
+    def test_refresh_planet_logs_its_failure(
+        self, error: Exception, level: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        baker.make('gamedata.GamePlanet', planet_natural_id='M', automation_error_count=0)
+
+        with (
+            patch('gamedata.fio.importers.import_planet', side_effect=error),
+            patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+        ):
+            assert gamedata_refresh_planet() is False
+
+        failed = [
+            (r.levelname, r.msg)
+            for r in caplog.records
+            if isinstance(r.msg, dict) and r.msg['event'] == 'planet_refresh_failed'
+        ]
+        assert [(lvl, msg['planet_natural_id']) for lvl, msg in failed] == [(level, 'M')]
+        # a traceback only for what is not an HTTP error status
+        assert ('exception' in failed[0][1]) is (level == 'ERROR')
+
     @pytest.mark.parametrize('scenario', ['missing', 'fio_fail', 'success'])
     @patch('gamedata.tasks.get_fio_service')
     def test_refresh_user_fiodata(self, mock_get_fio, scenario):

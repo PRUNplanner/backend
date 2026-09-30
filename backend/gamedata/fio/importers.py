@@ -1,3 +1,4 @@
+import structlog
 from core.services.cache_manager import CacheManager
 from django.db import transaction
 from django.db.models import Max
@@ -42,6 +43,8 @@ from gamedata.models import (
     GameRecipeOutput,
 )
 
+logger = structlog.get_logger(__name__)
+
 
 def import_planet(planet_natural_id: str) -> bool:
     with get_fio_service() as fio:
@@ -71,6 +74,7 @@ def import_planet(planet_natural_id: str) -> bool:
             return True
 
         except Exception as exc:
+            logger.exception('planet_refresh_failed', planet_natural_id=planet_natural_id)
             import_error = exc
 
     if import_error:
@@ -318,6 +322,7 @@ def import_all_exchanges() -> bool:
         return True
 
     except Exception:
+        logger.exception('exchanges_refresh_failed')
         return False
 
 
