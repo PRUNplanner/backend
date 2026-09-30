@@ -70,10 +70,13 @@ from user.models import GlobalConfigWebhook, WebhookSenderChoices
 logger = structlog.get_logger(__name__)
 
 
+# Public game data views skip authentication (authentication_classes = []): an expired or
+# invalid Authorization header is ignored instead of answered with 401, and no user is loaded.
 class GameRecipeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     queryset = GameRecipe.objects.prefetch_related('inputs', 'outputs')
     serializer_class = GameRecipeSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     @extend_schema(auth=[], summary='List all recipes')
     def list(self, request, *args, **kwargs):
@@ -87,6 +90,7 @@ class GameMaterialViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     queryset = GameMaterial.objects.all()
     serializer_class = GameMaterialSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     @extend_schema(auth=[], summary='List all materials')
     def list(self, request, *args, **kwargs):
@@ -99,6 +103,8 @@ class GameMaterialViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 class GameBuildingViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     queryset = GameBuilding.objects.prefetch_related('costs')
     serializer_class = GameBuildingSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
     @extend_schema(auth=[], summary='List all buildings')
     def list(self, request, *args, **kwargs):
@@ -110,6 +116,7 @@ class GameBuildingViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
 
 class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     permission_classes = [AllowAny]
+    authentication_classes = []
     serializer_class = GamePlanetSerializer
     lookup_field = 'planet_natural_id'
 
@@ -208,6 +215,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
 class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     serializer_class = GameExchangeSerializer
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     @extend_schema(auth=[], summary='List all exchanges')
     def list(self, request, *args, **kwargs):
@@ -385,6 +393,7 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = GameExchangeCXPC.objects.all()
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def _get_cxpc_response(self, ticker, exchange_code=None):
         def fetch_data():

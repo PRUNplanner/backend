@@ -12,11 +12,12 @@ from gamedata.models.game_planet import GamePlanet, GamePlanetCOGCProgramChoices
 from model_bakery import baker
 from rest_framework.test import APIClient
 from rest_framework_csv.renderers import CSVRenderer
+from rest_framework_simplejwt.tokens import AccessToken
 from tests.fixtures.fxt_fio_ship_data import fio_ship_data
 from tests.fixtures.fxt_fio_sites_data import fio_sites_data
 from tests.fixtures.fxt_fio_storage_data import fio_storage_data
 from tests.fixtures.fxt_fio_warehouse_data import fio_warehouse_data
-from user.models import User
+from user.models import User, UserAPIKey
 from user.models.configs import GlobalConfigWebhook, WebhookSenderChoices
 
 pytestmark = pytest.mark.django_db
@@ -466,3 +467,103 @@ class TestGamePlanetSearchIndex:
         # planets, resources, cogc programs
         with django_assert_num_queries(3):
             api_client.get(self.URL)
+
+
+PLANET_ID = 'AB-001c'
+
+# (url name, url kwargs, POST body or None for GET)
+PUBLIC_ROUTES: list[tuple[str, dict[str, str], object | None]] = [
+    ('material-list', {}, None),
+    ('recipe-list', {}, None),
+    ('building-list', {}, None),
+    ('exchange-list', {}, None),
+    ('exchanges-list-csv', {}, None),
+    ('planet-list', {}, None),
+    ('planet-search-index', {}, None),
+    ('planet-detail', {'planet_natural_id': PLANET_ID}, None),
+    ('planet-infrastructure', {'planet_natural_id': PLANET_ID}, None),
+    ('planet-search-single', {'search_term': PLANET_ID}, None),
+    ('planet-multiple', {}, [PLANET_ID]),
+    ('planet-search', {}, _search_payload()),
+    ('cxpc-market-data-ticker', {'ticker': 'FUEL'}, None),
+    ('cxpc-market-data-full', {'ticker': 'FUEL', 'exchange_code': 'AI1'}, None),
+]
+
+
+def _expired_jwt(user: User) -> str:
+    token = AccessToken.for_user(user)
+    token.set_exp(lifetime=-timedelta(minutes=1))
+    return f'Bearer {token}'
+
+
+def _authorization(kind: str, user: User) -> str | None:
+    if kind == 'expired':
+        return _expired_jwt(user)
+    if kind == 'malformed':
+        return 'Bearer garbage'
+    if kind == 'revoked':
+        header = f'Bearer {AccessToken.for_user(user)}'
+        user.delete()
+        return header
+    if kind == 'api_key':
+        _, key = UserAPIKey.objects.create_key(name='script', user=user)
+        return f'Api-Key {key}'
+    return None
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestPublicEndpointsSkipAuthentication:
+    @pytest.fixture(autouse=True)
+    def _planet(self, planet_factory: Callable[..., GamePlanet], popr_factory: Callable[..., object]) -> None:
+        popr_factory(planet=planet_factory(planet_natural_id=PLANET_ID))
+
+    @pytest.mark.parametrize('credentials', ['expired', 'malformed', 'revoked', 'api_key', 'none'])
+    @pytest.mark.parametrize(('name', 'kwargs', 'body'), PUBLIC_ROUTES, ids=[route[0] for route in PUBLIC_ROUTES])
+    def test_any_authorization_header_is_ignored(
+        self,
+        api_client: APIClient,
+        user_factory: Callable[..., User],
+        name: str,
+        kwargs: dict[str, str],
+        body: object | None,
+        credentials: str,
+    ) -> None:
+        header = _authorization(credentials, user_factory())
+        if header:
+            api_client.credentials(HTTP_AUTHORIZATION=header)
+        url = reverse(f'data:{name}', kwargs=kwargs)
+
+        response = api_client.get(url) if body is None else api_client.post(url, data=body, format='json')
+
+        assert response.status_code == 200
+
+    def test_matching_etag_with_expired_jwt_returns_304(
+        self, api_client: APIClient, user_factory: Callable[..., User]
+    ) -> None:
+        url = reverse('data:planet-detail', kwargs={'planet_natural_id': PLANET_ID})
+        etag = api_client.get(url)['ETag']
+        api_client.credentials(HTTP_AUTHORIZATION=_expired_jwt(user_factory()))
+
+        response = api_client.get(url, HTTP_IF_NONE_MATCH=etag)
+
+        assert response.status_code == 304
+
+    def test_storage_still_rejects_expired_jwt(self, api_client: APIClient, user_factory: Callable[..., User]) -> None:
+        api_client.credentials(HTTP_AUTHORIZATION=_expired_jwt(user_factory()))
+
+        response = api_client.get(reverse('data:storage-retrieve'))
+
+        assert response.status_code == 401
+
+    def test_planet_cache_hit_with_valid_jwt_runs_no_queries(
+        self, api_client: APIClient, user_factory: Callable[..., User], django_assert_num_queries
+    ) -> None:
+        url = reverse('data:planet-detail', kwargs={'planet_natural_id': PLANET_ID})
+        api_client.get(url)
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user_factory())}')
+
+        with django_assert_num_queries(0):
+            response = api_client.get(url)
+
+        assert response.status_code == 200
+        assert response['X-Cache-Hit'] == '1'
