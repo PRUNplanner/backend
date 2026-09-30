@@ -5,6 +5,7 @@ from django.contrib.auth.models import update_last_login
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils.html import strip_tags
+from gamedata.services.fio_refresh import request_fio_refresh
 
 from user.models import User
 
@@ -76,7 +77,7 @@ def user_handle_post_refresh(user_id: int):
     try:
         user = User.objects.get(id=user_id)
 
-        # saving last_login queues the fio refresh through the user post_save signal
         update_last_login(User, user)
+        request_fio_refresh(user.id, 'token_refresh')
     except User.DoesNotExist:
         pass

@@ -1,5 +1,9 @@
 from django.urls import path
 from drf_spectacular.utils import extend_schema
+from gamedata.services.fio_refresh import request_fio_refresh
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import AccessToken
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
 )
@@ -20,6 +24,16 @@ app_name = 'user'
 @extend_schema(tags=['user : authentication'], summary='Login and retrieve tokens')
 class DecoratedTokenObtainPairView(TokenObtainPairView):
     throttle_scope = 'auth_login'
+
+    def post(self, request: Request, *args: object, **kwargs: object) -> Response:
+        response = super().post(request, *args, **kwargs)
+
+        # only a successful login answers with tokens
+        access = (response.data or {}).get('access')
+        if access:
+            request_fio_refresh(int(AccessToken(access)['user_id']), 'login')
+
+        return response
 
 
 urlpatterns = [

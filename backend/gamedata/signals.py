@@ -19,5 +19,9 @@ def invalidate_planet_cache(sender: type[GamePlanet], instance: GamePlanet, **kw
 
 @receiver([post_save, post_delete], sender=GameFIOPlayerData)
 def invalidate_user_storage_cache(sender: type[GameFIOPlayerData], instance: GameFIOPlayerData, **kwargs: Any) -> None:
+    update_fields = kwargs.get('update_fields')
+    if update_fields and GameFIOPlayerData.AUTOMATION_FIELDS.issuperset(update_fields):
+        return  # refresh bookkeeping only, nothing the storage endpoint serves
+
     user_id: int = instance.user_id  # type: ignore
     CacheManager.invalidate_on_commit(STORAGE, user_id)

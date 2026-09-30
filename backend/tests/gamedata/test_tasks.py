@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -8,9 +9,11 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 from celery.canvas import Signature
+from core.services.cache_manager import CacheManager
 from django.utils import timezone
 from gamedata.fio.importers import cxpc_objects
 from gamedata.fio.schemas import FIOExchangeCXPC, FIOExchangeFullSChema
+from gamedata.gamedata_cache_manager import STORAGE, GamedataCacheManager
 from gamedata.models import GameExchangeCXPC
 from gamedata.models.game_planet import GamePlanet
 from gamedata.models.game_playerdata import GameFIOPlayerData
@@ -28,6 +31,9 @@ from gamedata.tasks import (
 )
 from model_bakery import baker
 from pydantic import TypeAdapter
+
+CaptureOnCommit = Callable[..., AbstractContextManager[object]]
+LONG_AGO = timezone.now() - timedelta(days=1)
 
 
 @pytest.mark.django_db
@@ -581,3 +587,50 @@ class TestAdminTasks:
             assert gamedata_refresh_single_planet('OT-580b') is True
 
         run.assert_called_once_with('OT-580b')
+
+
+@pytest.mark.django_db
+@pytest.mark.usefixtures('locmem_cache')
+class TestRefreshUserFiodataChangeDetection:
+    @staticmethod
+    def _refresh(
+        user_id: int, amount: int, capture_on_commit: CaptureOnCommit, caplog: pytest.LogCaptureFixture
+    ) -> tuple[str, bool]:
+        """Runs one refresh with FIO returning `amount`; returns the storage cache key and the logged `changed`."""
+        GamedataCacheManager.delete_fio_refresh_lock(user_id)
+        GameFIOPlayerData.objects.filter(user_id=user_id).update(automation_last_refreshed_at=LONG_AGO)
+        caplog.clear()
+
+        with patch('gamedata.tasks.get_fio_service') as get_fio, capture_on_commit(execute=True):
+            fio = get_fio.return_value.__enter__.return_value
+            for call in (fio.get_user_storage, fio.get_user_sites, fio.get_user_sites_warehouses, fio.get_user_ships):
+                call.return_value = [MagicMock(model_dump=lambda **_: {'Amount': amount})]
+            assert gamedata_refresh_user_fiodata(user_id) is True
+
+        [changed] = [
+            r.msg['changed']
+            for r in caplog.records
+            if isinstance(r.msg, dict) and r.msg['event'] == 'fio_refresh_completed'
+        ]
+        return CacheManager.key(STORAGE, 'retrieve', scope=user_id), changed
+
+    def test_identical_data_keeps_the_storage_cache_and_changed_data_bumps_it(
+        self, django_capture_on_commit_callbacks: CaptureOnCommit, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        user = baker.make('user.User', prun_username='Name', fio_apikey='key')
+
+        first_key, first_changed = self._refresh(user.id, 1, django_capture_on_commit_callbacks, caplog)
+        same_key, same_changed = self._refresh(user.id, 1, django_capture_on_commit_callbacks, caplog)
+
+        assert (first_changed, same_changed) == (True, False)
+        assert same_key == first_key
+        # the unchanged refresh still counts as a successful one
+        row = GameFIOPlayerData.objects.get(user=user)
+        assert row.automation_last_refreshed_at > LONG_AGO
+        assert row.storage_data == [{'Amount': 1}]
+
+        new_key, new_changed = self._refresh(user.id, 2, django_capture_on_commit_callbacks, caplog)
+
+        assert new_changed is True
+        assert new_key != first_key
+        assert GameFIOPlayerData.objects.get(user=user).storage_data == [{'Amount': 2}]

@@ -51,8 +51,10 @@ def check_user_changes(sender, instance, **kwargs):
 
 
 @receiver([post_save], sender=User)
-def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
-    from gamedata.tasks import gamedata_clean_user_fiodata, gamedata_refresh_user_fiodata
+def trigger_fio_refresh(sender: type[User], instance: User, created: bool, **kwargs: Any):
+    from gamedata.models import GameFIOPlayerData
+    from gamedata.services.fio_refresh import request_fio_refresh
+    from gamedata.tasks import gamedata_clean_user_fiodata
 
     # grab pre_save flag and current fio status
     fio_existed_before = getattr(instance, '_fio_existed_before', False)
@@ -60,15 +62,14 @@ def trigger_fio_refresh(sender: type[User], instance: User, **kwargs: Any):
     fio_now = instance._has_fio_credentials()
 
     if fio_now:
-        # if credentials have changed, clean potential refresh lock
-        if fio_credentials_changed:
+        # only new credentials refresh from here; login and token refresh ask request_fio_refresh themselves
+        if fio_credentials_changed or created:
+            # old failures and the lock belong to the old credentials
+            GameFIOPlayerData.objects.filter(user_id=instance.pk).update(
+                automation_refresh_status='ok', automation_error_count=0, automation_next_retry_at=None
+            )
             GamedataCacheManager.delete_fio_refresh_lock(instance.pk)
-
-        # trigger refresh on every save (last_login update), unless a recent refresh still holds the lock;
-        # a read only, the task itself takes the lock
-        if not GamedataCacheManager.has_fio_refresh_lock(instance.pk):
-            logger.info('fio_refresh_queued', user_id=instance.id)
-            transaction.on_commit(lambda: gamedata_refresh_user_fiodata.delay(instance.id))
+            request_fio_refresh(instance.pk, 'credentials')
 
     elif fio_existed_before:
         # user had fio, but not anymore, so we clean the users data
