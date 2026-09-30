@@ -23,7 +23,7 @@ This repository contains the backend engine for **PRUNplanner.org** (a Prosperou
 ### Running Locally
 - **Django Server**: `uv run backend/manage.py runserver`
 - **Celery Worker**: `uv run --env-file .env celery -A core --workdir=backend worker -l INFO`
-- **Celery Beat**: `uv run --env-file .env celery -A core --workdir=backend beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler`
+- **Celery Beat**: `uv run --env-file .env celery -A core --workdir=backend beat -l INFO --scheduler core.beat:QueueDepthScheduler`
 - **Via Overmind**: `overmind start` (uses root `Procfile`)
 
 ### Code Quality & Testing
@@ -112,6 +112,20 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
   `planet_natural_id`. Requests already carry `request_id`, `user_id`, `ip`,
   `route`, `duration_ms`; tasks carry `task`, `task_id` and the queuing
   request's `request_id`. Don't bind these again.
+- Added for you, don't log them yourself: `db_queries` / `db_ms` (query count
+  and total query time, `core/services/db_stats.py`) on `request_finished`,
+  `task_succeeded` and `task_failed`; `queue_ms` (publish to start, including
+  time held back by a rate limit or eta) on every line of a task, so read it
+  from `task_started`. A task queued without the publish-time header has no
+  `queue_ms`.
+- `celery_queue_depth` (`depth`, `depth_high` / `depth_normal` / `depth_low`
+  for priority 0-3 / 4-6 / 7-10) is logged about once a minute by the beat
+  scheduler (`core/beat.py`), `celery_queue_depth_failed` once per Redis
+  outage. Beat has to run with `--scheduler core.beat:QueueDepthScheduler`.
+- Refresh failures: `fio_refresh_failed`, `planet_refresh_failed`,
+  `planet_infrastructure_refresh_failed`, `cxpc_refresh_failed`,
+  `exchanges_refresh_failed`. A FIO error status is a warning with
+  `status_code`, anything else `logger.exception`.
 - Levels: `info` for a business event, `warning` for an expected failure
   (bad user FIO key, invalid webhook payload), `logger.exception` inside
   `except` for what needs a look. Log a failure once, where it's handled.
@@ -121,6 +135,9 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
 - `fio_request_completed` / `fio_request_failed` fields (`endpoint`, `url`,
   `status_code`, `duration` in seconds, `bytes`) back Axiom dashboards;
   don't rename them.
+- The Axiom dashboards are built in the workspace repo
+  (`../axiom/build_dashboards.py`). Renaming an event or field it queries
+  breaks a panel; update the builder in the same change.
 
 ## Definition of Done
 

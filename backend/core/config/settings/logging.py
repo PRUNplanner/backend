@@ -4,9 +4,12 @@ import time
 
 import orjson
 import structlog
+from celery.signals import before_task_publish
 from django.dispatch import receiver
 from django_structlog import signals
 from django_structlog.celery import signals as celery_signals
+
+from core.services import db_stats
 
 # propagate request_id/user_id into the tasks a request queues
 DJANGO_STRUCTLOG_CELERY_ENABLED = True
@@ -20,6 +23,9 @@ _DROPPED_EVENTS = frozenset(
 )
 # the FIO webhook authenticates by a token in its path
 _WEBHOOK_TOKEN = re.compile(r'(/ingest/)[0-9a-fA-F-]{36}')
+# message header carrying the publish time, for queue_ms
+_PUBLISHED_AT_HEADER = 'published_at_ms'
+_TASK_FINISHED_EVENTS = frozenset({'task_succeeded', 'task_failed'})
 
 
 def orjson_renderer(_, __, event_dict):
@@ -29,6 +35,13 @@ def orjson_renderer(_, __, event_dict):
 def drop_duplicate_events(_, __, event_dict):
     if event_dict.get('event') in _DROPPED_EVENTS:
         raise structlog.DropEvent
+    return event_dict
+
+
+def add_task_db_stats(_, __, event_dict):
+    # django_structlog has no hook before task_failed, so both task lines get theirs here
+    if event_dict.get('event') in _TASK_FINISHED_EVENTS:
+        event_dict.update(db_stats.snapshot())
     return event_dict
 
 
@@ -101,6 +114,7 @@ structlog.configure(
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.filter_by_level,
         drop_duplicate_events,
+        add_task_db_stats,
         redact_webhook_token,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
@@ -120,6 +134,7 @@ structlog.configure(
 @receiver(signals.bind_extra_request_metadata)
 def mark_request_start_time(request, **kwargs):
     request._custom_start_time = time.perf_counter()
+    db_stats.reset()
     structlog.contextvars.bind_contextvars(method=request.method)
 
 
@@ -133,6 +148,7 @@ def add_request_duration(request, logger, response, log_kwargs, **kwargs):
 
     # was on request_started, which is dropped
     log_kwargs['user_agent'] = request.META.get('HTTP_USER_AGENT')
+    log_kwargs.update(db_stats.snapshot())
 
     if request.resolver_match:
         view_name = request.resolver_match.view_name
@@ -142,7 +158,22 @@ def add_request_duration(request, logger, response, log_kwargs, **kwargs):
         structlog.contextvars.bind_contextvars(route='unknown')
 
 
+@before_task_publish.connect(weak=False, dispatch_uid='stamp_publish_time')
+def stamp_publish_time(headers=None, **kwargs):
+    # epoch ms, read back by bind_task_metadata; assigned (not setdefault) so a retry counts from its own publish
+    if headers is not None:
+        headers[_PUBLISHED_AT_HEADER] = int(time.time() * 1000)
+
+
 @receiver(celery_signals.bind_extra_task_metadata)
-def bind_task_name(task, **kwargs):
+def bind_task_metadata(task, **kwargs):
+    db_stats.reset()
     # django_structlog only names the task on task_started; bind it for every line the task logs
     structlog.contextvars.bind_contextvars(task=task.name)
+
+    # publish to start, so it includes the time a task was held back by its rate_limit or an eta (intended:
+    # that is how long the work waited). Tasks without the header (queued before this shipped, or published
+    # outside the app) get no queue_ms rather than 0.
+    published_at = getattr(task.request, _PUBLISHED_AT_HEADER, None)
+    if published_at is not None:
+        structlog.contextvars.bind_contextvars(queue_ms=max(0, int(time.time() * 1000) - published_at))

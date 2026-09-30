@@ -73,6 +73,15 @@ def gamedata_refresh_planet() -> bool:
         return True
 
     except Exception as exc:
+        if isinstance(exc, httpx.HTTPStatusError):
+            # FIO answered with an error status: expected, no traceback
+            logger.warning(
+                'planet_refresh_failed',
+                planet_natural_id=to_update.planet_natural_id,
+                status_code=exc.response.status_code,
+            )
+        else:
+            logger.exception('planet_refresh_failed', planet_natural_id=to_update.planet_natural_id)
         to_update.update_refresh_result(error=exc)
 
         return False

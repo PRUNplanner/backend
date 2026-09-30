@@ -9,6 +9,8 @@ services:
       - POSTGRES_USER=${DATABASE_USER}
       - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
       - PGDATA=/var/lib/postgresql/data/pgdata
+    # statements slower than 500 ms go to the container log
+    command: postgres -c log_min_duration_statement=500
     volumes:
       - pp_postgres_data:/var/lib/postgresql/data/
     healthcheck:
@@ -69,7 +71,7 @@ services:
     build: .
     container_name: prunplanner-beat
     restart: on-failure
-    command: celery -A core beat --loglevel=info  --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: celery -A core beat --loglevel=info  --scheduler core.beat:QueueDepthScheduler
     env_file: .env
     environment:
       - SERVICE_TYPE=celery

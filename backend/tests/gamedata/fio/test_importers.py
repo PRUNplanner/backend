@@ -5,6 +5,7 @@ import pytest
 from core.services.cache_manager import CacheManager
 from gamedata.fio.importers import (
     import_all_buildings,
+    import_all_exchanges,
     import_all_materials,
     import_planet,
     import_planet_infrastructure,
@@ -44,7 +45,7 @@ class TestImportPlanet:
         mock_sync_cogc.assert_called_once()
         mock_sync_fees.assert_called_once()
 
-    def test_import_planet_failure_on_exception(self, httpx_mock, montem_raw_bytes):
+    def test_import_planet_failure_on_exception(self, httpx_mock, montem_raw_bytes, caplog):
 
         planet_natural_id = 'OT-580b'
 
@@ -61,6 +62,15 @@ class TestImportPlanet:
 
         planet = GamePlanet.objects.get(planet_natural_id=planet_natural_id)
         assert planet.automation_refresh_status == 'retrying'
+        assert [r.msg['planet_natural_id'] for r in caplog.records if r.msg['event'] == 'planet_refresh_failed'] == [
+            planet_natural_id
+        ]
+
+    def test_import_all_exchanges_logs_its_failure(self, caplog):
+        with patch('gamedata.fio.importers.get_fio_service', side_effect=ValueError('boom')):
+            assert import_all_exchanges() is False
+
+        assert [r.levelname for r in caplog.records if r.msg['event'] == 'exchanges_refresh_failed'] == ['ERROR']
 
 
 @pytest.mark.usefixtures('locmem_cache')
