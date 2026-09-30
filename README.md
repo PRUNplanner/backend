@@ -61,7 +61,7 @@ services:
   beat:
     image: ghcr.io/prunplanner/prunplanner-backend:latest
     container_name: prunplanner-beat
-    command: uv run celery -A core beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: uv run celery -A core beat --loglevel=info --scheduler core.beat:QueueDepthScheduler
 
   # Celery Worker
   worker:
@@ -87,7 +87,7 @@ uv run backend/manage.py runserver
 
 # Celery Worker + Beat
 uv run --env-file .env celery -A core --workdir=backend worker -l INFO
-uv run --env-file .env celery -A core --workdir=backend beat -l INFO  --scheduler django_celery_beat.schedulers:DatabaseScheduler
+uv run --env-file .env celery -A core --workdir=backend beat -l INFO  --scheduler core.beat:QueueDepthScheduler
 ```
 
 ## Via [`overmind`](https://github.com/DarthSim/overmind) and `Procfile`
@@ -99,7 +99,7 @@ Create yourself a `Procfile` and use the following commands. Database and Redis 
 ```shell
 web: uv run backend/manage.py runserver
 worker: uv run --env-file .env celery -A core --workdir=backend worker -l INFO
-beat: uv run --env-file .env celery -A core --workdir=backend beat -l INFO  --scheduler django_celery_beat.schedulers:DatabaseScheduler
+beat: uv run --env-file .env celery -A core --workdir=backend beat -l INFO  --scheduler core.beat:QueueDepthScheduler
 ```
 
 ```shell
