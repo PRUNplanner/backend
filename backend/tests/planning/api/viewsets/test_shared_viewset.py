@@ -79,7 +79,7 @@ class TestSharedViewSet:
     def test_shared_clone(self, api_client, user_factory, plan_factory, shared_factory):
 
         user_1 = user_factory(id=1)
-        plan_1 = plan_factory(user=user_1, plan_data=plan_data_vallis)
+        plan_1 = plan_factory(user=user_1, plan_name='Vallis Base', plan_data=plan_data_vallis)
         shared_1 = shared_factory(user=user_1, plan=plan_1)
 
         url_clone = reverse('planning:shared-clone', kwargs={'pk': str(shared_1.uuid)})
@@ -91,6 +91,19 @@ class TestSharedViewSet:
         # clone auth
         response_clone = api_client.as_user(user_1).post(url_clone)
         assert response_clone.status_code == 201
+        assert response_clone.data['plan_name'] == 'Vallis Base (Clone)'
+
+    def test_shared_clone_keeps_long_names_within_limit(self, api_client, user_factory, plan_factory, shared_factory):
+        user_1 = user_factory(id=1)
+        plan_1 = plan_factory(user=user_1, plan_name='x' * 200, plan_data=plan_data_vallis)
+        shared_1 = shared_factory(user=user_1, plan=plan_1)
+
+        response_clone = api_client.as_user(user_1).post(
+            reverse('planning:shared-clone', kwargs={'pk': str(shared_1.uuid)})
+        )
+
+        assert response_clone.status_code == 201
+        assert response_clone.data['plan_name'] == f'{"x" * 192} (Clone)'
 
 
 class TestSharedViewSetRetrieve:
@@ -117,6 +130,25 @@ class TestSharedViewSetRetrieve:
             query_counts.append(len(ctx.captured_queries))
 
         assert query_counts[0] == query_counts[1]
+
+    def test_retrieve_hides_owner_empires(
+        self, api_client, user_factory, plan_factory, empire_factory, cx_factory, shared_factory
+    ):
+        user = user_factory(id=1)
+        share = self._share_with_empires(user, plan_factory, empire_factory, cx_factory, shared_factory, 2)
+
+        response = api_client.get(reverse('planning:shared-detail', kwargs={'pk': share.uuid}))
+
+        assert response.status_code == 200
+        assert set(response.data['plan_details']) == {
+            'uuid',
+            'plan_name',
+            'planet_natural_id',
+            'plan_permits_used',
+            'plan_cogc',
+            'plan_corphq',
+            'plan_data',
+        }
 
     def test_retrieve_counts_views(self, api_client, user_factory, plan_factory, shared_factory):
         user = user_factory(id=1)

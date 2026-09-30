@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import F, Prefetch
+from django.db.models import F
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
     PlanningPlanDetailSerializer,
@@ -7,7 +7,7 @@ from planning.api.serializers import (
     PlanningSharedDetailSerializer,
     PlanningSharedSerializer,
 )
-from planning.models import PlanningEmpire, PlanningPlan, PlanningShared
+from planning.models import PlanningPlan, PlanningShared
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -28,12 +28,7 @@ class SharedViewSet(
     lookup_url_kwarg = 'pk'
 
     def get_queryset(self):
-        if self.action == 'retrieve':
-            empires = PlanningEmpire.objects.select_related('cx').defer('empire_state')
-            return PlanningShared.objects.select_related('plan').prefetch_related(
-                Prefetch('plan__empires', queryset=empires)
-            )
-        if self.action == 'clone':
+        if self.action in ('retrieve', 'clone'):
             return PlanningShared.objects.select_related('plan')
 
         user = self.request.user
@@ -98,7 +93,7 @@ class SharedViewSet(
         with transaction.atomic():
             cloned_plan = PlanningPlan.objects.create(
                 user=request.user,
-                plan_name=f'{original_plan.planet_natural_id} (Shared Clone)',
+                plan_name=f'{original_plan.plan_name[:192]} (Clone)',
                 planet_natural_id=original_plan.planet_natural_id,
                 plan_permits_used=original_plan.plan_permits_used,
                 plan_cogc=original_plan.plan_cogc,

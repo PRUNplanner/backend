@@ -149,6 +149,21 @@ class PlanningPlanListSerializer(PlanningPlanDetailSerializer):
         ]
 
 
+class PlanningSharedPlanSerializer(PlanningPlanDetailSerializer):
+    # public payload of a shared plan: never the owner's empires or CX
+    class Meta(PlanningPlanDetailSerializer.Meta):
+        fields = [
+            'uuid',
+            'plan_name',
+            'planet_natural_id',
+            'plan_permits_used',
+            'plan_cogc',
+            'plan_corphq',
+            'plan_data',
+        ]
+        read_only_fields = fields
+
+
 class PlanningSharedSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanningShared
@@ -162,7 +177,7 @@ class PlanningSharedSerializer(serializers.ModelSerializer):
 
 
 class PlanningSharedDetailSerializer(serializers.ModelSerializer):
-    plan_details = PlanningPlanDetailSerializer(source='plan', read_only=True)
+    plan_details = PlanningSharedPlanSerializer(source='plan', read_only=True)
 
     class Meta:
         model = PlanningShared
