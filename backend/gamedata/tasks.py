@@ -185,7 +185,7 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
 
     # SUBSEQUENT REFRESH LOCK
     if not GamedataCacheManager.set_fio_refresh_lock(user_id):
-        log.info('fio_refresh_skipped', reason='cooldown')
+        log.info('fio_refresh_skipped', skip='lock')
         return False
 
     # STORAGE REFRESH LOGIC
@@ -199,7 +199,7 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
         if user is None:
             # user does not exist anymore, clean up lock key and return
             GamedataCacheManager.delete_fio_refresh_lock(user_id)
-            log.info('fio_refresh_skipped', reason='user_missing')
+            log.info('fio_refresh_skipped', skip='user_missing')
             return False
 
         to_update, _ = GameFIOPlayerData.objects.get_or_create(user_id=user_id)
@@ -211,27 +211,24 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
                 warehouse_data = fio.get_user_sites_warehouses(user.prun_username, user.fio_apikey)
                 ship_data = fio.get_user_ships(user.prun_username, user.fio_apikey)
 
-            to_update.storage_data = [d.model_dump(mode='json') for d in storage_data]
-            to_update.site_data = [d.model_dump(mode='json') for d in sites_data]
-            to_update.warehouse_data = [d.model_dump(mode='json') for d in warehouse_data]
-            to_update.ship_data = [d.model_dump(mode='json') for d in ship_data]
+            payloads = {
+                'storage_data': [d.model_dump(mode='json') for d in storage_data],
+                'site_data': [d.model_dump(mode='json') for d in sites_data],
+                'warehouse_data': [d.model_dump(mode='json') for d in warehouse_data],
+                'ship_data': [d.model_dump(mode='json') for d in ship_data],
+            }
+            changed = any(getattr(to_update, field) != payload for field, payload in payloads.items())
 
-            to_update.update_refresh_result(commit=False)  # prevent commit, due to save call
-            to_update.save(
-                update_fields=[
-                    'storage_data',
-                    'site_data',
-                    'warehouse_data',
-                    'ship_data',
-                    # automation fields, as commit = False
-                    'automation_refresh_status',
-                    'automation_error',
-                    'automation_last_refreshed_at',
-                    'automation_next_retry_at',
-                    'automation_error_count',
-                ]
-            )
+            if changed:
+                for field, payload in payloads.items():
+                    setattr(to_update, field, payload)
+                to_update.update_refresh_result(commit=False)  # prevent commit, due to save call
+                to_update.save(update_fields=[*payloads, *GameFIOPlayerData.AUTOMATION_FIELDS])
+            else:
+                # same data as stored: bookkeeping only, the storage cache stays valid
+                to_update.update_refresh_result()
 
+            log.info('fio_refresh_completed', changed=changed)
             return True
 
         except Exception as exc:

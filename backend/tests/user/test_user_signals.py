@@ -1,9 +1,13 @@
+from collections.abc import Callable
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from gamedata.gamedata_cache_manager import GamedataCacheManager
+from gamedata.models import GameFIOPlayerData
 from model_bakery import baker
 from user.models import User
 
@@ -34,20 +38,52 @@ class TestUserPreSaveCost:
 
 @pytest.mark.usefixtures('locmem_cache')
 class TestTriggerFioRefresh:
-    def test_save_skips_refresh_while_lock_is_held(self, django_capture_on_commit_callbacks) -> None:
+    @pytest.mark.parametrize(
+        'change',
+        [
+            lambda u: u.save(update_fields=['last_login']),
+            lambda u: u.save(),
+            lambda u: (setattr(u, 'email', 'new@example.com'), u.save()),
+            lambda u: (setattr(u, 'is_active', False), u.save()),
+        ],
+        ids=['last-login', 'plain-save', 'email', 'other-field'],
+    )
+    def test_save_without_credential_change_queues_nothing(
+        self, django_capture_on_commit_callbacks, change: Callable[[User], object]
+    ) -> None:
         user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
-        GamedataCacheManager.set_fio_refresh_lock(user.id)
+
+        with (
+            patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh,
+            patch('user.tasks.send_email_verification_code.apply_async'),
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            change(user)
+
+        refresh.assert_not_called()
+
+    def test_preference_save_queues_nothing(self, django_capture_on_commit_callbacks) -> None:
+        user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
 
         with (
             patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh,
             django_capture_on_commit_callbacks(execute=True),
         ):
-            user.save(update_fields=['last_login'])
+            baker.make('user.UserPreference', user=user)
 
         refresh.assert_not_called()
 
-    def test_credential_change_refreshes_despite_lock(self, django_capture_on_commit_callbacks) -> None:
+    def test_credential_change_resets_a_failed_row_and_refreshes_despite_lock(
+        self, django_capture_on_commit_callbacks
+    ) -> None:
         user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        row: GameFIOPlayerData = baker.make(
+            'gamedata.GameFIOPlayerData',
+            user=user,
+            automation_refresh_status='failed',
+            automation_error_count=GameFIOPlayerData.MAX_RETRIES,
+            automation_next_retry_at=timezone.now() + timedelta(minutes=10),
+        )
         GamedataCacheManager.set_fio_refresh_lock(user.id)
 
         with (
@@ -58,3 +94,32 @@ class TestTriggerFioRefresh:
             user.save()
 
         refresh.assert_called_once_with(user.id)
+        row.refresh_from_db()
+        assert (row.automation_refresh_status, row.automation_error_count, row.automation_next_retry_at) == (
+            'ok',
+            0,
+            None,
+        )
+
+    def test_new_user_with_credentials_is_refreshed(self, django_capture_on_commit_callbacks) -> None:
+        with (
+            patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
+
+        refresh.assert_called_once_with(user.id)
+
+    def test_removed_credentials_queue_the_cleanup(self, django_capture_on_commit_callbacks) -> None:
+        user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
+
+        with (
+            patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh,
+            patch('gamedata.tasks.gamedata_clean_user_fiodata.delay') as clean,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            user.fio_apikey = None
+            user.save()
+
+        refresh.assert_not_called()
+        clean.assert_called_once_with(user.id)

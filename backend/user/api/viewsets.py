@@ -1,3 +1,4 @@
+from django.core.cache import cache
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -20,6 +21,9 @@ from user.api.serializer import (
 from user.models import User, UserAPIKey, UserPreference
 from user.services import VerificationeCodeChoices, VerificationService
 from user.tasks import user_handle_post_refresh
+
+# a client can refresh its token in bursts; last_login and the FIO check need it once per interval
+POST_REFRESH_INTERVAL_SECONDS = 15 * 60
 
 
 @extend_schema(tags=['user : profile'])
@@ -171,7 +175,7 @@ class CustomTokenRefreshView(TokenRefreshView):
             token = RefreshToken(refresh_token_str)
             user_id = token.get('user_id', None)
 
-            if user_id:
+            if user_id and cache.add(f'USER:post_refresh:{user_id}', 1, POST_REFRESH_INTERVAL_SECONDS):
                 user_handle_post_refresh.delay(user_id)
 
         return response

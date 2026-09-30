@@ -382,6 +382,47 @@ class TestCustomTokenRefreshView:
         assert response.status_code == 401
         mock_delay.assert_not_called()
 
+    @pytest.mark.usefixtures('locmem_cache')
+    def test_burst_of_refreshes_queues_the_post_refresh_task_once(self, api_client, user_factory):
+        user = user_factory(id=1)
+        other = user_factory(id=2)
+        url = reverse('user:token_refresh')
+
+        with patch('user.api.viewsets.user_handle_post_refresh.delay') as mock_delay:
+            for _ in range(30):
+                data = {'refresh': str(RefreshToken.for_user(user))}
+                assert api_client.post(url, data=data, format='json').status_code == 200
+            # the debounce is per user
+            api_client.post(url, data={'refresh': str(RefreshToken.for_user(other))}, format='json')
+
+        assert [call.args for call in mock_delay.call_args_list] == [(str(user.id),), (str(other.id),)]
+
+
+class TestLoginView:
+    def test_login_asks_for_a_fio_refresh(self, api_client):
+        user = baker.make('user.User', username='pilot')
+        user.set_password('secret-pass-1')
+        user.save()
+
+        with patch('user.api.urls.request_fio_refresh') as request_refresh:
+            response = api_client.post(
+                reverse('user:token_obtain_pair'),
+                data={'username': 'pilot', 'password': 'secret-pass-1'},
+                format='json',
+            )
+
+        assert response.status_code == 200
+        request_refresh.assert_called_once_with(user.id, 'login')
+
+    def test_failed_login_asks_for_nothing(self, api_client):
+        with patch('user.api.urls.request_fio_refresh') as request_refresh:
+            response = api_client.post(
+                reverse('user:token_obtain_pair'), data={'username': 'nobody', 'password': 'wrong'}, format='json'
+            )
+
+        assert response.status_code == 401
+        request_refresh.assert_not_called()
+
 
 class TestUserPasswordResetViewSet:
     def test_request_code_for_known_verified_user(self, api_client, user_factory):
