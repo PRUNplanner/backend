@@ -110,6 +110,16 @@ def _planet_list(a: User, b: User) -> tuple[str, Change]:
     return reverse('data:planet-list'), change
 
 
+def _planet_search_index(a: User, b: User) -> tuple[str, Change]:
+    baker.make('gamedata.GamePlanet', planet_natural_id='AB-001c')
+
+    def change() -> None:
+        baker.make('gamedata.GamePlanet', planet_natural_id='AB-002c')
+        save_planets([])
+
+    return reverse('data:planet-search-index'), change
+
+
 def _storage(a: User, b: User) -> tuple[str, Change]:
     rows = {
         user: baker.make(
@@ -161,6 +171,7 @@ CASES = [
     Case('gamedata:planet', False, _planet),
     Case('gamedata:planet (popr)', False, _planet_popr),
     Case('gamedata:planet-list', False, _planet_list),
+    Case('gamedata:planet-search-index', False, _planet_search_index),
     Case('gamedata:storage', True, _storage),
     Case('planning', True, _planning),
     Case('analytics:materials', False, _materials_insight),

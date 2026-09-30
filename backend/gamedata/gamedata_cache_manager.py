@@ -13,6 +13,8 @@ CXPC = CacheNamespace('gamedata:cxpc', 3 * HOUR)
 PLANET = CacheNamespace('gamedata:planet', HOUR)
 # single planet refreshes (~9 s apart) rely on the short ttl, full imports invalidate
 PLANET_LIST = CacheNamespace('gamedata:planet-list', 15 * 60)
+# same ttl as the planet list; full imports invalidate, single refreshes rely on the ttl
+PLANET_SEARCH_INDEX = CacheNamespace('gamedata:planet-search-index', 15 * 60)
 STORAGE = CacheNamespace('gamedata:storage', 3 * HOUR, private=True)
 
 

@@ -362,3 +362,107 @@ class TestGamePlanetActiveCOGC:
             response = api_client.get(url)
 
         assert response.data['active_cogc_program_type'] == (program_type if expected_active else None)
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestGamePlanetSearchIndex:
+    URL = '/data/planets/search-index/'
+
+    def test_url_is_not_captured_by_search_single(self) -> None:
+        assert reverse('data:planet-search-index') == self.URL
+
+    def test_returns_every_planet_with_the_index_fields(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet = planet_factory(planet_natural_id='AB-001c', cogc_program_status='')
+        planet_factory(planet_natural_id='AB-002c')
+        baker.make(
+            'gamedata.GamePlanetResource',
+            planet=planet,
+            material_ticker='FEO',
+            daily_extraction=12.345678,
+            _bulk_create=True,
+        )
+
+        response = api_client.get(self.URL)
+
+        assert response.status_code == 200
+        assert sorted(p['planet_natural_id'] for p in response.data) == ['AB-001c', 'AB-002c']
+        entry = next(p for p in response.data if p['planet_natural_id'] == 'AB-001c')
+        assert set(entry) == {
+            'planet_natural_id',
+            'planet_name',
+            'system_id',
+            'surface',
+            'gravity_type',
+            'pressure_type',
+            'temperature_type',
+            'fertility',
+            'has_localmarket',
+            'has_chamberofcommerce',
+            'has_warehouse',
+            'has_administrationcenter',
+            'has_shipyard',
+            'cogc_program_status',
+            'cogc_programs',
+            'resources',
+        }
+        assert entry['cogc_program_status'] is None
+        assert entry['resources'] == [
+            {
+                'material_ticker': 'FEO',
+                'resource_type': entry['resources'][0]['resource_type'],
+                'daily_extraction': 12.3457,
+                'max_daily_extraction': entry['resources'][0]['max_daily_extraction'],
+            }
+        ]
+
+    def test_drops_programs_that_ended_before_build_time(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet = planet_factory(planet_natural_id='AB-001c')
+        program_type = GamePlanetCOGCProgramChoices.values[0]
+        for start, end in [(1_000, 2_000), (1_000, 5_000), (4_000, 9_000)]:
+            baker.make(
+                'gamedata.GamePlanetCOGCProgram',
+                planet=planet,
+                program_type=program_type,
+                start_epochms=start,
+                end_epochms=end,
+            )
+
+        with patch('django.utils.timezone.now', return_value=datetime.fromtimestamp(3.0, tz=UTC)):
+            response = api_client.get(self.URL)
+
+        windows = sorted((p['start_epochms'], p['end_epochms']) for p in response.data[0]['cogc_programs'])
+        assert windows == [(1_000, 5_000), (4_000, 9_000)]
+
+    def test_second_call_is_a_cache_hit_without_queries(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet], django_assert_num_queries
+    ) -> None:
+        planet_factory(planet_natural_id='AB-001c')
+        assert api_client.get(self.URL)['X-Cache-Hit'] == '0'
+
+        with django_assert_num_queries(0):
+            response = api_client.get(self.URL)
+
+        assert response['X-Cache-Hit'] == '1'
+
+    @pytest.mark.parametrize('planet_count', [1, 6])
+    def test_query_count_does_not_depend_on_planet_count(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        django_assert_num_queries,
+        planet_count: int,
+    ) -> None:
+        for i in range(planet_count):
+            planet = planet_factory(planet_natural_id=f'AB-{i:03d}c')
+            baker.make(
+                'gamedata.GamePlanetResource', planet=planet, material_ticker='FEO', _quantity=2, _bulk_create=True
+            )
+            baker.make('gamedata.GamePlanetCOGCProgram', planet=planet, end_epochms=2**62)
+
+        # planets, resources, cogc programs
+        with django_assert_num_queries(3):
+            api_client.get(self.URL)

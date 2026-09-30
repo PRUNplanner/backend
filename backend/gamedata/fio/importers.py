@@ -16,7 +16,15 @@ from gamedata.fio.schemas.fio_planet import (
     FIOPlanetResourceSchema,
 )
 from gamedata.fio.services import get_fio_service
-from gamedata.gamedata_cache_manager import BUILDINGS, EXCHANGES, MATERIALS, PLANET, PLANET_LIST, RECIPES
+from gamedata.gamedata_cache_manager import (
+    BUILDINGS,
+    EXCHANGES,
+    MATERIALS,
+    PLANET,
+    PLANET_LIST,
+    PLANET_SEARCH_INDEX,
+    RECIPES,
+)
 from gamedata.models import (
     GameBuilding,
     GameBuildingCost,
@@ -253,6 +261,7 @@ def save_planets(planets: list[FIOPlanetSchema]) -> None:
         GamePlanetProductionFee.objects.bulk_create(fee_objs, ignore_conflicts=True)
         GamePlanetCOGCProgram.objects.bulk_create(program_objs, ignore_conflicts=True)
 
+    CacheManager.invalidate(PLANET_SEARCH_INDEX)
     CacheManager.invalidate(PLANET_LIST)  # single planets are invalidated by their post_delete signal
 
 
