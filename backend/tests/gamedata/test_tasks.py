@@ -186,6 +186,57 @@ class TestDispatchFioUpdatesPayload:
 
 
 @pytest.mark.django_db
+class TestDispatchFioUpdatesScheduling:
+    """Idle users are skipped, the rest is queued with a low priority, one every 3 s."""
+
+    @staticmethod
+    def due_user(last_login_days: int | None) -> int:
+        now = timezone.now()
+        user = baker.make(
+            'user.User',
+            prun_username='T',
+            fio_apikey='K',
+            last_login=None if last_login_days is None else now - timedelta(days=last_login_days),
+        )
+        baker.make(
+            'gamedata.GameFIOPlayerData',
+            user=user,
+            automation_error_count=0,
+            automation_refresh_status='success',
+            automation_last_refreshed_at=now - timedelta(hours=7),
+        )
+        return user.pk
+
+    @staticmethod
+    def dispatch() -> tuple[list[int], MagicMock, MagicMock]:
+        with (
+            patch('gamedata.tasks.gamedata_refresh_user_fiodata.apply_async') as mock_async,
+            patch('gamedata.tasks.logger') as mock_logger,
+        ):
+            gamedata_dispatch_fio_updates()
+        return [call.kwargs['args'][0] for call in mock_async.call_args_list], mock_async, mock_logger
+
+    def test_skips_users_without_a_login_in_7_days(self) -> None:
+        day_1, day_6 = self.due_user(1), self.due_user(6)
+        day_8, never = self.due_user(8), self.due_user(None)
+
+        dispatched, _, mock_logger = self.dispatch()
+
+        assert set(dispatched) == {day_1, day_6}
+        assert day_8 not in dispatched and never not in dispatched
+        mock_logger.info.assert_called_once_with('fio_dispatch_completed', dispatched=2, skipped_idle=2)
+
+    def test_dispatches_with_low_priority_and_staggered_countdown(self) -> None:
+        for _ in range(3):
+            self.due_user(1)
+
+        _, mock_async, _ = self.dispatch()
+
+        assert [call.kwargs['priority'] for call in mock_async.call_args_list] == [7, 7, 7]
+        assert [call.kwargs['countdown'] for call in mock_async.call_args_list] == [0, 3, 6]
+
+
+@pytest.mark.django_db
 class TestRefreshCXPCHistory:
     """Non-full runs only insert history (older than 3 days) for a pair without rows yet."""
 
@@ -541,7 +592,7 @@ class TestPendingLease:
         stale = now - timedelta(hours=7)
 
         def fio_row(lease: object) -> int:
-            user = baker.make('user.User', prun_username='T', fio_apikey='K')
+            user = baker.make('user.User', prun_username='T', fio_apikey='K', last_login=now)
             baker.make(
                 'gamedata.GameFIOPlayerData',
                 user=user,
