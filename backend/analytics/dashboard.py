@@ -419,6 +419,8 @@ def onboarding_funnel(days: int) -> Funnel:
 
 def _duration(delta: timedelta) -> str:
     minutes = int(delta.total_seconds() // 60)
+    if minutes < 1:
+        return '< 1 min'
     if minutes < 60:
         return f'{minutes} min'
     if minutes < 48 * 60:
