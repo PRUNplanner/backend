@@ -58,6 +58,7 @@ class TestAnalyticsPlanAggregateViewSetRetrieve:
         aggregate = plan_aggregate_factory(
             planet_natural_id=planet.planet_natural_id,
             total_plans_analyzed=42,
+            total_users=11,
             insights_data={'avg_cost': 1234.5, 'materials': ['H2O', 'DW']},
         )
 
@@ -67,6 +68,7 @@ class TestAnalyticsPlanAggregateViewSetRetrieve:
         assert response.data['status'] == 'success'
         assert response.data['planet_natural_id'] == planet.planet_natural_id
         assert response.data['total_plans_analyzed'] == 42
+        assert response.data['total_users'] == 11
         assert response.data['insights_data'] == {'avg_cost': 1234.5, 'materials': ['H2O', 'DW']}
         assert response.data['last_updated'] is not None
         assert not response.has_header('X-Cache-Hit')  # computed per request, not cached
@@ -84,7 +86,7 @@ class TestAnalyticsPlanAggregateViewSetRetrieve:
             'status': 'below_threshold',
             'planet_natural_id': planet.planet_natural_id,
             'total_plans_analyzed': 0,
-            'aggregated_data': None,
+            'insights_data': None,
         }
 
     def test_retrieve_unknown_planet_returns_404(self, api_client: APIClient) -> None:

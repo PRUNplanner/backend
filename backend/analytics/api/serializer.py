@@ -7,7 +7,7 @@ class AnalyticsPlanAggregateSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = AnalyticsPlanAggregate
-        fields = ['status', 'planet_natural_id', 'total_plans_analyzed', 'insights_data', 'last_updated']
+        fields = ['status', 'planet_natural_id', 'total_plans_analyzed', 'total_users', 'insights_data', 'last_updated']
 
     def get_status(self, obj) -> str:
         return 'success'

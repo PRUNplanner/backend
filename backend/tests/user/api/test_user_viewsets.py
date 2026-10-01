@@ -117,6 +117,29 @@ class TestUserPreferenceViewSet:
         assert response.data['colorPalette'] == 'colorblind'
         assert UserPreference.objects.get(user=user).preferences['color_palette'] == 'colorblind'
 
+    def test_plan_suggestions_defaults_true_for_stored_preferences_without_it(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'locale': 'de_DE'})
+
+        response = api_client.as_user(user).get(reverse('user:user_preferences'))
+
+        assert response.status_code == 200
+        assert response.data['planSuggestions'] is True
+
+    def test_update_plan_suggestions_keeps_other_keys(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'locale': 'de_DE', 'burn_days_red': 3})
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'planSuggestions': False}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert response.data['planSuggestions'] is False
+        stored = UserPreference.objects.get(user=user).preferences
+        assert stored['plan_suggestions'] is False
+        assert (stored['locale'], stored['burn_days_red']) == ('de_DE', 3)
+
     @pytest.mark.parametrize(
         'payload',
         [{'planOverrides': None}, {'layoutNavigationStyle': 'x'}, {'colorPalette': 'x'}, {'supplyCartDays': -1}],

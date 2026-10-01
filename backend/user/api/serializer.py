@@ -164,6 +164,7 @@ DEFAULT_PREFERENCES = {
     'layout_navigation_style': 'full',
     'color_palette': 'default',
     'plan_overrides': {},
+    'plan_suggestions': True,
 }
 
 
@@ -206,6 +207,7 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
         source='layout_navigation_style', choices=LAYOUT_NAVIGATION_STYLES, required=False
     )
     colorPalette = serializers.ChoiceField(source='color_palette', choices=COLOR_PALETTES, required=False)
+    planSuggestions = serializers.BooleanField(source='plan_suggestions', required=False)
 
     planOverrides = serializers.DictField(source='plan_overrides', child=PlanOverrideSerializer(), required=False)
 

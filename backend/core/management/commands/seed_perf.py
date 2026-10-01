@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 import orjson
 from analytics.models import AnalyticsEmpireMaterialSnapshot, AnalyticsPlanAggregate
@@ -67,6 +68,10 @@ from core.management.commands.perf_snapshot import SNAPSHOT_PATH, GamedataSnapsh
 
 USERNAME_PREFIX = 'perf_user_'
 PASSWORD = 'perf-password'  # fake credential, only ever used in the throwaway perf database
+# a crowd on one planet that passes every planet insights threshold (10 users, buildings and mixes of 10 users)
+INSIGHTS_USERNAME_PREFIX = 'insights_user_'
+INSIGHTS_USERS = 12
+INSIGHTS_PLANET = 'KW-688c'
 
 LIVE_EXCHANGES = ('AI1', 'CI1', 'IC1', 'NC1')
 CXPC_EXCHANGES = (*LIVE_EXCHANGES, 'UNIVERSE')
@@ -611,6 +616,54 @@ class Seeder:
         self._bulk(PlanningShared, shares)
         self.seed_empire_states(links)
 
+    def seed_insights_planet(self) -> None:
+        """INSIGHTS_USERS users with 2 plans each on one planet, all running FRM in two recipe mixes."""
+        rng_state = self.rng.getstate()  # leave the rest of the seeded data and the targets as they were
+        planet = INSIGHTS_PLANET if INSIGHTS_PLANET in self.planet_natural_ids else self.hot_planets[0]
+        by_building = self.recipes_by_building
+        ticker = 'FRM' if 'FRM' in by_building else max(by_building, key=lambda t: len(by_building[t]))
+        # two mixes {r0, r1} and {r0, r2}; fewer recipes (tiny test snapshots) collapse into one
+        r0, r1, r2 = (by_building[ticker][i % len(by_building[ticker])] for i in range(3))
+        now = datetime.now(tz=UTC)
+        self._bulk(
+            User,
+            [
+                User(
+                    username=f'{INSIGHTS_USERNAME_PREFIX}{i}',
+                    email=f'{INSIGHTS_USERNAME_PREFIX}{i}@example.com',
+                    password=make_password(None),
+                    is_email_verified=True,
+                    last_login=now,
+                )
+                for i in range(INSIGHTS_USERS)
+            ],
+        )
+        users = User.objects.filter(username__startswith=INSIGHTS_USERNAME_PREFIX).order_by('id')
+        plans: list[PlanningPlan] = []
+        for user in users:
+            for p, recipes in enumerate(({r0: 2, r1: 1}, {r0: 1, r2: 3})):
+                data = self._plan_data()
+                buildings = [b for b in cast(list[dict], data['buildings']) if b['name'] != ticker]
+                buildings.append(
+                    {
+                        'name': ticker,
+                        'amount': self.rng.randint(3, 6),
+                        'active_recipes': [{'recipeid': r, 'amount': a} for r, a in recipes.items()],
+                    }
+                )
+                plans.append(
+                    PlanningPlan(
+                        user=user,
+                        plan_name=f'Insights {p}',
+                        planet_natural_id=planet,
+                        plan_permits_used=1,
+                        plan_cogc=self.rng.choice(PlanningCOGCChoices.values),
+                        plan_data=data | {'buildings': buildings},
+                    )
+                )
+        self._bulk(PlanningPlan, plans)
+        self.rng.setstate(rng_state)
+
     def seed_empire_states(self, links: list[PlanningEmpirePlan]) -> None:
         """The material totals the frontend syncs for each empire, flagged for the analytics snapshot."""
         totals: dict[PlanningEmpire, dict[str, list[float]]] = {}
@@ -695,6 +748,7 @@ class Command(BaseCommand):
             else:
                 seeder.seed_snapshot_gamedata(snapshot)
             seeder.seed_users_and_planning()
+            seeder.seed_insights_planet()
             seeder.run_analytics()
 
         for model_name, count in seeder.counts.items():
