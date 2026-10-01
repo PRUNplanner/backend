@@ -23,6 +23,7 @@ REST_FRAMEWORK = {
         'auth_verify_email': '5/min',
         'auth_password_reset': '5/min',
         'profile_update': '10/min',
+        'client_error': '30/min',
     },
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',
@@ -51,5 +52,14 @@ SIMPLE_JWT = {
 DRF_API_KEY_CUSTOM_MODEL = 'user.UserAPIKey'
 CORS_ALLOW_ALL_ORIGINS = True
 
-CORS_ALLOW_HEADERS = (*default_headers, 'cache-control', 'pragma', 'withcredentials', 'expires')
+CORS_ALLOW_HEADERS = (
+    *default_headers,
+    'cache-control',
+    'pragma',
+    'withcredentials',
+    'expires',
+    # the frontend's request and session IDs, logged as request_id / correlation_id
+    'x-request-id',
+    'x-correlation-id',
+)
 CORS_PREFLIGHT_MAX_AGE = 86400
