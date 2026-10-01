@@ -118,7 +118,7 @@ class TestUserPreferenceViewSet:
 
     @pytest.mark.parametrize(
         'payload',
-        [{'planOverrides': None}, {'layoutNavigationStyle': 'x'}, {'colorPalette': 'x'}],
+        [{'planOverrides': None}, {'layoutNavigationStyle': 'x'}, {'colorPalette': 'x'}, {'supplyCartDays': -1}],
     )
     def test_update_rejects_invalid_values(self, api_client, user_factory, payload):
         user = user_factory(id=1)
@@ -141,6 +141,26 @@ class TestUserPreferenceViewSet:
         assert response.data['planOverrides'] == {}
         assert response.data['layoutNavigationStyle'] == 'full'
         assert response.data['colorPalette'] == 'default'
+
+    def test_update_accepts_decimal_supply_cart_days(self, api_client, user_factory):
+        user = user_factory(id=1)
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'supplyCartDays': 2.5}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert response.data['supplyCartDays'] == 2.5
+        assert UserPreference.objects.get(user=user).preferences['supply_cart_days'] == 2.5
+
+    def test_retrieve_reads_stored_integer_supply_cart_days(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'supply_cart_days': 7})
+
+        response = api_client.as_user(user).get(reverse('user:user_preferences'))
+
+        assert response.status_code == 200
+        assert response.data['supplyCartDays'] == 7
 
     def test_partial_update_keeps_omitted_keys(self, api_client, user_factory):
         user = user_factory(id=1)
