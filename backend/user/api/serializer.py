@@ -178,7 +178,7 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     burnDaysYellow = serializers.IntegerField(source='burn_days_yellow', min_value=0, default=10, required=False)
     burnResupplyDays = serializers.IntegerField(source='burn_resupply_days', min_value=0, default=18, required=False)
     burnOrigin = serializers.CharField(source='burn_origin', required=False)
-    supplyCartDays = serializers.IntegerField(source='supply_cart_days', min_value=0, default=20, required=False)
+    supplyCartDays = serializers.FloatField(source='supply_cart_days', min_value=0, default=20, required=False)
     layoutNavigationStyle = serializers.ChoiceField(
         source='layout_navigation_style', choices=LAYOUT_NAVIGATION_STYLES, required=False
     )
