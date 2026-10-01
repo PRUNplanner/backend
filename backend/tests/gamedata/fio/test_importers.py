@@ -19,6 +19,16 @@ from model_bakery import baker
 
 pytestmark = pytest.mark.django_db
 
+PART_FLAGS = ('changed_planet', 'changed_resources', 'changed_cogc', 'changed_fees')
+
+
+def _part_flags(caplog: pytest.LogCaptureFixture) -> list[dict[str, bool]]:
+    return [
+        {flag: r.msg[flag] for flag in PART_FLAGS}
+        for r in caplog.records
+        if isinstance(r.msg, dict) and r.msg['event'] == 'planet_refresh_completed'
+    ]
+
 
 class TestImportPlanet:
     def test_import_planet_success(self, httpx_mock, montem_raw_bytes):
@@ -119,26 +129,33 @@ class TestImporterCacheInvalidation:
             for r in caplog.records
             if r.msg['event'] == 'planet_refresh_completed'
         ] == [('OT-580b', True), ('OT-580b', False)]
+        assert _part_flags(caplog)[-1] == dict.fromkeys(PART_FLAGS, False)
 
     @pytest.mark.parametrize(
-        'alter_stored',
+        ('alter_stored', 'changed_part'),
         [
-            lambda: GamePlanet.objects.update(gravity=99.0),
-            lambda: GamePlanetResource.objects.update(factor=0.987),
-            lambda: GamePlanetResource.objects.earliest('factor').delete(),
-            lambda: GamePlanetCOGCProgram.objects.earliest('start_epochms').delete(),
-            lambda: GamePlanetCOGCProgram.objects.create(
-                planet=GamePlanet.objects.get(), program_type=None, start_epochms=1, end_epochms=2
+            (lambda: GamePlanet.objects.update(gravity=99.0), 'changed_planet'),
+            (lambda: GamePlanetResource.objects.update(factor=0.987), 'changed_resources'),
+            (lambda: GamePlanetResource.objects.earliest('factor').delete(), 'changed_resources'),
+            (lambda: GamePlanetCOGCProgram.objects.earliest('start_epochms').delete(), 'changed_cogc'),
+            (
+                lambda: GamePlanetCOGCProgram.objects.create(
+                    planet=GamePlanet.objects.get(), program_type=None, start_epochms=1, end_epochms=2
+                ),
+                'changed_cogc',
             ),
-            lambda: GamePlanetProductionFee.objects.update(fee_amount=0.123),
+            (lambda: GamePlanetProductionFee.objects.update(fee_amount=0.123), 'changed_fees'),
         ],
         ids=['scalar', 'resource-factor', 'resource-missing', 'cogc-missing', 'cogc-stale', 'production-fee'],
     )
-    def test_import_planet_invalidates_when_fio_differs_from_stored(self, import_montem, alter_stored):
+    def test_import_planet_invalidates_when_fio_differs_from_stored(
+        self, import_montem, caplog, alter_stored: Callable[[], object], changed_part: str
+    ):
         first = import_montem()
         alter_stored()  # queryset writes: no signal, so only the import can invalidate
 
         assert import_montem() != first
+        assert _part_flags(caplog)[-1] == {flag: flag == changed_part for flag in PART_FLAGS}
 
     def test_import_all_materials_invalidates_material_list(self):
         before = CacheManager.key(MATERIALS, 'list')

@@ -92,6 +92,10 @@ def import_planet(planet_natural_id: str) -> bool:
                 'planet_refresh_completed',
                 planet_natural_id=planet_natural_id,
                 changed=planet_changed or children_changed,
+                changed_planet=planet_changed,
+                changed_resources=resources_changed,
+                changed_cogc=programs_changed,
+                changed_fees=fees_changed,
             )
 
             return True
