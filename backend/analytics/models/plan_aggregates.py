@@ -4,6 +4,7 @@ from django.db import models
 class AnalyticsPlanAggregate(models.Model):
     planet_natural_id = models.CharField(max_length=7, unique=True, db_index=True)
     total_plans_analyzed = models.PositiveIntegerField(default=0)
+    total_users = models.PositiveIntegerField(default=0)
 
     insights_data = models.JSONField(default=dict)
 

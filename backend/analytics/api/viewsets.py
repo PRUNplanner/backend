@@ -36,7 +36,7 @@ class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
                     'status': 'below_threshold',
                     'planet_natural_id': planet_natural_id,
                     'total_plans_analyzed': 0,
-                    'aggregated_data': None,
+                    'insights_data': None,
                 }
             )
 

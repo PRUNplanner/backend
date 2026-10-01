@@ -53,6 +53,16 @@ class TestSeedPerf:
         for plan in PlanningPlan.objects.all():
             LATEST_SCHEMA['PLANNING_DATA'].model_validate(plan.plan_data)
 
+    def test_one_planet_passes_the_planet_insights_thresholds(self, perf_mode: SettingsWrapper) -> None:
+        call_command('seed_perf', '--scale', 'tiny')
+
+        aggregate = AnalyticsPlanAggregate.objects.get(total_users__gte=10)
+        top = aggregate.insights_data['buildings'][0]
+        assert top['users'] >= 10
+        assert len(top['mixes']) == 2
+        # the frontend rejects a plan without a COGC value
+        assert not PlanningPlan.objects.filter(plan_cogc='').exists()
+
     def test_cx_data_has_every_field_of_the_current_cx_schema(self, perf_mode: SettingsWrapper) -> None:
         # the API returns cx_data as stored, and the frontend requires every field
         call_command('seed_perf', '--scale', 'tiny')
