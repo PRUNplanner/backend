@@ -10,6 +10,7 @@ from . import views
 urlpatterns = [
     # Index
     path('', views.index, name='index'),
+    path('client-errors/', views.ClientErrorView.as_view(), name='client-errors'),
     # UI auth
     path('api-auth/', include('rest_framework.urls')),
     # schema / docs

@@ -60,6 +60,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # before django_structlog, which logs a valid X-Request-ID / X-Correlation-ID as request_id / correlation_id
+    'core.middleware.sanitize_trace_headers',
     'django_structlog.middlewares.RequestMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
