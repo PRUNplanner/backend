@@ -177,8 +177,16 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         serializer = PlanetIdsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        result = GamePlanetSearchService.search_by_planet_natural_id(serializer.validated_data)
-        return Response(self.get_serializer(result, many=True).data)
+        def build_many(missing: list[str]) -> dict[str, object]:
+            planets = list(self.get_queryset().filter(planet_natural_id__in=missing))
+            return {
+                planet.planet_natural_id: data
+                for planet, data in zip(planets, self.get_serializer(planets, many=True).data, strict=True)
+            }
+
+        # the same entries as retrieve, so a planet is cached once for both endpoints
+        planet_natural_ids = list(dict.fromkeys(serializer.validated_data))
+        return CacheManager.respond_many(request, PLANET, 'retrieve', planet_natural_ids, build_many)
 
     @extend_schema(
         auth=[],

@@ -111,13 +111,6 @@ class GamePlanetSearchService:
         return data
 
     @staticmethod
-    def search_by_planet_natural_id(planet_natural_ids: list[str]) -> list[GamePlanet]:
-        queryset = queryset_gameplanet()
-        queryset = queryset.filter(planet_natural_id__in=planet_natural_ids)
-
-        return list(queryset)
-
-    @staticmethod
     def search_by_term(search_term: str) -> list[GamePlanet]:
         if not search_term:
             return []
