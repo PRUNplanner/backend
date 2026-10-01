@@ -66,7 +66,10 @@ def trigger_fio_refresh(sender: type[User], instance: User, created: bool, **kwa
         if fio_credentials_changed or created:
             # old failures and the lock belong to the old credentials
             GameFIOPlayerData.objects.filter(user_id=instance.pk).update(
-                automation_refresh_status='ok', automation_error_count=0, automation_next_retry_at=None
+                automation_refresh_status='ok',
+                automation_error_count=0,
+                automation_next_retry_at=None,
+                fio_status_code=None,
             )
             GamedataCacheManager.delete_fio_refresh_lock(instance.pk)
             request_fio_refresh(instance.pk, 'credentials')

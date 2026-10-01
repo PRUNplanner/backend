@@ -192,3 +192,43 @@ class TestFIOServiceLogging:
         assert record.exc_info is None
         assert isinstance(record.msg, dict)
         assert 'validation error' in record.msg['error']
+
+
+class TestVerifyCredentials:
+    AUTH_URL = 'https://rest.fnar.net/auth'
+
+    @pytest.mark.parametrize(
+        'username, body, expected',
+        [
+            ('SFScorpio', 'SFSCORPIO', 'ok'),
+            (' sfscorpio ', 'SFSCORPIO\n', 'ok'),
+            ('someone', 'SFSCORPIO', 'username_mismatch'),
+        ],
+    )
+    def test_200_compares_the_owner_case_insensitively(self, httpx_mock, username: str, body: str, expected: str):
+        httpx_mock.add_response(url=self.AUTH_URL, text=body, match_headers={'Authorization': 'key'})
+
+        assert FIOService().verify_credentials(username, 'key') == expected
+
+    @pytest.mark.parametrize('status, expected', [(401, 'invalid_key'), (500, 'unavailable'), (503, 'unavailable')])
+    def test_error_status(self, httpx_mock, status: int, expected: str):
+        httpx_mock.add_response(url=self.AUTH_URL, status_code=status)
+
+        assert FIOService().verify_credentials('name', 'key') == expected
+
+    def test_timeout_is_unavailable(self, httpx_mock):
+        httpx_mock.add_exception(httpx.ReadTimeout('slow'), url=self.AUTH_URL)
+
+        assert FIOService().verify_credentials('name', 'key') == 'unavailable'
+
+
+class TestUserStorage:
+    def test_204_means_no_data_yet(self, httpx_mock):
+        httpx_mock.add_response(url='https://rest.fnar.net/storage/name', status_code=204)
+
+        assert FIOService().get_user_storage('name', 'key') is None
+
+    def test_200_is_parsed(self, httpx_mock):
+        httpx_mock.add_response(url='https://rest.fnar.net/storage/name', json=[])
+
+        assert FIOService().get_user_storage('name', 'key') == []

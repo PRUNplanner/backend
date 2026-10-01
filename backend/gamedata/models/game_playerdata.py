@@ -12,6 +12,14 @@ class GameFIOPlayerData(UUIDModel, CeleryAutomationModel):
     warehouse_data = models.JSONField(default=dict)
     ship_data = models.JSONField(default=dict)
 
+    # last FIO answer on the user's storage: 200 data, 204 no data yet, 401 key rejected; None until one came
+    fio_status_code = models.PositiveSmallIntegerField(
+        'FIO answer', null=True, blank=True, choices=[(200, 'Data'), (204, 'No data yet'), (401, 'Key rejected')]
+    )
+
+    # what a refresh writes besides the payloads; saving only these leaves the storage cache valid
+    BOOKKEEPING_FIELDS = CeleryAutomationModel.AUTOMATION_FIELDS | {'fio_status_code'}
+
     objects: models.Manager['GameFIOPlayerData'] = models.Manager()
 
     class Meta:

@@ -25,6 +25,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 from django_json_widget.widgets import JSONEditorWidget
 from gamedata.models import GameFIOPlayerData
+from gamedata.services.fio_refresh import fio_connection
 from planning.models import PlanningCX, PlanningEmpire, PlanningPlan
 from rest_framework_api_key.admin import APIKeyAdmin
 from rest_framework_api_key.models import APIKey
@@ -348,6 +349,16 @@ class UserAdmin(SummaryStripMixin, ChangeHeaderMixin[User], BaseUserAdmin, Model
             {'label': 'FIO API key', 'value': mask_secret(obj.fio_apikey)},
             {'label': 'Last plan edit', 'value': f'{last_edit:%Y-%m-%d %H:%M} UTC' if last_edit else '—'},
         ]
+        status, _ = fio_connection(obj)
+        facts.append(
+            {
+                'label': 'FIO status (user sees)',
+                'value': status,
+                'badge': {'ok': 'success', 'none': 'default', 'syncing': 'info', 'no_data': 'warning'}.get(
+                    status, 'danger'
+                ),
+            }
+        )
         if fio is None:
             facts.append({'label': 'FIO sync', 'value': 'no data', 'badge': 'default'})
         else:

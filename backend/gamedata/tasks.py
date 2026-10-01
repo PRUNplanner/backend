@@ -229,6 +229,13 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
         try:
             with get_fio_service() as fio:
                 storage_data = fio.get_user_storage(user.prun_username, user.fio_apikey)
+                if storage_data is None:
+                    # FIO has nothing for this user yet: not an error, the stored payload stays
+                    to_update.fio_status_code = 204
+                    to_update.update_refresh_result(commit=False)
+                    to_update.save(update_fields=[*GameFIOPlayerData.BOOKKEEPING_FIELDS])
+                    log.info('fio_refresh_completed', changed=False, no_data=True)
+                    return True
                 sites_data = fio.get_user_sites(user.prun_username, user.fio_apikey)
                 warehouse_data = fio.get_user_sites_warehouses(user.prun_username, user.fio_apikey)
                 ship_data = fio.get_user_ships(user.prun_username, user.fio_apikey)
@@ -241,14 +248,15 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
             }
             changed = any(getattr(to_update, field) != payload for field, payload in payloads.items())
 
+            to_update.fio_status_code = 200
+            to_update.update_refresh_result(commit=False)  # prevent commit, due to save call
             if changed:
                 for field, payload in payloads.items():
                     setattr(to_update, field, payload)
-                to_update.update_refresh_result(commit=False)  # prevent commit, due to save call
-                to_update.save(update_fields=[*payloads, *GameFIOPlayerData.AUTOMATION_FIELDS])
+                to_update.save(update_fields=[*payloads, *GameFIOPlayerData.BOOKKEEPING_FIELDS])
             else:
                 # same data as stored: bookkeeping only, the storage cache stays valid
-                to_update.update_refresh_result()
+                to_update.save(update_fields=[*GameFIOPlayerData.BOOKKEEPING_FIELDS])
 
             log.info('fio_refresh_completed', changed=changed)
             return True
@@ -257,9 +265,14 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
             if isinstance(exc, httpx.HTTPStatusError):
                 # expected for a wrong or revoked FIO key; fio_request_completed has the response
                 log.warning('fio_refresh_failed', status_code=exc.response.status_code)
+                if exc.response.status_code == 401:
+                    # retrying won't fix a rejected key: fail now; new credentials reset the row (user/signals.py)
+                    to_update.fio_status_code = 401
+                    to_update.automation_error_count = GameFIOPlayerData.MAX_RETRIES - 1
             else:
                 log.exception('fio_refresh_failed')
-            to_update.update_refresh_result(error=exc)
+            to_update.update_refresh_result(error=exc, commit=False)
+            to_update.save(update_fields=[*GameFIOPlayerData.BOOKKEEPING_FIELDS])
             # remove lock key, so retry is possible
             GamedataCacheManager.delete_fio_refresh_lock(user_id)
 

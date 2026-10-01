@@ -36,7 +36,10 @@ type Endpoint = Literal[
     'user_sites',
     'user_sites_warehouses',
     'user_ships',
+    'auth',
 ]
+
+type VerifyResult = Literal['ok', 'invalid_key', 'username_mismatch', 'unavailable']
 
 
 class FIOURL:
@@ -56,6 +59,7 @@ class FIOURL:
         'user_sites': FIO_BASE_URL + 'sites/',
         'user_sites_warehouses': FIO_BASE_URL + 'sites/warehouses/',
         'user_ships': FIO_BASE_URL + 'ship/ships/',
+        'auth': FIO_BASE_URL + 'auth',
     }
 
     endpoint_timeouts: dict[Endpoint, int] = {
@@ -72,6 +76,7 @@ class FIOURL:
         'user_sites': 3,
         'user_sites_warehouses': 3,
         'user_ships': 3,
+        'auth': 3,
     }
 
     @staticmethod
@@ -190,10 +195,26 @@ class FIOService:
     def get_all_recipes(self) -> list[FIORecipeSchema]:
         return self._fetch(endpoint='allrecipes', schema=list[FIORecipeSchema])
 
-    def get_user_storage(self, prun_username: str, fio_apikey: str) -> list[FIOUserStorageSchema]:
-        return self._fetch(
-            endpoint='user_storage', path_suffix=prun_username, schema=list[FIOUserStorageSchema], apikey=fio_apikey
+    def verify_credentials(self, prun_username: str, apikey: str) -> VerifyResult:
+        """Whether the key is valid and belongs to prun_username. FIO answers with the owner's name in capitals."""
+        try:
+            response = self._execute_request(FIOURL.get_url('auth'), 'auth', self._get_auth_headers(apikey))
+        except httpx.HTTPStatusError as e:
+            return 'invalid_key' if e.response.status_code == 401 else 'unavailable'
+        except httpx.HTTPError:
+            return 'unavailable'
+        if response.text.strip().casefold() != prun_username.strip().casefold():
+            return 'username_mismatch'
+        return 'ok'
+
+    def get_user_storage(self, prun_username: str, fio_apikey: str) -> list[FIOUserStorageSchema] | None:
+        """None when FIO has no data for the user yet (204)."""
+        response = self._execute_request(
+            f'{FIOURL.get_url("user_storage")}{prun_username}', 'user_storage', self._get_auth_headers(fio_apikey)
         )
+        if response.status_code == 204:
+            return None
+        return self._json_to_pydantic(response.content, list[FIOUserStorageSchema])
 
     def get_user_sites(self, prun_username: str, fio_apikey: str) -> list[FIOUserSiteSchema]:
         return self._fetch(

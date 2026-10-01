@@ -244,6 +244,11 @@ class UserProfileViewSet(viewsets.GenericViewSet):
     def get_object(self):
         return self.request.user
 
+    @property
+    def throttle_scope(self) -> str | None:
+        # saving FIO credentials calls FIO, so it must not become a key tester
+        return 'profile_update' if self.action == 'update_profile' else None
+
     def get_serializer_class(self):
         if self.action == 'change_password':
             return UserChangePasswordSerializer

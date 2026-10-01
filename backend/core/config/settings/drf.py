@@ -22,6 +22,7 @@ REST_FRAMEWORK = {
         'auth_register': '5/min',
         'auth_verify_email': '5/min',
         'auth_password_reset': '5/min',
+        'profile_update': '10/min',
     },
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',

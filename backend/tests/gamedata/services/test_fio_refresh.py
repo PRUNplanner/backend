@@ -7,7 +7,7 @@ import pytest
 from django.utils import timezone
 from gamedata.gamedata_cache_manager import GamedataCacheManager
 from gamedata.models import GameFIOPlayerData
-from gamedata.services.fio_refresh import FioRefreshReason, request_fio_refresh
+from gamedata.services.fio_refresh import FioRefreshReason, fio_connection, request_fio_refresh
 from model_bakery import baker
 from user.models import User
 
@@ -172,3 +172,30 @@ def test_missing_user_queues_nothing(
 
     assert queued is False
     assert line['skip'] == 'no_credentials'
+
+
+class TestFioConnection:
+    def test_no_credentials_is_none(self) -> None:
+        assert fio_connection(baker.make('user.User')) == ('none', None)
+
+    def test_no_row_yet_is_syncing(self) -> None:
+        assert fio_connection(baker.make('user.User', prun_username='Name', fio_apikey='key')) == ('syncing', None)
+
+    @pytest.mark.parametrize(
+        'code, errors, status, has_time',
+        [
+            (None, 0, 'syncing', False),
+            (200, 0, 'ok', True),
+            (204, 0, 'no_data', True),
+            (401, GameFIOPlayerData.MAX_RETRIES, 'invalid_credentials', False),
+            (200, 1, 'error', True),
+            (None, 3, 'error', False),
+        ],
+    )
+    def test_status_from_the_row(self, code: int | None, errors: int, status: str, has_time: bool) -> None:
+        user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        row: GameFIOPlayerData = baker.make(
+            'gamedata.GameFIOPlayerData', user=user, fio_status_code=code, automation_error_count=errors
+        )
+
+        assert fio_connection(user) == (status, row.automation_last_refreshed_at if has_time else None)
