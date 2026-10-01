@@ -370,6 +370,15 @@ class TestOnboardingFunnel:
         # median of 10 min and 3 h
         assert funnel['median_to_first_plan'] == '1.6 h'
 
+    def test_median_under_a_minute(self) -> None:
+        user = signup('quick')
+        plan = baker.make(PlanningPlan, user=user)
+        PlanningPlan.objects.filter(pk=plan.pk).update(created_at=user.date_joined + timedelta(seconds=30))
+
+        funnel = dashboard.onboarding_funnel(7)
+
+        assert funnel['median_to_first_plan'] == '< 1 min'
+
     def test_no_signups(self) -> None:
         User.objects.all().delete()
 
