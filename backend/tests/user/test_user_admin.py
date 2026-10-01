@@ -1,12 +1,14 @@
 from unittest.mock import patch
 
 import pytest
+from django.contrib import admin
 from django.contrib.admin.models import LogEntry
 from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from model_bakery import baker
+from user.admin import UserAdmin
 from user.models import User, VerificationCode
 from user.models.verification_codes import VerificationeCodeChoices
 
@@ -221,6 +223,9 @@ class TestUserPages:
         summary = admin_client.get(CHANGELIST).context['cl'].model_admin.get_summary(None)
 
         assert 'bad key' in page
+        # the status the user's profile shows: no error count and no FIO answer yet reads as syncing
+        facts = UserAdmin(User, admin.site).get_header(None, user)  # ty: ignore[invalid-argument-type]
+        assert {'label': 'FIO status (user sees)', 'value': 'syncing', 'badge': 'info'} in facts
         assert 'Last plan edit' in page
         assert f'user__id__exact={user.pk}' in page
         assert {tile['label'] for tile in summary['tiles']} == {

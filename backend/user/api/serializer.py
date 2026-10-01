@@ -1,14 +1,21 @@
 import copy
 import re
+from datetime import datetime
 
+import structlog
 from api.mixins import JSONSafeSerializerMixin
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
+from drf_spectacular.utils import extend_schema_field
+from gamedata.fio.services import get_fio_service
+from gamedata.services.fio_refresh import FIO_STATUSES, FioStatus, fio_connection
 from planning.models import PlanningCX, PlanningEmpire
 from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_CX_NAME, SIGNUP_EMPIRE
 from rest_framework import serializers
 from user.models import User, UserAPIKey
 from user.services.verification_service import VerificationService
+
+logger = structlog.get_logger(__name__)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -215,10 +222,62 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
         return super().to_representation(merged)
 
 
+FIO_FIELDS = ('fio_apikey', 'prun_username')
+
+
 class UserProfileSerializer(serializers.ModelSerializer):
+    fio_status = serializers.SerializerMethodField()
+    fio_last_refreshed_at = serializers.SerializerMethodField()
+
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'prun_username', 'fio_apikey', 'is_email_verified']
+        fields = [
+            'id',
+            'username',
+            'email',
+            'prun_username',
+            'fio_apikey',
+            'is_email_verified',
+            'fio_status',
+            'fio_last_refreshed_at',
+        ]
+
+    def to_representation(self, instance: User) -> dict[str, object]:
+        # one query for both fields
+        self._fio = fio_connection(instance)
+        return super().to_representation(instance)
+
+    @extend_schema_field(serializers.ChoiceField(choices=FIO_STATUSES))
+    def get_fio_status(self, instance: User) -> FioStatus:
+        return self._fio[0]
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_fio_last_refreshed_at(self, instance: User) -> datetime | None:
+        return self._fio[1]
+
+    def validate(self, attrs: dict[str, object]) -> dict[str, object]:
+        """Changed FIO credentials must come as a pair that FIO confirms. Errors carry a code as their message."""
+        new = {f: str(attrs.get(f, getattr(self.instance, f)) or '').strip() for f in FIO_FIELDS}
+        if all(new[f] == (getattr(self.instance, f) or '').strip() for f in FIO_FIELDS):
+            return attrs
+        if not any(new.values()):
+            return attrs  # disconnect
+        empty = [f for f in FIO_FIELDS if not new[f]]
+        if empty:
+            raise serializers.ValidationError({f: 'fio_required' for f in empty})
+
+        with get_fio_service() as fio:
+            result = fio.verify_credentials(new['prun_username'], new['fio_apikey'])
+        user_id = self.instance.pk if self.instance else None
+        logger.info('fio_verify_completed', result=result, user_id=user_id)
+        if result == 'invalid_key':
+            raise serializers.ValidationError({'fio_apikey': 'fio_invalid_key'})
+        if result == 'username_mismatch':
+            raise serializers.ValidationError({'prun_username': 'fio_username_mismatch'})
+        if result == 'unavailable':
+            # FIO down must not block saving; the refresh task reports a bad key later
+            logger.warning('fio_verify_unavailable', user_id=user_id)
+        return attrs
 
     def update(self, instance, validated_data):
         # update fields

@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+import httpx
 import pytest
 from django.conf import settings
 from django.core.cache import cache
@@ -565,16 +566,12 @@ class TestUserProfileViewSet:
         assert response.status_code == 200
         assert response.data['username'] == 'pilot'
 
-    def test_update_profile(self, api_client, user_factory):
-        user = user_factory(id=1)
+    def test_retrieve_has_the_fio_status(self, api_client, user_factory):
+        user = user_factory(id=1, prun_username='Pilot', fio_apikey='key')
 
-        response = api_client.as_user(user).patch(
-            reverse('user:user_profile'), data={'prun_username': 'PilotName'}, format='json'
-        )
+        response = api_client.as_user(user).get(reverse('user:user_profile'))
 
-        assert response.status_code == 200
-        user.refresh_from_db()
-        assert user.prun_username == 'PilotName'
+        assert (response.data['fio_status'], response.data['fio_last_refreshed_at']) == ('syncing', None)
 
     def test_change_password_wrong_old_password_returns_400(self, api_client, user_factory):
         user = user_factory(id=1)
@@ -612,3 +609,129 @@ class TestUserProfileViewSet:
 
         viewset.action = 'retrieve'
         assert viewset.get_serializer_class() is UserProfileSerializer
+
+
+AUTH_URL = 'https://rest.fnar.net/auth'
+
+
+class TestUpdateProfileFioCheck:
+    @staticmethod
+    def _patch(api_client, user: User, data: dict[str, str | None]):
+        with patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh:
+            response = api_client.as_user(user).patch(reverse('user:user_profile'), data=data, format='json')
+        return response, refresh
+
+    @pytest.mark.parametrize('username', ['PilotName', 'pilotname', 'PILOTNAME'])
+    def test_valid_pair_is_stored_and_refreshed_once(
+        self, api_client, user_factory, httpx_mock, django_capture_on_commit_callbacks, username: str
+    ):
+        user = user_factory(id=1)
+        httpx_mock.add_response(url=AUTH_URL, text='PILOTNAME')
+
+        # the refresh is queued on commit, so the patch has to outlive the captured callbacks
+        with (
+            patch('gamedata.tasks.gamedata_refresh_user_fiodata.delay') as refresh,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            response, _ = self._patch(api_client, user, {'prun_username': username, 'fio_apikey': 'good'})
+
+        assert response.status_code == 200
+        assert response.data['fio_status'] == 'syncing'
+        user.refresh_from_db()
+        assert (user.prun_username, user.fio_apikey) == (username, 'good')
+        refresh.assert_called_once_with(user.id)
+
+    def test_wrong_key_is_rejected(self, api_client, user_factory, httpx_mock):
+        user = user_factory(id=1)
+        httpx_mock.add_response(url=AUTH_URL, status_code=401)
+
+        response, refresh = self._patch(api_client, user, {'prun_username': 'Pilot', 'fio_apikey': 'bad'})
+
+        assert (response.status_code, response.data) == (400, {'fio_apikey': ['fio_invalid_key']})
+        user.refresh_from_db()
+        assert (user.prun_username, user.fio_apikey) == (None, None)
+        refresh.assert_not_called()
+
+    def test_key_of_another_user_is_a_mismatch_without_the_owner(self, api_client, user_factory, httpx_mock):
+        user = user_factory(id=1)
+        httpx_mock.add_response(url=AUTH_URL, text='SOMEONEELSE')
+
+        response, _ = self._patch(api_client, user, {'prun_username': 'Pilot', 'fio_apikey': 'good'})
+
+        assert (response.status_code, response.data) == (400, {'prun_username': ['fio_username_mismatch']})
+        assert b'SOMEONEELSE' not in response.content.upper()
+
+    @pytest.mark.parametrize(
+        'data, field',
+        [
+            ({'prun_username': 'Pilot', 'fio_apikey': ''}, 'fio_apikey'),
+            ({'prun_username': 'Pilot'}, 'fio_apikey'),
+            ({'prun_username': None, 'fio_apikey': 'key'}, 'prun_username'),
+        ],
+    )
+    def test_one_field_alone_is_required(self, api_client, user_factory, httpx_mock, data, field: str):
+        user = user_factory(id=1)
+
+        response, _ = self._patch(api_client, user, data)
+
+        assert (response.status_code, response.data) == (400, {field: ['fio_required']})
+        assert httpx_mock.get_requests() == []
+
+    def test_clearing_both_disconnects_without_fio(self, api_client, user_factory, httpx_mock):
+        user = user_factory(id=1, prun_username='Pilot', fio_apikey='key')
+
+        response, _ = self._patch(api_client, user, {'prun_username': '', 'fio_apikey': None})
+
+        assert (response.status_code, response.data['fio_status']) == (200, 'none')
+        assert httpx_mock.get_requests() == []
+
+    @pytest.mark.parametrize('failure', ['timeout', 500, 503])
+    def test_fio_unavailable_still_saves(self, api_client, user_factory, httpx_mock, caplog, failure):
+        user = user_factory(id=1)
+        if failure == 'timeout':
+            httpx_mock.add_exception(httpx.ReadTimeout('slow'), url=AUTH_URL)
+        else:
+            httpx_mock.add_response(url=AUTH_URL, status_code=failure)
+
+        response, _ = self._patch(api_client, user, {'prun_username': 'Pilot', 'fio_apikey': 'key'})
+
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert user.fio_apikey == 'key'
+        assert any(isinstance(r.msg, dict) and r.msg['event'] == 'fio_verify_unavailable' for r in caplog.records)
+
+    def test_email_only_does_not_call_fio(self, api_client, user_factory, httpx_mock):
+        user = user_factory(id=1, prun_username='Pilot', fio_apikey='key')
+
+        with patch('user.tasks.send_email_verification_code.apply_async'):
+            response, refresh = self._patch(
+                api_client, user, {'prun_username': 'Pilot', 'fio_apikey': 'key', 'email': 'p@example.com'}
+            )
+
+        assert response.status_code == 200
+        assert httpx_mock.get_requests() == []
+        refresh.assert_not_called()
+
+    def test_verify_log_has_the_result_but_not_the_key(self, api_client, user_factory, httpx_mock, caplog):
+        user = user_factory(id=1)
+        httpx_mock.add_response(url=AUTH_URL, text='PILOT')
+
+        self._patch(api_client, user, {'prun_username': 'Pilot', 'fio_apikey': 'secret-key'})
+
+        [line] = [r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'fio_verify_completed']
+        assert (line['result'], line['user_id']) == ('ok', user.id)
+        assert 'secret-key' not in caplog.text
+
+    @override_settings(CACHES=LOCMEM_CACHES)
+    def test_update_profile_is_throttled_after_limit(self, api_client, user_factory):
+        cache.clear()
+        user = user_factory(id=1)
+
+        for _ in range(throttle_limit('profile_update')):
+            response, _ = self._patch(api_client, user, {'email': ''})
+            assert response.status_code == 200
+
+        response, _ = self._patch(api_client, user, {'email': ''})
+        assert response.status_code == 429
+        # reading the profile is not throttled by it
+        assert api_client.as_user(user).get(reverse('user:user_profile')).status_code == 200

@@ -83,6 +83,7 @@ class TestTriggerFioRefresh:
             automation_refresh_status='failed',
             automation_error_count=GameFIOPlayerData.MAX_RETRIES,
             automation_next_retry_at=timezone.now() + timedelta(minutes=10),
+            fio_status_code=401,
         )
         GamedataCacheManager.set_fio_refresh_lock(user.id)
 
@@ -95,11 +96,12 @@ class TestTriggerFioRefresh:
 
         refresh.assert_called_once_with(user.id)
         row.refresh_from_db()
-        assert (row.automation_refresh_status, row.automation_error_count, row.automation_next_retry_at) == (
-            'ok',
-            0,
-            None,
-        )
+        assert (
+            row.automation_refresh_status,
+            row.automation_error_count,
+            row.automation_next_retry_at,
+            row.fio_status_code,
+        ) == ('ok', 0, None, None)
 
     def test_new_user_with_credentials_is_refreshed(self, django_capture_on_commit_callbacks) -> None:
         with (

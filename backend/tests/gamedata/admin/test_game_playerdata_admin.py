@@ -55,3 +55,13 @@ class TestFIOPlayerDataAdmin:
         selects = [q['sql'] for q in queries if 'prunplanner_game_fio_playerdata' in q['sql']]
         assert selects
         assert not any('"storage_data"' in sql for sql in selects)
+
+    def test_list_and_detail_show_what_fio_answered(self, admin_client: Client) -> None:
+        rejected = baker.make(GameFIOPlayerData, fio_status_code=401, automation_error_count=10)
+        baker.make(GameFIOPlayerData, fio_status_code=200)
+
+        listed = admin_client.get(CHANGELIST, {'fio_status_code__exact': 401}).context['cl'].result_list
+        detail = admin_client.get(reverse('admin:gamedata_gamefioplayerdata_change', args=[rejected.pk]))
+
+        assert [row.pk for row in listed] == [rejected.pk]
+        assert 'Key rejected' in detail.content.decode()

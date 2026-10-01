@@ -18,6 +18,7 @@ from gamedata.models import GameExchangeCXPC
 from gamedata.models.game_planet import GamePlanet
 from gamedata.models.game_playerdata import GameFIOPlayerData
 from gamedata.services.cxpc_refresh import cxpc_window_start_ms
+from gamedata.services.fio_refresh import fio_connection
 from gamedata.tasks import (
     gamedata_clean_user_fiodata,
     gamedata_dispatch_fio_updates,
@@ -122,6 +123,47 @@ class TestGamedataTasks:
         # a task queued before the signature change still carries (prun_username, fio_apikey)
         assert gamedata_refresh_user_fiodata(user.id, 'Old', 'old-key') is True
         mock_fio.get_user_storage.assert_called_once_with('Stored', 'stored-key')
+
+    @patch('gamedata.tasks.get_fio_service')
+    def test_refresh_user_fiodata_401_fails_at_once(self, mock_get_fio):
+        user = baker.make('user.User', prun_username='Name', fio_apikey='bad')
+        error = httpx.HTTPStatusError('401', request=MagicMock(), response=MagicMock(status_code=401))
+        mock_get_fio.return_value.__enter__.return_value.get_user_storage.side_effect = error
+
+        assert gamedata_refresh_user_fiodata(user.id) is False
+
+        row = GameFIOPlayerData.objects.get(user=user)
+        assert (row.automation_refresh_status, row.automation_error_count, row.fio_status_code) == (
+            'failed',
+            GameFIOPlayerData.MAX_RETRIES,
+            401,
+        )
+        assert row.automation_next_retry_at is None
+        assert fio_connection(user)[0] == 'invalid_credentials'
+
+    @patch('gamedata.tasks.get_fio_service')
+    def test_refresh_user_fiodata_204_is_no_data_and_keeps_the_payload(self, mock_get_fio):
+        user = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        baker.make('gamedata.GameFIOPlayerData', user=user, storage_data=[{'old': 1}], automation_error_count=2)
+        mock_fio = mock_get_fio.return_value.__enter__.return_value
+        mock_fio.get_user_storage.return_value = None
+
+        assert gamedata_refresh_user_fiodata(user.id) is True
+
+        row = GameFIOPlayerData.objects.get(user=user)
+        assert (row.storage_data, row.automation_error_count, row.fio_status_code) == ([{'old': 1}], 0, 204)
+        mock_fio.get_user_sites.assert_not_called()
+        assert fio_connection(user)[0] == 'no_data'
+
+    @patch('gamedata.tasks.get_fio_service')
+    def test_refresh_user_fiodata_success_records_200(self, mock_get_fio):
+        user = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        mock_get_fio.return_value.__enter__.return_value.get_user_storage.return_value = []
+
+        assert gamedata_refresh_user_fiodata(user.id) is True
+
+        assert GameFIOPlayerData.objects.get(user=user).fio_status_code == 200
+        assert fio_connection(user)[0] == 'ok'
 
     @patch('gamedata.tasks.get_fio_service')
     @patch('gamedata.tasks.chord')

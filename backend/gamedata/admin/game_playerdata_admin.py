@@ -33,11 +33,18 @@ class GameFIOPlayerDataAdmin(
     ChangeHeaderMixin[GameFIOPlayerData],
     ModelAdmin,
 ):
-    list_display = ['uuid', 'user', *AutomationAdminMixin.automation_columns, 'automation_last_refreshed_at']
+    list_display = [
+        'uuid',
+        'user',
+        'fio_status_code',
+        *AutomationAdminMixin.automation_columns,
+        'automation_last_refreshed_at',
+    ]
     list_select_related = ['user']
     search_fields = ['user__username', 'user__prun_username']
     list_filter = [
         'automation_refresh_status',
+        'fio_status_code',
         StuckPendingFilter,
         PermanentlyFailedFilter,
         ('automation_last_refreshed_at', RangeDateTimeFilter),
@@ -64,6 +71,8 @@ class GameFIOPlayerDataAdmin(
                 'value': str(obj.user),
                 'href': reverse('admin:user_user_change', args=[obj.user_id]),  # ty: ignore[unresolved-attribute]
             },
+            # what the user's profile shows comes from this, not from the refresh status alone
+            {'label': 'FIO answer', 'value': obj.get_fio_status_code_display() or 'none yet'},  # ty: ignore[unresolved-attribute]
             *self.automation_facts(obj),
         ]
 
