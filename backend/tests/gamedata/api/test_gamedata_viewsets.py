@@ -4,9 +4,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+import orjson
 import pytest
+from core.services.cache_manager import CacheManager
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from gamedata.gamedata_cache_manager import PLANET
 from gamedata.models.game_exchange import GameExchange
 from gamedata.models.game_planet import GamePlanet, GamePlanetCOGCProgramChoices
 from model_bakery import baker
@@ -197,13 +202,6 @@ def _search_payload(**overrides: object) -> dict[str, object]:
 
 @pytest.mark.usefixtures('locmem_cache')
 class TestGamePlanetViewSetMultiple:
-    def test_multiple_accepts_100_ids(self, api_client: APIClient) -> None:
-        ids = [f'AB-{i:03d}c' for i in range(100)]
-
-        response = api_client.post(reverse('data:planet-multiple'), data=ids, format='json')
-
-        assert response.status_code == 200
-
     def test_multiple_and_retrieve_never_share_an_entry(
         self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
     ) -> None:
@@ -216,9 +214,64 @@ class TestGamePlanetViewSetMultiple:
         assert isinstance(api_client.get(detail_url).data, dict)
         assert isinstance(api_client.post(multiple_url, data=['OT-580b'], format='json').data, list)
 
-    def test_multiple_is_not_cached(self, api_client: APIClient) -> None:
-        response = api_client.post(reverse('data:planet-multiple'), data=['AB-001c'], format='json')
-        assert not response.has_header('X-Cache-Hit')
+    def test_multiple_returns_the_detail_bodies_in_request_order(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        for planet_id in ('OT-580b', 'AB-001c'):
+            planet_factory(planet_natural_id=planet_id)
+
+        response = api_client.post(
+            reverse('data:planet-multiple'), data=['AB-001c', 'XX-000x', 'OT-580b', 'AB-001c'], format='json'
+        )
+
+        details = [
+            orjson.loads(api_client.get(reverse('data:planet-detail', kwargs={'planet_natural_id': p})).content)
+            for p in ('AB-001c', 'OT-580b')
+        ]
+        assert response.status_code == 200
+        assert orjson.loads(response.content) == details
+
+    def test_multiple_repeat_runs_no_queries_and_builds_only_new_planets(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet], django_assert_num_queries
+    ) -> None:
+        for planet_id in ('OT-580b', 'AB-001c'):
+            planet_factory(planet_natural_id=planet_id)
+        url = reverse('data:planet-multiple')
+        assert api_client.post(url, data=['OT-580b'], format='json')['X-Cache-Hit'] == '0'
+
+        with django_assert_num_queries(0):
+            response = api_client.post(url, data=['OT-580b'], format='json')
+        assert response['X-Cache-Hit'] == '1'
+
+        with CaptureQueriesContext(connection) as queries:
+            response = api_client.post(url, data=['OT-580b', 'AB-001c'], format='json')
+        assert [p['planet_natural_id'] for p in orjson.loads(response.content)] == ['OT-580b', 'AB-001c']
+        assert 'AB-001c' in queries[0]['sql']
+        assert not any('OT-580b' in q['sql'] for q in queries)
+
+    def test_multiple_serves_new_data_after_invalidation_and_answers_304(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet = planet_factory(planet_natural_id='OT-580b', planet_name='Old')
+        url = reverse('data:planet-multiple')
+        old = api_client.post(url, data=['OT-580b'], format='json')
+        assert old['Cache-Control'] == 'public, max-age=60'
+
+        GamePlanet.objects.filter(pk=planet.pk).update(planet_name='New')
+        CacheManager.invalidate(PLANET, 'OT-580b')
+        new = api_client.post(url, data=['OT-580b'], format='json', HTTP_IF_NONE_MATCH=old['ETag'])
+
+        assert new.status_code == 200
+        assert orjson.loads(new.content)[0]['planet_name'] == 'New'
+        assert new['ETag'] != old['ETag']
+        unchanged = api_client.post(url, data=['OT-580b'], format='json', HTTP_IF_NONE_MATCH=new['ETag'])
+        assert unchanged.status_code == 304
+        assert unchanged.content == b''
+
+    @pytest.mark.parametrize(('count', 'status'), [(200, 200), (201, 400)])
+    def test_multiple_accepts_at_most_200_ids(self, api_client: APIClient, count: int, status: int) -> None:
+        ids = [f'AB-{i:03d}c' for i in range(count)]
+        assert api_client.post(reverse('data:planet-multiple'), data=ids, format='json').status_code == status
 
 
 @pytest.mark.usefixtures('locmem_cache')

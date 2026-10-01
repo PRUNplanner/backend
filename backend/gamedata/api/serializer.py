@@ -235,6 +235,10 @@ class PlanetSearchIndexSerializer(BlankAsNullMixin, serializers.ModelSerializer)
 class PlanetIdsSerializer(serializers.ListSerializer):
     child = serializers.CharField(min_length=7, max_length=7)
 
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        kwargs.setdefault('max_length', 200)
+        super().__init__(*args, **kwargs)
+
 
 class GameExchangeSerializer(serializers.ModelSerializer):
     ticker_id = serializers.CharField(read_only=True)

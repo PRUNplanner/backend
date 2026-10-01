@@ -13,6 +13,8 @@ from django.core.cache import cache
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.utils.cache import patch_cache_control, patch_vary_headers
+from django.utils.http import parse_etags
+from rest_framework.request import Request
 from rest_framework_csv.renderers import CSVRenderer
 
 logger = structlog.get_logger(__name__)
@@ -59,8 +61,11 @@ class CacheManager:
     ) -> str:
         prefix = cls._prefix(ns, scope)
         version = cache.get(f'{prefix}:ver') or 1
-        digest = blake2b(orjson.dumps([fmt, *parts], option=orjson.OPT_SORT_KEYS), digest_size=8).hexdigest()
-        return f'{prefix}:v{version}:{endpoint}:{digest}'
+        return f'{prefix}:v{version}:{endpoint}:{cls._digest(fmt, parts)}'
+
+    @staticmethod
+    def _digest(fmt: str, parts: tuple[str | int | UUID | None, ...]) -> str:
+        return blake2b(orjson.dumps([fmt, *parts], option=orjson.OPT_SORT_KEYS), digest_size=8).hexdigest()
 
     @classmethod
     def invalidate(cls, ns: CacheNamespace, scope: int | str | None = None) -> None:
@@ -91,23 +96,27 @@ class CacheManager:
             # the builder is slow or died, build ourselves
 
         try:
-            body = orjson.dumps(
-                build(),
-                default=lambda obj: (
-                    float(obj) if isinstance(obj, decimal.Decimal) else str(obj) if isinstance(obj, UUID) else None
-                ),
-            )
-            if fmt == 'csv':
-                # rendered from the json round trip, so values match the json payload
-                context = {'header': csv_header} if csv_header else {}
-                body = CSVRenderer().render(orjson.loads(body), renderer_context=context)
-            # weak: the gzip and the plain body share it
-            entry = (f'W/"{blake2b(body, digest_size=16).hexdigest()}"', gzip.compress(body, compresslevel=9, mtime=0))
+            entry = cls._encode(build(), fmt, csv_header)
             cache.set(key, entry, ttl)
             return entry
         finally:
             if owns_lock:
                 cache.delete(lock_key)
+
+    @staticmethod
+    def _encode(data: object, fmt: str = 'json', csv_header: list[str] | None = None) -> CacheEntry:
+        body = orjson.dumps(
+            data,
+            default=lambda obj: (
+                float(obj) if isinstance(obj, decimal.Decimal) else str(obj) if isinstance(obj, UUID) else None
+            ),
+        )
+        if fmt == 'csv':
+            # rendered from the json round trip, so values match the json payload
+            context = {'header': csv_header} if csv_header else {}
+            body = CSVRenderer().render(orjson.loads(body), renderer_context=context)
+        # weak: the gzip and the plain body share it
+        return f'W/"{blake2b(body, digest_size=16).hexdigest()}"', gzip.compress(body, compresslevel=9, mtime=0)
 
     @classmethod
     def respond(
@@ -145,4 +154,51 @@ class CacheManager:
             patch_cache_control(response, private=True, no_cache=True)
         else:
             patch_cache_control(response, public=True, max_age=PUBLIC_MAX_AGE)
+        return response
+
+    @classmethod
+    def respond_many(
+        cls,
+        request: HttpRequest | Request,
+        ns: CacheNamespace,
+        endpoint: str,
+        scopes: list[str],
+        build_many: Callable[[list[str]], dict[str, object]],
+    ) -> HttpResponse:
+        """
+        A JSON array of the per-scope entries of `endpoint`, in `scopes` order, sharing the entries `respond` builds
+        for each scope. `build_many` builds the missing ones in one go; scopes it leaves out are omitted, not cached.
+        """
+        if ns.private:
+            raise ValueError(f'{ns.name} is private, respond_many serves public entries only')
+
+        digest = cls._digest('json', ())
+        prefixes = {scope: cls._prefix(ns, scope) for scope in scopes}
+        versions = cache.get_many([f'{prefix}:ver' for prefix in prefixes.values()])
+        keys = {
+            scope: f'{prefix}:v{versions.get(f"{prefix}:ver") or 1}:{endpoint}:{digest}'
+            for scope, prefix in prefixes.items()
+        }
+        found: dict[str, CacheEntry] = cache.get_many(list(keys.values()))
+        entries = {scope: found[key] for scope, key in keys.items() if key in found}
+
+        if missing := [scope for scope in scopes if scope not in entries]:
+            built = {scope: cls._encode(data) for scope, data in build_many(missing).items()}
+            cache.set_many({keys[scope]: entry for scope, entry in built.items()}, ns.ttl)
+            entries |= built
+
+        members = [entries[scope] for scope in scopes if scope in entries]
+        etag = f'W/"{blake2b("".join(e for e, _ in members).encode(), digest_size=16).hexdigest()}"'
+        structlog.contextvars.bind_contextvars(cache_ns=ns.name, cache_hit=not missing)
+
+        # ConditionalGetMiddleware only answers GET and HEAD
+        if etag in parse_etags(request.headers.get('If-None-Match', '')):
+            response = HttpResponse(status=304)
+        else:
+            body = b'[' + b','.join(gzip.decompress(gzipped) for _, gzipped in members) + b']'
+            response = HttpResponse(body, content_type='application/json')  # GZipMiddleware compresses it
+
+        response['ETag'] = etag
+        response['X-Cache-Hit'] = '0' if missing else '1'
+        patch_cache_control(response, public=True, max_age=PUBLIC_MAX_AGE)
         return response

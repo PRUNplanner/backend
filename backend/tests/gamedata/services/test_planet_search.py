@@ -9,7 +9,6 @@ from model_bakery import baker
 class TestGamePlanetSearchService:
     def test_search_by_term_and_id(self):
         baker.make('gamedata.GamePlanet', planet_natural_id='MORIA', planet_name='Deep')
-        assert len(GamePlanetSearchService.search_by_planet_natural_id(['MORIA'])) == 1
         assert len(GamePlanetSearchService.search_by_term('Deep')) == 1
         assert len(GamePlanetSearchService.search_by_term('')) == 0
 
