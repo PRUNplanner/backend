@@ -7,7 +7,8 @@ DAY = 24 * HOUR
 MATERIALS = CacheNamespace('gamedata:materials', DAY)
 RECIPES = CacheNamespace('gamedata:recipes', DAY)
 BUILDINGS = CacheNamespace('gamedata:buildings', DAY)
-EXCHANGES = CacheNamespace('gamedata:exchanges', DAY)
+# invalidated by the FIO exchange webhook about once a minute, a long ttl only piles up orphaned versions
+EXCHANGES = CacheNamespace('gamedata:exchanges', 10 * 60)
 CXPC = CacheNamespace('gamedata:cxpc', 3 * HOUR)
 # scope: planet natural id. 1 h, as the active cogc program is computed against the build time
 PLANET = CacheNamespace('gamedata:planet', HOUR)
