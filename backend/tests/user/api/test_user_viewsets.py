@@ -142,6 +142,67 @@ class TestUserPreferenceViewSet:
         assert response.data['layoutNavigationStyle'] == 'full'
         assert response.data['colorPalette'] == 'default'
 
+    def test_update_round_trips_construction_built(self, api_client, user_factory):
+        user = user_factory(id=1)
+        payload = {
+            'planOverrides': {
+                'p1': {'includeCM': True, 'autoOptimizeHabs': False, 'constructionBuilt': {'FRM': 3, 'HB1': 0}}
+            }
+        }
+
+        response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
+
+        assert response.status_code == 200
+        override = response.data['planOverrides']['p1']
+        assert override['constructionBuilt'] == {'FRM': 3, 'HB1': 0}
+        assert override['includeCM'] is True
+        assert override['autoOptimizeHabs'] is False
+        stored = UserPreference.objects.get(user=user).preferences['plan_overrides']['p1']
+        assert stored['construction_built'] == {'FRM': 3, 'HB1': 0}
+        assert stored['include_cm'] is True
+
+    @pytest.mark.parametrize(
+        'built',
+        [{'FRM': -1}, {'frm': 1}, {'ABCD': 1}, {'': 1}, {'F-1': 1}, {'FRM': 1.5}, {f'A{i}': 1 for i in range(101)}],
+    )
+    def test_update_rejects_invalid_construction_built(self, api_client, user_factory, built):
+        user = user_factory(id=1)
+        payload = {'planOverrides': {'p1': {'autoOptimizeHabs': True, 'constructionBuilt': built}}}
+
+        response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
+
+        assert response.status_code == 400
+
+    def test_update_accepts_100_construction_built_entries(self, api_client, user_factory):
+        user = user_factory(id=1)
+        built = {f'A{i}': 1 for i in range(100)}
+        payload = {'planOverrides': {'p1': {'autoOptimizeHabs': True, 'constructionBuilt': built}}}
+
+        response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
+
+        assert response.status_code == 200
+
+    def test_construction_built_defaults_to_empty(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(
+            UserPreference,
+            user=user,
+            preferences={'plan_overrides': {'p1': {'include_cm': True, 'auto_optimize_habs': False}}},
+        )
+
+        response = api_client.as_user(user).get(reverse('user:user_preferences'))
+        assert response.status_code == 200
+        assert response.data['planOverrides']['p1']['constructionBuilt'] == {}
+        assert response.data['planOverrides']['p1']['includeCM'] is True
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'),
+            data={'planOverrides': {'p1': {'includeCM': True, 'autoOptimizeHabs': False}}},
+            format='json',
+        )
+        assert response.status_code == 200
+        assert response.data['planOverrides']['p1']['constructionBuilt'] == {}
+
     def test_update_accepts_decimal_supply_cart_days(self, api_client, user_factory):
         user = user_factory(id=1)
 

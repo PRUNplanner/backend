@@ -1,4 +1,5 @@
 import copy
+import re
 
 from api.mixins import JSONSafeSerializerMixin
 from django.contrib.auth.password_validation import validate_password
@@ -159,12 +160,27 @@ DEFAULT_PREFERENCES = {
 }
 
 
+BUILDING_TICKER = re.compile(r'[A-Z0-9]{1,3}')
+MAX_CONSTRUCTION_BUILT = 100
+
+
 class PlanOverrideSerializer(serializers.Serializer):
     includeCM = serializers.BooleanField(source='include_cm', default=False)
     visitationMaterialExclusions = serializers.ListField(
         source='visitation_material_exclusions', child=serializers.CharField(), default=list
     )
     autoOptimizeHabs = serializers.BooleanField(source='auto_optimize_habs', default=True)
+    constructionBuilt = serializers.DictField(
+        source='construction_built', child=serializers.IntegerField(min_value=0), default=dict
+    )
+
+    def validate_constructionBuilt(self, value: dict[str, int]) -> dict[str, int]:
+        if len(value) > MAX_CONSTRUCTION_BUILT:
+            raise serializers.ValidationError(f'At most {MAX_CONSTRUCTION_BUILT} buildings.')
+        bad = [key for key in value if not BUILDING_TICKER.fullmatch(key)]
+        if bad:
+            raise serializers.ValidationError(f'Invalid building tickers: {", ".join(bad)}')
+        return value
 
 
 class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
