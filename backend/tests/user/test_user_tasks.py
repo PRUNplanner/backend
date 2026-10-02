@@ -7,8 +7,9 @@ import pytest
 from django.utils import timezone
 from gamedata.gamedata_cache_manager import GamedataCacheManager
 from model_bakery import baker
-from user.models import User
-from user.tasks import user_handle_post_refresh
+from user.models import User, VerificationCode, VerificationeCodeChoices
+from user.models.verification_codes import EXPIRY_TIME
+from user.tasks import user_handle_post_refresh, user_purge_verification_codes
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('locmem_cache')]
 
@@ -85,3 +86,25 @@ class TestUserHandlePostRefresh:
 
     def test_missing_user_is_ignored(self) -> None:
         user_handle_post_refresh(999_999)
+
+
+def _code(user: User, purpose: VerificationeCodeChoices, age: timedelta, is_used: bool = False) -> VerificationCode:
+    code: VerificationCode = baker.make('user.VerificationCode', user=user, purpose=purpose, is_used=is_used)
+    # created_at is auto_now_add, so backdate after creation
+    VerificationCode.objects.filter(pk=code.pk).update(created_at=timezone.now() - age)
+    return code
+
+
+class TestUserPurgeVerificationCodes:
+    @pytest.mark.parametrize('purpose', list(VerificationeCodeChoices))
+    def test_deletes_used_and_expired_keeps_active(self, purpose: VerificationeCodeChoices) -> None:
+        user: User = baker.make('user.User')
+        _code(user, purpose, timedelta(minutes=1), is_used=True)
+        _code(user, purpose, EXPIRY_TIME + timedelta(minutes=1))
+        active = _code(user, purpose, EXPIRY_TIME - timedelta(minutes=1))
+
+        user_purge_verification_codes()
+
+        remaining = set(VerificationCode.objects.values_list('pk', flat=True))
+        assert remaining == {active.pk}
+        assert User.objects.filter(pk=user.pk).exists()

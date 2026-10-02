@@ -3,11 +3,14 @@ from celery import shared_task
 from core.env import settings
 from django.contrib.auth.models import update_last_login
 from django.core.mail import EmailMultiAlternatives
+from django.db.models import Q
 from django.template.loader import render_to_string
+from django.utils import timezone
 from django.utils.html import strip_tags
 from gamedata.services.fio_refresh import request_fio_refresh
 
-from user.models import User
+from user.models import User, VerificationCode
+from user.models.verification_codes import EXPIRY_TIME
 
 logger = structlog.get_logger(__name__)
 
@@ -81,3 +84,11 @@ def user_handle_post_refresh(user_id: int):
         request_fio_refresh(user.id, 'token_refresh')
     except User.DoesNotExist:
         pass
+
+
+@shared_task(name='user_purge_verification_codes', ignore_result=True)
+def user_purge_verification_codes() -> None:
+    # same cutoff as VerificationCode.is_expired
+    cutoff = timezone.now() - EXPIRY_TIME
+    deleted, _ = VerificationCode.objects.filter(Q(is_used=True) | Q(created_at__lt=cutoff)).delete()
+    logger.info('verification_codes_purged', deleted=deleted)
