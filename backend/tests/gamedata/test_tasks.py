@@ -63,6 +63,7 @@ class TestGamedataTasks:
         'error, level',
         [
             (httpx.HTTPStatusError('503', request=MagicMock(), response=MagicMock(status_code=503)), 'WARNING'),
+            (httpx.ReadTimeout('The read operation timed out'), 'WARNING'),
             (ValueError('bug'), 'ERROR'),
         ],
     )
@@ -83,8 +84,12 @@ class TestGamedataTasks:
             if isinstance(r.msg, dict) and r.msg['event'] == 'planet_refresh_failed'
         ]
         assert [(lvl, msg['planet_natural_id']) for lvl, msg in failed] == [(level, 'M')]
-        # a traceback only for what is not an HTTP error status
+        # a traceback only for what is not an HTTP error status or transport failure
         assert ('exception' in failed[0][1]) is (level == 'ERROR')
+        # the failure is recorded for a retry either way
+        planet = GamePlanet.objects.get(planet_natural_id='M')
+        assert (planet.automation_refresh_status, planet.automation_error_count) == ('retrying', 1)
+        assert planet.automation_next_retry_at is not None
 
     @pytest.mark.parametrize('scenario', ['missing', 'fio_fail', 'success'])
     @patch('gamedata.tasks.get_fio_service')
@@ -100,6 +105,7 @@ class TestGamedataTasks:
         'error, level',
         [
             (httpx.HTTPStatusError('401', request=MagicMock(), response=MagicMock(status_code=401)), 'WARNING'),
+            (httpx.ReadTimeout('The read operation timed out'), 'WARNING'),
             (ValueError('bug'), 'ERROR'),
         ],
     )
