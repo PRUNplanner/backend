@@ -12,6 +12,7 @@ from planning.api.serializers import (
     PlanningEmpirePlanSyncErrorSerializer,
     PlanningPlanListSerializer,
 )
+from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.api.serializers.empire import PlanningEmpireStateUpdateSerializer
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.planning_cache_manager import PLANNING
@@ -78,7 +79,10 @@ class EmpireViewSet(
 
         return CacheManager.respond(request, PLANNING, 'empire-plans', pk, build=fetch_data, scope=user_id)
 
-    @extend_schema(summary='Updates an existing exmpire')
+    @extend_schema(
+        summary='Updates an existing exmpire',
+        responses={200: PlanningEmpireDetailSerializer, 409: PlanningSaveConflictSerializer},
+    )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 

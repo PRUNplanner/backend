@@ -1,4 +1,5 @@
 from django.core.cache import cache
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -46,10 +47,24 @@ class UserPreferenceViewSet(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, 
         serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
-        # top-level merge: omitted keys keep their stored value, a sent planOverrides replaces the stored dict
-        obj, _ = UserPreference.objects.get_or_create(user=request.user)
-        obj.preferences = {**obj.preferences, **serializer.validated_data}
-        obj.save()
+        # top-level merge: omitted keys keep their stored value; planOverrides merges per plan uuid, null deletes one
+        changes = dict(serializer.validated_data)
+        overrides: dict[str, dict | None] | None = changes.pop('plan_overrides', None)
+
+        # locked, so another tab's PATCH in between isn't lost
+        with transaction.atomic():
+            obj, _ = UserPreference.objects.select_for_update().get_or_create(user=request.user)
+            preferences = {**obj.preferences, **changes}
+            if overrides is not None:
+                merged = dict(obj.preferences.get('plan_overrides') or {})
+                for plan_uuid, override in overrides.items():
+                    if override is None:
+                        merged.pop(plan_uuid, None)
+                    else:
+                        merged[plan_uuid] = override
+                preferences['plan_overrides'] = merged
+            obj.preferences = preferences
+            obj.save()
 
         return Response(self.get_serializer(obj.preferences).data)
 

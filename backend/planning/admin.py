@@ -182,7 +182,7 @@ class PlanningEmpireAdmin(SummaryStripMixin, ChangeHeaderMixin[PlanningEmpire], 
     list_filter = [('empire_faction', ChoicesDropdownFilter), 'needs_state_sync', *CREATED_MODIFIED_FILTERS]
     list_filter_submit = True
     date_hierarchy = 'created_at'
-    readonly_fields = ['uuid', 'created_at', 'modified_at']
+    readonly_fields = ['uuid', 'created_at', 'modified_at', 'config_modified_at']
     autocomplete_fields = ['user', 'cx']
     list_sections = [EmpirePlansSection]
 

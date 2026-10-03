@@ -270,20 +270,46 @@ class TestUserPreferenceViewSet:
         assert response.data['locale'] == 'de_DE'
         assert UserPreference.objects.get(user=user).preferences == {**stored, 'burn_days_red': 3}
 
-    def test_partial_update_replaces_plan_overrides(self, api_client, user_factory):
+    def test_partial_update_merges_plan_overrides_per_plan(self, api_client, user_factory):
         user = user_factory(id=1)
         override = {'include_cm': False, 'visitation_material_exclusions': [], 'auto_optimize_habs': True}
         baker.make(UserPreference, user=user, preferences={'plan_overrides': {'p1': override, 'p2': override}})
 
         response = api_client.as_user(user).patch(
             reverse('user:user_preferences'),
-            data={'planOverrides': {'p2': {'includeCM': False, 'autoOptimizeHabs': True}}},
+            data={'planOverrides': {'p2': {'includeCM': True, 'autoOptimizeHabs': True}}},
             format='json',
         )
 
         assert response.status_code == 200
+        assert list(response.data['planOverrides']) == ['p1', 'p2']
+        stored = UserPreference.objects.get(user=user).preferences['plan_overrides']
+        assert stored['p1'] == override
+        assert stored['p2']['include_cm'] is True
+
+    def test_partial_update_null_plan_override_deletes_only_that_plan(self, api_client, user_factory):
+        user = user_factory(id=1)
+        override = {'include_cm': False, 'visitation_material_exclusions': [], 'auto_optimize_habs': True}
+        baker.make(UserPreference, user=user, preferences={'plan_overrides': {'p1': override, 'p2': override}})
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'planOverrides': {'p1': None, 'p3': None}}, format='json'
+        )
+
+        assert response.status_code == 200
         assert list(response.data['planOverrides']) == ['p2']
-        assert list(UserPreference.objects.get(user=user).preferences['plan_overrides']) == ['p2']
+        assert UserPreference.objects.get(user=user).preferences['plan_overrides'] == {'p2': override}
+
+    def test_partial_update_one_key_keeps_the_others(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'burn_days_red': 2, 'burn_days_yellow': 10})
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'burnDaysYellow': 7}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert UserPreference.objects.get(user=user).preferences == {'burn_days_red': 2, 'burn_days_yellow': 7}
 
     def test_partial_update_null_clears_default_uuid(self, api_client, user_factory):
         user = user_factory(id=1)

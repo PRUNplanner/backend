@@ -12,6 +12,7 @@ from planning.api.serializers import (
     PlanningCXJunctionsSyncErrorSerializer,
     PlanningCXJunctionUpdateSerializer,
 )
+from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.models import PlanningCX, PlanningEmpire
 from planning.planning_cache_manager import PLANNING
 from rest_framework import mixins, status, viewsets
@@ -64,7 +65,10 @@ class CXViewSet(
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @extend_schema(summary='Updates an existing cx preference')
+    @extend_schema(
+        summary='Updates an existing cx preference',
+        responses={200: PlanningCXDetailSerializer, 409: PlanningSaveConflictSerializer},
+    )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 

@@ -4,17 +4,18 @@ from planning.models import PlanningCX
 from planning.schemas.latest_schemas import LATEST_SCHEMA
 from rest_framework import serializers
 
+from .conflict import SaveConflictMixin
 from .empire import PlanningEmpireNestedSerializer
 
 
-class PlanningCXDetailSerializer(serializers.ModelSerializer):
+class PlanningCXDetailSerializer(SaveConflictMixin, serializers.ModelSerializer):
     empires = PlanningEmpireNestedSerializer(source='cxs', many=True, read_only=True)
 
     cx_data = PydanticJSONField(pydantic_model=LATEST_SCHEMA['CX_DATA'])
 
     class Meta:
         model = PlanningCX
-        exclude = ['created_at', 'modified_at', 'schema_version', 'user']
+        exclude = ['created_at', 'schema_version', 'user']
 
     @transaction.atomic
     def create(self, validated_data):

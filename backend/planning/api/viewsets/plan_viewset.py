@@ -7,6 +7,7 @@ from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
     PlanningPlanDetailSerializer,
 )
+from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.models import PlanningEmpire, PlanningPlan
 from planning.planning_cache_manager import PLANNING
 from rest_framework import mixins, status, viewsets
@@ -60,7 +61,10 @@ class PlanViewSet(
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @extend_schema(summary='Updates an existing plan')
+    @extend_schema(
+        summary='Updates an existing plan',
+        responses={200: PlanningPlanDetailSerializer, 409: PlanningSaveConflictSerializer},
+    )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
