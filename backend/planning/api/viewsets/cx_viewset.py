@@ -11,8 +11,8 @@ from planning.api.serializers import (
     PlanningCXDetailSerializer,
     PlanningCXJunctionsSyncErrorSerializer,
     PlanningCXJunctionUpdateSerializer,
-    PlanningSaveConflictSerializer,
 )
+from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.models import PlanningCX, PlanningEmpire
 from planning.planning_cache_manager import PLANNING
 from rest_framework import mixins, status, viewsets

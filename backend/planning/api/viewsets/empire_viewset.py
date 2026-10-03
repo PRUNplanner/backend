@@ -11,8 +11,8 @@ from planning.api.serializers import (
     PlanningEmpireJunctionsSerializer,
     PlanningEmpirePlanSyncErrorSerializer,
     PlanningPlanListSerializer,
-    PlanningSaveConflictSerializer,
 )
+from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.api.serializers.empire import PlanningEmpireStateUpdateSerializer
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.planning_cache_manager import PLANNING
