@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
     PlanningPlanDetailSerializer,
+    PlanningSaveConflictSerializer,
 )
 from planning.models import PlanningEmpire, PlanningPlan
 from planning.planning_cache_manager import PLANNING
@@ -60,7 +61,10 @@ class PlanViewSet(
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @extend_schema(summary='Updates an existing plan')
+    @extend_schema(
+        summary='Updates an existing plan',
+        responses={200: PlanningPlanDetailSerializer, 409: PlanningSaveConflictSerializer},
+    )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 

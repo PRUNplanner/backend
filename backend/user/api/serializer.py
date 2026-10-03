@@ -209,7 +209,9 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     colorPalette = serializers.ChoiceField(source='color_palette', choices=COLOR_PALETTES, required=False)
     planSuggestions = serializers.BooleanField(source='plan_suggestions', required=False)
 
-    planOverrides = serializers.DictField(source='plan_overrides', child=PlanOverrideSerializer(), required=False)
+    planOverrides = serializers.DictField(
+        source='plan_overrides', child=PlanOverrideSerializer(allow_null=True), required=False
+    )
 
     def to_representation(self, instance):
         data_from_db = instance if isinstance(instance, dict) else {}

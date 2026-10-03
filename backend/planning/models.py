@@ -1,6 +1,7 @@
 from core.models import ChangeTrackedModel, UUIDModel
 from django.core.validators import MaxValueValidator, MinLengthValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
 class PlanningFactionChoices(models.TextChoices):
@@ -82,6 +83,9 @@ class PlanningEmpire(UUIDModel, ChangeTrackedModel):
     # state
     empire_state = models.JSONField(default=dict, blank=True)
     needs_state_sync = models.BooleanField(default=False, db_index=True)
+
+    # version of the configuration (name, faction, permits) for save conflicts; modified_at also moves on state syncs
+    config_modified_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self) -> str:
         return f'{self.empire_name} ({self.uuid})'

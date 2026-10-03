@@ -1,7 +1,9 @@
 from django.db import transaction
+from django.utils import timezone
 from planning.models import PlanningCOGCChoices, PlanningEmpire, PlanningFactionChoices
 from rest_framework import serializers
 
+from .conflict import SaveConflictMixin
 from .minimal import PlanningCXMinimal, PlanningPlanMinimalSerializer
 
 
@@ -15,23 +17,37 @@ class PlanningEmpireNestedSerializer(serializers.ModelSerializer):
 
 class PlanningEmpireListSerializer(serializers.ModelSerializer):
     cx = PlanningCXMinimal(read_only=True)
+    # configuration version: state syncs and cx-junctions don't change it
+    modified_at = serializers.DateTimeField(source='config_modified_at', read_only=True)
 
     class Meta:
         model = PlanningEmpire
-        fields = ['uuid', 'empire_name', 'empire_faction', 'empire_permits_used', 'empire_permits_total', 'cx']
+        fields = [
+            'uuid',
+            'empire_name',
+            'empire_faction',
+            'empire_permits_used',
+            'empire_permits_total',
+            'cx',
+            'modified_at',
+        ]
 
 
-class PlanningEmpireDetailSerializer(serializers.ModelSerializer):
+class PlanningEmpireDetailSerializer(SaveConflictMixin, serializers.ModelSerializer):
     plans = PlanningPlanMinimalSerializer(many=True, read_only=True)
     cx = PlanningCXMinimal(read_only=True)
+    # the model's modified_at moves on every state sync, so the configuration has its own version
+    modified_at = serializers.DateTimeField(source='config_modified_at', read_only=True)
+
+    version_field = 'config_modified_at'
 
     class Meta:
         model = PlanningEmpire
-        exclude = ['created_at', 'modified_at', 'user', 'empire_state']
+        exclude = ['created_at', 'config_modified_at', 'user', 'empire_state']
 
     @transaction.atomic
     def update(self, instance, validated_data):
-
+        instance.config_modified_at = timezone.now()
         instance = super().update(instance, validated_data)
 
         return instance

@@ -12,10 +12,12 @@ fails the run so the marker gets removed together with the fix.
 from typing import Protocol, cast
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from planning.models import PlanningCX, PlanningEmpire, PlanningPlan
 from rest_framework.test import APIClient
-from user.models import User
+from user.models import User, UserPreference
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('locmem_cache')]
 
@@ -239,3 +241,54 @@ class TestInvalidationScope:
             plan.save()
 
         assert _get(api_client, other, url)['X-Cache-Hit'] == '1'
+
+
+class TestPlanDeleteDropsOverrides:
+    OVERRIDE = {'include_cm': True, 'visitation_material_exclusions': [], 'auto_optimize_habs': False}
+
+    def test_delete_removes_only_that_plans_override(self, api_client, user_factory, plan_factory) -> None:
+        user, other = user_factory(), user_factory()
+        plan, kept = plan_factory(user=user), plan_factory(user=user)
+        other_plan = plan_factory(user=other)
+        UserPreference.objects.create(
+            user=user,
+            preferences={
+                'burn_days_red': 3,
+                'plan_overrides': {str(plan.uuid): self.OVERRIDE, str(kept.uuid): self.OVERRIDE},
+            },
+        )
+        UserPreference.objects.create(user=other, preferences={'plan_overrides': {str(plan.uuid): self.OVERRIDE}})
+
+        response = api_client.as_user(user).delete(reverse('planning:plan-detail', kwargs={'pk': str(plan.uuid)}))
+
+        assert response.status_code == 204
+        assert UserPreference.objects.get(user=user).preferences == {
+            'burn_days_red': 3,
+            'plan_overrides': {str(kept.uuid): self.OVERRIDE},
+        }
+        assert UserPreference.objects.get(user=other).preferences == {'plan_overrides': {str(plan.uuid): self.OVERRIDE}}
+        assert PlanningPlan.objects.filter(pk=other_plan.pk).exists()
+
+    def test_delete_without_preferences_or_override(self, user_factory, plan_factory) -> None:
+        user = user_factory()
+        plan_factory(user=user).delete()
+        UserPreference.objects.create(user=user, preferences={'plan_overrides': None})
+
+        plan_factory(user=user).delete()
+
+        assert UserPreference.objects.get(user=user).preferences == {'plan_overrides': None}
+
+    def test_account_deletion_skips_override_cleanup(self, user_factory, plan_factory) -> None:
+        user = user_factory()
+        plans = [plan_factory(user=user) for _ in range(5)]
+        UserPreference.objects.create(
+            user=user, preferences={'plan_overrides': {str(p.uuid): self.OVERRIDE for p in plans}}
+        )
+        table = UserPreference._meta.db_table
+
+        with CaptureQueriesContext(connection) as ctx:
+            user.delete()
+
+        # no per-plan preference lookup: the cascade deletes the preferences anyway
+        assert not [q for q in ctx.captured_queries if q['sql'].startswith('SELECT') and table in q['sql']]
+        assert not UserPreference.objects.filter(user_id=user.pk).exists()

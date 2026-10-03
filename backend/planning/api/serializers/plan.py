@@ -10,6 +10,7 @@ from planning.models import PlanningCOGCChoices, PlanningEmpire, PlanningEmpireP
 from planning.schemas.latest_schemas import LATEST_SCHEMA
 from rest_framework import serializers
 
+from .conflict import SaveConflictMixin
 from .cx import PlanningCXDetailSerializer
 from .empire import PlanningEmpireListSerializer
 
@@ -31,7 +32,7 @@ COGC_MAP: dict[GamePlanetCOGCProgramChoices, PlanningCOGCChoices] = {
 }
 
 
-class PlanningPlanDetailSerializer(serializers.ModelSerializer):
+class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerializer):
     empires = PlanningEmpireListSerializer(many=True, read_only=True)
     cx = PlanningCXDetailSerializer(read_only=True)
 
@@ -56,6 +57,8 @@ class PlanningPlanDetailSerializer(serializers.ModelSerializer):
             'empires',
             'cx',
             'empire_uuid',
+            'modified_at',
+            'base_modified_at',
         ]
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
@@ -146,6 +149,7 @@ class PlanningPlanListSerializer(PlanningPlanDetailSerializer):
             'plan_corphq',
             'plan_data',
             'empire_uuid',
+            'modified_at',
         ]
 
 

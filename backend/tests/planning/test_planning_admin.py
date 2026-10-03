@@ -85,6 +85,12 @@ class TestAutocomplete:
         # the CX inline never renders the empires' JSON state
         assert 'empire_state' not in cx_page
 
+    def test_empire_config_version_is_read_only(self, admin_client: Client, seeded: Seeded) -> None:
+        # only the API's configuration saves move the save-conflict version
+        html = admin_client.get(url(PlanningEmpire, 'change', seeded.empire.pk)).content.decode()
+
+        assert 'name="config_modified_at' not in html
+
     def test_autocomplete_endpoint_skips_json(self, admin_client: Client, seeded: Seeded) -> None:
         with CaptureQueriesContext(connection) as queries:
             response = admin_client.get(
