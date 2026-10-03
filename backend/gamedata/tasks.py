@@ -80,6 +80,9 @@ def gamedata_refresh_planet() -> bool:
                 planet_natural_id=to_update.planet_natural_id,
                 status_code=exc.response.status_code,
             )
+        elif isinstance(exc, httpx.TransportError):
+            # FIO slow or unreachable (timeout, dropped connection): expected, fio_request_failed has the error
+            logger.warning('planet_refresh_failed', planet_natural_id=to_update.planet_natural_id)
         else:
             logger.exception('planet_refresh_failed', planet_natural_id=to_update.planet_natural_id)
         to_update.update_refresh_result(error=exc)
@@ -269,6 +272,9 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
                     # retrying won't fix a rejected key: fail now; new credentials reset the row (user/signals.py)
                     to_update.fio_status_code = 401
                     to_update.automation_error_count = GameFIOPlayerData.MAX_RETRIES - 1
+            elif isinstance(exc, httpx.TransportError):
+                # FIO slow or unreachable: expected, fio_request_failed has the error
+                log.warning('fio_refresh_failed')
             else:
                 log.exception('fio_refresh_failed')
             to_update.update_refresh_result(error=exc, commit=False)

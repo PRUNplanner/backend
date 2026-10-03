@@ -124,8 +124,9 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
   outage. Beat has to run with `--scheduler core.beat:QueueDepthScheduler`.
 - Refresh failures: `fio_refresh_failed`, `planet_refresh_failed`,
   `planet_infrastructure_refresh_failed`, `cxpc_refresh_failed`,
-  `exchanges_refresh_failed`. A FIO error status is a warning with
-  `status_code`, anything else `logger.exception`.
+  `exchanges_refresh_failed`. A FIO error status (with `status_code`) or
+  transport error (timeout, dropped connection) is a warning, anything else
+  `logger.exception`.
 - Levels: `info` for a business event, `warning` for an expected failure
   (bad user FIO key, invalid webhook payload), `logger.exception` inside
   `except` for what needs a look. Log a failure once, where it's handled.
