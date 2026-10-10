@@ -82,6 +82,3 @@ blank_line_after_tag = "load,extends"
 format_css = true
 format_js = false
 max_line_length = 120
-
-[tool.coverage.run]
-omit = ["**/migrations/*", "manage.py", "core/config/*"]
