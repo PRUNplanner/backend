@@ -36,7 +36,7 @@ class TestCreateLegacyUser:
         assert mail.outbox == []
 
     def test_a_taken_email_is_renamed_instead_of_failing(self) -> None:
-        baker.make('user.User', email='vet@example.com')
+        baker.make('user.User', email='vet@example.com', is_email_verified=True)  # unverified would queue a task
 
         User.objects.create_legacy_user(
             id=4711, username='veteran', hashed_password=LEGACY_HASH, email='vet@example.com'
