@@ -2,6 +2,7 @@ import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from planning.models import PlanningShared
 from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
 
 pytestmark = pytest.mark.django_db
@@ -159,3 +160,27 @@ class TestSharedViewSetRetrieve:
         response = api_client.get(url)
 
         assert response.data['view_count'] == 2
+
+
+class TestSharedViewSetOwnership:
+    def test_create_rejects_another_users_plan(self, api_client, user_factory, plan_factory):
+        owner, stranger = user_factory(), user_factory()
+        plan = plan_factory(user=owner, plan_data=plan_data_vallis)
+
+        response = api_client.as_user(stranger).post(
+            reverse('planning:shared'), data={'plan': str(plan.uuid)}, format='json'
+        )
+
+        assert response.status_code == 400
+        assert 'plan' in response.data
+        assert not PlanningShared.objects.exists()
+
+    def test_list_only_returns_own_shares(self, api_client, user_factory, plan_factory, shared_factory):
+        owner, stranger = user_factory(), user_factory()
+        share = shared_factory(user=owner, plan=plan_factory(user=owner, plan_data=plan_data_vallis))
+        shared_factory(user=stranger, plan=plan_factory(user=stranger, plan_data=plan_data_vallis))
+
+        response = api_client.as_user(owner).get(reverse('planning:shared'))
+
+        assert response.status_code == 200
+        assert [row['uuid'] for row in response.data] == [str(share.uuid)]
