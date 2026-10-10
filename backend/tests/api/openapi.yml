@@ -1517,14 +1517,12 @@ components:
           maxLength: 7
         total_plans_analyzed:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         total_users:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         insights_data: {}
         last_updated:
           type: string
@@ -1739,34 +1737,28 @@ components:
           nullable: true
         pioneers:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         settlers:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         technicians:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         engineers:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         scientists:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         area_cost:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         building_type:
           enum:
           - PLANETARY
@@ -1797,9 +1789,8 @@ components:
           maxLength: 3
         material_amount:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - material_amount
       - material_ticker
@@ -1823,9 +1814,8 @@ components:
           readOnly: true
         traded_daily:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
           title: Daily Traded Amount
         vwap_daily:
           type: number
@@ -1837,9 +1827,8 @@ components:
           title: Daily VWAP
         sum_traded_7d:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
           title: 7d Traded Amount
         avg_traded_7d:
           type: number
@@ -1859,9 +1848,8 @@ components:
           title: 7d VWAP
         sum_traded_30d:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
           title: 30d Traded Amount
         avg_traded_30d:
           type: number
@@ -2221,59 +2209,48 @@ components:
           type: boolean
         simulation_period:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         next_population_pioneer:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         next_population_settler:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         next_population_technician:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         next_population_engineer:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         next_population_scientist:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         population_difference_pioneer:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         population_difference_settler:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         population_difference_technician:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         population_difference_engineer:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         population_difference_scientist:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         unemployment_rate_pioneer:
           type: number
           format: double
@@ -2339,29 +2316,24 @@ components:
           format: double
         free_pioneer:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         free_settler:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         free_technician:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         free_engineer:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
         free_scientist:
           type: integer
-          maximum: 9223372036854775807
-          minimum: -9223372036854775808
-          format: int64
+          maximum: 2147483647
+          minimum: -2147483648
       required:
       - average_happiness_engineer
       - average_happiness_pioneer
@@ -2456,9 +2428,8 @@ components:
           maxLength: 3
         time_ms:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - building_ticker
       - inputs
@@ -2474,9 +2445,8 @@ components:
           maxLength: 3
         material_amount:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - material_amount
       - material_ticker
@@ -2488,9 +2458,8 @@ components:
           maxLength: 3
         material_amount:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - material_amount
       - material_ticker
@@ -3053,14 +3022,12 @@ components:
           x-spec-enum-id: 4c91e1603ea5cbcd
         empire_permits_used:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 1
-          format: int64
         empire_permits_total:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 2
-          format: int64
         needs_state_sync:
           type: boolean
       required:
@@ -3122,14 +3089,12 @@ components:
           x-spec-enum-id: 4c91e1603ea5cbcd
         empire_permits_used:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 1
-          format: int64
         empire_permits_total:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 2
-          format: int64
         cx:
           allOf:
           - $ref: '#/components/schemas/PlanningCXMinimal'
