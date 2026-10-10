@@ -1,0 +1,3805 @@
+openapi: 3.0.3
+info:
+  title: PRUNplanner API
+  version: 1.0.0
+  description: API endpoints for PRUNplanner.org allowing Empire and Base planning
+    and management
+paths:
+  /analytics/planet_insights/{planet_natural_id}/:
+    get:
+      operationId: analytics_planet_insights_retrieve
+      summary: Fetch planet insights by Planet Natural Id
+      parameters:
+      - in: path
+        name: planet_natural_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - analytics
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsPlanAggregate'
+          description: ''
+  /analytics/planning_insights/materials/:
+    get:
+      operationId: analytics_planning_insights_materials_retrieve
+      summary: Fetch planning insights for materials
+      tags:
+      - analytics
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsMarketInsight'
+              examples:
+                MaterialInsightsExample:
+                  value:
+                  - - AAR
+                    - 30.3584
+                    - 12.8593
+                    - 17.4991
+                  - - ABH
+                    - 120.7919
+                    - 0.0
+                    - 120.7919
+                  summary: Example for positional array response
+          description: ''
+  /client-errors/:
+    post:
+      operationId: client_errors_create
+      description: Error reports from the frontend, logged as client_error (joined
+        to the failed call by failed_request_id).
+      summary: Report a frontend error
+      tags:
+      - client-errors
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientError'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ClientError'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ClientError'
+        required: true
+      responses:
+        '204':
+          description: No response body
+  /data/buildings/:
+    get:
+      operationId: data_buildings_list
+      summary: List all buildings
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameBuilding'
+          description: ''
+  /data/cxpc/{ticker}/:
+    get:
+      operationId: exchange_cxpc_all
+      summary: Get ticker CXPC data (All Exchanges)
+      parameters:
+      - in: path
+        name: ticker
+        schema:
+          type: string
+        required: true
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameExchangeCXPC'
+          description: ''
+  /data/cxpc/{ticker}/{exchange_code}/:
+    get:
+      operationId: exchange_cxpc_specific
+      summary: Get ticker CXPC data for specific Exchange
+      parameters:
+      - in: path
+        name: exchange_code
+        schema:
+          type: string
+        required: true
+      - in: path
+        name: ticker
+        schema:
+          type: string
+        required: true
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameExchangeCXPC'
+          description: ''
+  /data/exchanges/:
+    get:
+      operationId: data_exchanges_list
+      summary: List all exchanges
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameExchange'
+          description: ''
+  /data/exchanges/csv/:
+    get:
+      operationId: data_exchanges_csv_retrieve
+      summary: List all exchanges
+      tags:
+      - 'data : csv'
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+              examples:
+                CSVExample:
+                  value: |
+                    ticker,exchange_code,ticker_id,date_epoch,calendar_date,exchange_status,vwap_daily,vwap_7d,vwap_30d,traded_daily,sum_traded_7d,sum_traded_30d,avg_traded_7d,avg_traded_30d,ask,bid,supply,demand
+                    AAR,AI1,AAR.AI1,1772323200000,2026-03-01,ACTIVE,0.0,16100.0,16077.0,0.0,16.0,200.0,2.6666666666666665,11.764705882352942,500,200,5,42
+                    BBH,NC1,BBH.NC1,1772323200000,2026-03-01,ACTIVE,2900.0,2891.514476614699,2215.1506948034653,63.0,898.0,63831.0,128.28571428571428,2127.7,500,200,5,42
+                    OVE,AI1,OVE.AI1,1772323200000,2026-03-01,ACTIVE,128.66921119592877,128.372457796092,127.6020758545341,1572.0,7523.0,51256.0,1074.7142857142858,1708.5333333333333,500,200,5,42
+                  summary: Example of the CSV output
+          description: ''
+  /data/ingest/{token}:
+    post:
+      operationId: webhook_ingest
+      summary: Webhook Ingest
+      parameters:
+      - in: path
+        name: token
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - data
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+      responses:
+        '202':
+          description: Payload accepted and queued for processing
+        '400':
+          description: Invalid JSON structure received
+        '404':
+          description: Invalid or revoked webhook token
+  /data/materials/:
+    get:
+      operationId: data_materials_list
+      summary: List all materials
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameMaterial'
+          description: ''
+  /data/planet/{planet_natural_id}/:
+    get:
+      operationId: data_planet_retrieve
+      summary: Fetch a single planet by its Planet Natural Id
+      parameters:
+      - in: path
+        name: planet_natural_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GamePlanet'
+          description: ''
+  /data/planet/{planet_natural_id}/popr/:
+    get:
+      operationId: data_planet_popr_retrieve
+      summary: Get planets latest population report
+      parameters:
+      - in: path
+        name: planet_natural_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GamePlanetInfrastructureReport'
+          description: ''
+  /data/planets/:
+    get:
+      operationId: data_planets_list
+      summary: List all planets
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GamePlanet'
+          description: ''
+  /data/planets/{search_term}/:
+    get:
+      operationId: data_planets_retrieve
+      summary: Search a single planet by its Planet Natural Id or Name
+      parameters:
+      - in: path
+        name: search_term
+        schema:
+          type: string
+        required: true
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GamePlanet'
+          description: ''
+  /data/planets/multiple/:
+    post:
+      operationId: data_planets_multiple_create
+      summary: Fetch multiple planets by their Planet Natural Ids
+      tags:
+      - data
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                type: string
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GamePlanet'
+          description: ''
+  /data/planets/search/:
+    post:
+      operationId: data_planets_search_create
+      summary: Search for planets by various parameters
+      tags:
+      - data
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanetSearch'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanetSearch'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanetSearch'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GamePlanet'
+          description: ''
+  /data/planets/search-index/:
+    get:
+      operationId: data_planets_search_index_list
+      summary: Slim index of all planets for the client-side planet search
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanetSearchIndex'
+          description: ''
+  /data/recipes/:
+    get:
+      operationId: data_recipes_list
+      summary: List all recipes
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameRecipe'
+          description: ''
+  /data/storage/:
+    get:
+      operationId: data_storage_retrieve
+      summary: Retrieve users storage data
+      tags:
+      - data
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameStorage'
+          description: ''
+  /planning/cx/:
+    get:
+      operationId: planning_cx_list
+      summary: List all cx preferences
+      tags:
+      - 'planning : cx'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningCXDetail'
+          description: ''
+    post:
+      operationId: planning_cx_create
+      summary: Creates a new cx preference
+      tags:
+      - 'planning : cx'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningCXDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningCXDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningCXDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningCXDetail'
+          description: ''
+  /planning/cx/{id}/:
+    get:
+      operationId: planning_cx_retrieve
+      summary: Get a users specific cx preference
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : cx'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningCXDetail'
+          description: ''
+    put:
+      operationId: planning_cx_update
+      summary: Updates an existing cx preference
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : cx'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningCXDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningCXDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningCXDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningCXDetail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningSaveConflict'
+          description: ''
+    delete:
+      operationId: planning_cx_destroy
+      summary: Delete a specific cx preference
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : cx'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+  /planning/cx/junctions/:
+    post:
+      operationId: planning_cx_junctions_create
+      summary: Update cx-empire junctions
+      tags:
+      - 'planning : cx'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanningCXJunctionUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanningCXJunctionUpdate'
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanningCXJunctionUpdate'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningCXDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningCXJunctionsSyncError'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningCXJunctionsSyncError'
+          description: ''
+  /planning/empire/:
+    get:
+      operationId: planning_empire_list
+      summary: List all users empires
+      tags:
+      - 'planning : empire'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+    post:
+      operationId: planning_empire_create
+      summary: Creates a new empire
+      tags:
+      - 'planning : empire'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningEmpireDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningEmpireDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningEmpireDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+  /planning/empire/{id}/:
+    get:
+      operationId: planning_empire_retrieve
+      summary: Get a users specific empire
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : empire'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+    put:
+      operationId: planning_empire_update
+      summary: Updates an existing exmpire
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : empire'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningEmpireDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningEmpireDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningEmpireDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningSaveConflict'
+          description: ''
+    delete:
+      operationId: planning_empire_destroy
+      summary: Delete a specific plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : empire'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+  /planning/empire/{id}/plans/:
+    get:
+      operationId: planning_empire_plans_retrieve
+      summary: Get all plans of the users specific empire
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : empire'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+  /planning/empire/{id}/state/:
+    patch:
+      operationId: planning_empire_state_partial_update
+      summary: Sync empire state (empire material i/o, plan material i/o and metadata)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : empire'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanningEmpireStateUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanningEmpireStateUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanningEmpireStateUpdate'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+  /planning/empire/junctions/:
+    post:
+      operationId: planning_empire_junctions_create
+      summary: Update empire-plan junctions
+      tags:
+      - 'planning : empire'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanningEmpireJunctions'
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanningEmpireJunctions'
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/PlanningEmpireJunctions'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpirePlanSyncError'
+          description: ''
+  /planning/plan/:
+    get:
+      operationId: planning_plan_list
+      summary: List all users plans
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningPlanDetail'
+          description: ''
+    post:
+      operationId: planning_plan_create
+      summary: Creates a new plan
+      tags:
+      - 'planning : plans'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDetail'
+          description: ''
+  /planning/plan/{id}/:
+    get:
+      operationId: planning_plan_retrieve
+      summary: Get a users specific plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDetail'
+          description: ''
+    put:
+      operationId: planning_plan_update
+      summary: Updates an existing plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDetail'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningSaveConflict'
+          description: ''
+    delete:
+      operationId: planning_plan_destroy
+      summary: Delete a specific plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+  /planning/plan/{id}/clone/:
+    post:
+      operationId: planning_plan_clone_create
+      summary: Clone an existing plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDetail'
+          description: ''
+  /planning/shared/:
+    get:
+      operationId: planning_shared_list
+      summary: List all shared plans of the user
+      tags:
+      - 'planning : shared'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningShared'
+          description: ''
+    post:
+      operationId: planning_shared_create
+      summary: Share a plan
+      tags:
+      - 'planning : shared'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningSharedCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningSharedCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningSharedCreate'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningSharedCreate'
+          description: ''
+  /planning/shared/{id}/:
+    get:
+      operationId: planning_shared_retrieve
+      summary: Get a shared plans information
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : shared'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningSharedDetail'
+          description: ''
+    delete:
+      operationId: planning_shared_destroy
+      summary: Delete plan share
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : shared'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+  /planning/shared/{id}/clone/:
+    post:
+      operationId: planning_shared_clone_create
+      summary: Clone a shared plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : shared'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningShared'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningShared'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningShared'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningShared'
+          description: ''
+  /user/api/keys/:
+    get:
+      operationId: user_api_keys_list
+      tags:
+      - 'user : api'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserAPIKey'
+          description: ''
+    post:
+      operationId: user_api_keys_create
+      summary: Create API Key
+      tags:
+      - 'user : api'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserAPIKeyCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserAPIKeyCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserAPIKeyCreate'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserAPIKeyCreate'
+          description: ''
+  /user/api/keys/{id}/:
+    delete:
+      operationId: user_api_keys_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+        required: true
+      tags:
+      - 'user : api'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+  /user/change_password/:
+    post:
+      operationId: user_change_password_create
+      summary: Change password
+      tags:
+      - 'user : profile'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserChangePassword'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserChangePassword'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserChangePassword'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserChangePassword'
+          description: ''
+  /user/login/:
+    post:
+      operationId: user_login_create
+      description: |-
+        Takes a set of user credentials and returns an access and refresh JSON web
+        token pair to prove the authentication of those credentials.
+      summary: Login and retrieve tokens
+      tags:
+      - 'user : authentication'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenObtainPair'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenObtainPair'
+          description: ''
+  /user/password_reset/:
+    post:
+      operationId: user_password_reset_create
+      summary: Confirm password reset with code
+      tags:
+      - 'user : authentication'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+  /user/preferences/:
+    get:
+      operationId: user_preferences_retrieve
+      summary: Get preferences
+      tags:
+      - 'user : profile'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreference'
+          description: ''
+    patch:
+      operationId: user_preferences_partial_update
+      summary: Update preferences
+      tags:
+      - 'user : profile'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserPreference'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserPreference'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserPreference'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreference'
+          description: ''
+  /user/profile/:
+    get:
+      operationId: user_profile_retrieve
+      summary: Get profile password
+      tags:
+      - 'user : profile'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+          description: ''
+    patch:
+      operationId: user_profile_partial_update
+      summary: Update profile
+      tags:
+      - 'user : profile'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserProfile'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserProfile'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserProfile'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+          description: ''
+  /user/refresh/:
+    post:
+      operationId: user_refresh_create
+      description: |-
+        Takes a refresh type JSON web token and returns an access type JSON web
+        token if the refresh token is valid.
+      summary: Refresh access token
+      tags:
+      - 'user : authentication'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefresh'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /user/request_email_verification/:
+    post:
+      operationId: user_request_email_verification_create
+      summary: Request email verification
+      tags:
+      - 'user : authentication'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+  /user/request_password_reset/:
+    post:
+      operationId: user_request_password_reset_create
+      summary: Request password reset code
+      tags:
+      - 'user : authentication'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+  /user/signup/:
+    post:
+      operationId: user_signup_create
+      summary: Register account
+      tags:
+      - 'user : authentication'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegister'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UserRegister'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UserRegister'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRegister'
+          description: ''
+  /user/verify_email/:
+    post:
+      operationId: user_verify_email_create
+      summary: Verify email
+      tags:
+      - 'user : authentication'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyCode'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/VerifyCode'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/VerifyCode'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodeGenericResponse'
+          description: ''
+components:
+  schemas:
+    AnalyticsMarketInsight:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+            description: 'Indices: 0: ticker, 1: production, 2: consumption, 3: delta'
+            maxItems: 3
+            minItems: 1
+      required:
+      - data
+    AnalyticsPlanAggregate:
+      type: object
+      properties:
+        status:
+          type: string
+          readOnly: true
+        planet_natural_id:
+          type: string
+          maxLength: 7
+        total_plans_analyzed:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        total_users:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        insights_data: {}
+        last_updated:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - last_updated
+      - planet_natural_id
+      - status
+    ClientError:
+      type: object
+      description: An error report from the browser; every field bounded, since each
+        becomes an Axiom column.
+      properties:
+        kind:
+          enum:
+          - validation
+          - server
+          - network
+          - client
+          type: string
+          description: |-
+            * `validation` - validation
+            * `server` - server
+            * `network` - network
+            * `client` - client
+          x-spec-enum-id: 6fdf1f1f7fae4a4d
+        method:
+          enum:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          type: string
+          description: |-
+            * `GET` - GET
+            * `POST` - POST
+            * `PUT` - PUT
+            * `PATCH` - PATCH
+            * `DELETE` - DELETE
+          x-spec-enum-id: 867bf764d3b1eeaa
+        path_template:
+          type: string
+          maxLength: 200
+          pattern: ^/
+        status:
+          type: integer
+          maximum: 599
+          minimum: 100
+          nullable: true
+        failed_request_id:
+          type: string
+          format: uuid
+          nullable: true
+        issues:
+          type: array
+          items:
+            type: string
+            maxLength: 200
+          maxItems: 20
+        client_ms:
+          type: integer
+          minimum: 0
+          nullable: true
+        release:
+          type: string
+          maxLength: 40
+        route_name:
+          type: string
+          nullable: true
+          maxLength: 80
+      required:
+      - kind
+      - method
+      - path_template
+      - release
+    CodeGenericResponse:
+      type: object
+      properties:
+        detail:
+          type: string
+      required:
+      - detail
+    FIOUserSiteBuildingResponse:
+      type: object
+      properties:
+        BuildingTicker:
+          type: string
+          maxLength: 3
+          minLength: 2
+        BuildingLastRepair:
+          type: integer
+          nullable: true
+        Condition:
+          type: number
+          format: double
+          minimum: 0.0
+        ReclaimableMaterials:
+          type: array
+          items:
+            $ref: '#/components/schemas/FIOUserSiteMaterialResponse'
+        RepairMaterials:
+          type: array
+          items:
+            $ref: '#/components/schemas/FIOUserSiteMaterialResponseRef'
+      required:
+      - BuildingLastRepair
+      - BuildingTicker
+      - Condition
+      - ReclaimableMaterials
+      - RepairMaterials
+    FIOUserSiteMaterialResponse:
+      type: object
+      properties:
+        MaterialTicker:
+          type: string
+          maxLength: 3
+          minLength: 1
+        MaterialAmount:
+          type: integer
+          minimum: 0
+      required:
+      - MaterialAmount
+      - MaterialTicker
+    FIOUserSiteMaterialResponseRef:
+      type: object
+      properties:
+        MaterialTicker:
+          type: string
+          maxLength: 3
+          minLength: 1
+        MaterialAmount:
+          type: integer
+          minimum: 0
+      required:
+      - MaterialAmount
+      - MaterialTicker
+    FIOUserSiteResponse:
+      type: object
+      properties:
+        PlanetIdentifier:
+          type: string
+          minLength: 7
+        PlanetName:
+          type: string
+          nullable: true
+        PlanetFoundedEpochMs:
+          type: integer
+        InvestedPermits:
+          type: integer
+        MaximumPermits:
+          type: integer
+        Buildings:
+          type: array
+          items:
+            $ref: '#/components/schemas/FIOUserSiteBuildingResponse'
+      required:
+      - Buildings
+      - InvestedPermits
+      - MaximumPermits
+      - PlanetFoundedEpochMs
+      - PlanetIdentifier
+      - PlanetName
+    GameBuilding:
+      type: object
+      description: Mixin to serialize '' as None for nullable fields that may still
+        hold a blank value.
+      properties:
+        costs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameBuildingCost'
+          readOnly: true
+        habitations:
+          type: object
+          additionalProperties:
+            type: integer
+          nullable: true
+          readOnly: true
+        building_name:
+          type: string
+          maxLength: 255
+        building_ticker:
+          type: string
+          maxLength: 3
+        expertise:
+          enum:
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - FUEL_REFINING
+          - ''
+          - null
+          type: string
+          description: |-
+            * `AGRICULTURE` - Agriculture
+            * `CHEMISTRY` - Chemistry
+            * `CONSTRUCTION` - Construction
+            * `ELECTRONICS` - Electronics
+            * `FOOD_INDUSTRIES` - Food Industries
+            * `MANUFACTURING` - Manufacturing
+            * `METALLURGY` - Metallurgy
+            * `RESOURCE_EXTRACTION` - Resource Extraction
+            * `FUEL_REFINING` - Fuel Refining
+          x-spec-enum-id: 5c92688ffeca9fac
+          nullable: true
+        pioneers:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        settlers:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        technicians:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        engineers:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        scientists:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        area_cost:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        building_type:
+          enum:
+          - PLANETARY
+          - INFRASTRUCTURE
+          - PRODUCTION
+          type: string
+          description: |-
+            * `PLANETARY` - Planetary
+            * `INFRASTRUCTURE` - Infrastructure
+            * `PRODUCTION` - Production
+          x-spec-enum-id: 4545f2642bdbbce8
+      required:
+      - area_cost
+      - building_name
+      - building_ticker
+      - costs
+      - engineers
+      - habitations
+      - pioneers
+      - scientists
+      - settlers
+      - technicians
+    GameBuildingCost:
+      type: object
+      properties:
+        material_ticker:
+          type: string
+          maxLength: 3
+        material_amount:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - material_amount
+      - material_ticker
+    GameExchange:
+      type: object
+      properties:
+        ticker:
+          type: string
+          maxLength: 20
+        exchange_code:
+          type: string
+          maxLength: 20
+        calendar_date:
+          type: string
+          format: date
+        ticker_id:
+          type: string
+          readOnly: true
+        exchange_status:
+          type: string
+          readOnly: true
+        traded_daily:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          title: Daily Traded Amount
+        vwap_daily:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          title: Daily VWAP
+        sum_traded_7d:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          title: 7d Traded Amount
+        avg_traded_7d:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          title: 7d Traded Average
+        vwap_7d:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          title: 7d VWAP
+        sum_traded_30d:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+          title: 30d Traded Amount
+        avg_traded_30d:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          title: 30d Traded Average
+        vwap_30d:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          title: 30d VWAP
+        ask:
+          type: number
+          format: double
+          readOnly: true
+          nullable: true
+        bid:
+          type: number
+          format: double
+          readOnly: true
+          nullable: true
+        supply:
+          type: number
+          format: double
+          readOnly: true
+          nullable: true
+        demand:
+          type: number
+          format: double
+          readOnly: true
+          nullable: true
+      required:
+      - ask
+      - avg_traded_30d
+      - avg_traded_7d
+      - bid
+      - calendar_date
+      - demand
+      - exchange_code
+      - exchange_status
+      - sum_traded_30d
+      - sum_traded_7d
+      - supply
+      - ticker
+      - ticker_id
+      - traded_daily
+      - vwap_30d
+      - vwap_7d
+      - vwap_daily
+    GameExchangeCXPC:
+      type: object
+      properties:
+        ticker:
+          type: string
+          readOnly: true
+        exchange_code:
+          enum:
+          - AI1
+          - CI1
+          - CI2
+          - IC1
+          - NC1
+          - NC2
+          - UNIVERSE
+          type: string
+          description: |-
+            * `AI1` - Ai1
+            * `CI1` - Ci1
+            * `CI2` - Ci2
+            * `IC1` - Ic1
+            * `NC1` - Nc1
+            * `NC2` - Nc2
+            * `UNIVERSE` - Universe
+          x-spec-enum-id: 01a5e41b2750de3e
+          readOnly: true
+        date_epoch:
+          type: integer
+          readOnly: true
+        open_p:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          readOnly: true
+          title: Open Price
+        close_p:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          readOnly: true
+          title: Close Price
+        high_p:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          readOnly: true
+          title: High Price
+        low_p:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          readOnly: true
+          title: Low Price
+        volume:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          readOnly: true
+          title: Price Volume
+        traded:
+          type: number
+          format: double
+          maximum: 10000000000000000
+          minimum: -10000000000000000
+          exclusiveMaximum: true
+          exclusiveMinimum: true
+          readOnly: true
+          title: Traded Amount
+      required:
+      - close_p
+      - date_epoch
+      - exchange_code
+      - high_p
+      - low_p
+      - open_p
+      - ticker
+      - traded
+      - volume
+    GameMaterial:
+      type: object
+      properties:
+        material_id:
+          type: string
+          maxLength: 32
+        category_name:
+          type: string
+          maxLength: 255
+        category_id:
+          type: string
+          maxLength: 32
+        name:
+          type: string
+          maxLength: 255
+        ticker:
+          type: string
+          maxLength: 3
+        weight:
+          type: number
+          format: double
+        volume:
+          type: number
+          format: double
+      required:
+      - category_id
+      - category_name
+      - material_id
+      - name
+      - ticker
+      - volume
+      - weight
+    GamePlanet:
+      type: object
+      description: Mixin to serialize '' as None for nullable fields that may still
+        hold a blank value.
+      properties:
+        planet_id:
+          type: string
+          readOnly: true
+        planet_natural_id:
+          type: string
+        planet_name:
+          type: string
+        system_id:
+          type: string
+          maxLength: 32
+        has_localmarket:
+          type: boolean
+        has_chamberofcommerce:
+          type: boolean
+        has_warehouse:
+          type: boolean
+        has_administrationcenter:
+          type: boolean
+        has_shipyard:
+          type: boolean
+        pressure:
+          type: number
+          format: double
+        surface:
+          type: boolean
+        gravity:
+          type: number
+          format: double
+        temperature:
+          type: number
+          format: double
+        fertility:
+          type: number
+          format: double
+        faction_code:
+          enum:
+          - NC
+          - CI
+          - AI
+          - IC
+          - ''
+          - null
+          type: string
+          description: |-
+            * `NC` - Nc
+            * `CI` - Ci
+            * `AI` - Ai
+            * `IC` - Ic
+          x-spec-enum-id: d3f249caaa01b6b5
+          nullable: true
+        faction_name:
+          enum:
+          - NEO Charter Exploration
+          - Castillo-Ito Mercantile
+          - Antares Initiative
+          - Insitor Cooperative
+          - ''
+          - null
+          type: string
+          description: |-
+            * `NEO Charter Exploration` - Neo Charter Exploration
+            * `Castillo-Ito Mercantile` - Castillo Ito Mercantile
+            * `Antares Initiative` - Antares Initiative
+            * `Insitor Cooperative` - Insitor Cooperative
+          x-spec-enum-id: 604570cad0eb876e
+          nullable: true
+        cogc_program_status:
+          enum:
+          - ACTIVE
+          - PLANNED
+          - ON_STRIKE
+          - ''
+          - null
+          type: string
+          description: |-
+            * `ACTIVE` - Active
+            * `PLANNED` - Planned
+            * `ON_STRIKE` - On Strike
+          x-spec-enum-id: f96e779caf00df52
+          nullable: true
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/GamePlanetResource'
+          readOnly: true
+        cogc_programs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GamePlanetCOGCProgram'
+          readOnly: true
+        active_cogc_program_type:
+          type: string
+          readOnly: true
+        production_fees:
+          allOf:
+          - $ref: '#/components/schemas/PlanetProductionFeeSchema'
+          readOnly: true
+      required:
+      - active_cogc_program_type
+      - cogc_programs
+      - fertility
+      - gravity
+      - has_administrationcenter
+      - has_chamberofcommerce
+      - has_localmarket
+      - has_shipyard
+      - has_warehouse
+      - planet_id
+      - planet_natural_id
+      - pressure
+      - production_fees
+      - resources
+      - surface
+      - system_id
+      - temperature
+    GamePlanetCOGCProgram:
+      type: object
+      properties:
+        program_type:
+          enum:
+          - ADVERTISING_AGRICULTURE
+          - ADVERTISING_CHEMISTRY
+          - ADVERTISING_CONSTRUCTION
+          - ADVERTISING_ELECTRONICS
+          - ADVERTISING_FOOD_INDUSTRIES
+          - ADVERTISING_FUEL_REFINING
+          - ADVERTISING_MANUFACTURING
+          - ADVERTISING_METALLURGY
+          - ADVERTISING_RESOURCE_EXTRACTION
+          - WORKFORCE_PIONEERS
+          - WORKFORCE_SETTLERS
+          - WORKFORCE_TECHNICIANS
+          - WORKFORCE_ENGINEERS
+          - WORKFORCE_SCIENTISTS
+          - ''
+          - null
+          type: string
+          description: |-
+            * `ADVERTISING_AGRICULTURE` - Agriculture
+            * `ADVERTISING_CHEMISTRY` - Chemistry
+            * `ADVERTISING_CONSTRUCTION` - Construction
+            * `ADVERTISING_ELECTRONICS` - Electronics
+            * `ADVERTISING_FOOD_INDUSTRIES` - Food Industries
+            * `ADVERTISING_FUEL_REFINING` - Fuel Refining
+            * `ADVERTISING_MANUFACTURING` - Manufacturing
+            * `ADVERTISING_METALLURGY` - Metallurgy
+            * `ADVERTISING_RESOURCE_EXTRACTION` - Resource Extraction
+            * `WORKFORCE_PIONEERS` - Workforce Pioneers
+            * `WORKFORCE_SETTLERS` - Workforce Settlers
+            * `WORKFORCE_TECHNICIANS` - Workforce Technicians
+            * `WORKFORCE_ENGINEERS` - Workforce Engineers
+            * `WORKFORCE_SCIENTISTS` - Workforce Scientists
+          x-spec-enum-id: 1193e2b08441676e
+          nullable: true
+        start_epochms:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        end_epochms:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+      required:
+      - end_epochms
+      - start_epochms
+    GamePlanetInfrastructureReport:
+      type: object
+      properties:
+        explorers_grace_enabled:
+          type: boolean
+        simulation_period:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        next_population_pioneer:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        next_population_settler:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        next_population_technician:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        next_population_engineer:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        next_population_scientist:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        population_difference_pioneer:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        population_difference_settler:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        population_difference_technician:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        population_difference_engineer:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        population_difference_scientist:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        unemployment_rate_pioneer:
+          type: number
+          format: double
+        unemployment_rate_settler:
+          type: number
+          format: double
+        unemployment_rate_technician:
+          type: number
+          format: double
+        unemployment_rate_engineer:
+          type: number
+          format: double
+        unemployment_rate_scientist:
+          type: number
+          format: double
+        open_jobs_pioneer:
+          type: number
+          format: double
+        open_jobs_settler:
+          type: number
+          format: double
+        open_jobs_technician:
+          type: number
+          format: double
+        open_jobs_engineer:
+          type: number
+          format: double
+        open_jobs_scientist:
+          type: number
+          format: double
+        average_happiness_pioneer:
+          type: number
+          format: double
+        average_happiness_settler:
+          type: number
+          format: double
+        average_happiness_technician:
+          type: number
+          format: double
+        average_happiness_engineer:
+          type: number
+          format: double
+        average_happiness_scientist:
+          type: number
+          format: double
+        need_fulfillment_life_support:
+          type: number
+          format: double
+        need_fulfillment_safety:
+          type: number
+          format: double
+        need_fulfillment_health:
+          type: number
+          format: double
+        need_fulfillment_comfort:
+          type: number
+          format: double
+        need_fulfillment_culture:
+          type: number
+          format: double
+        need_fulfillment_education:
+          type: number
+          format: double
+        free_pioneer:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        free_settler:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        free_technician:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        free_engineer:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+        free_scientist:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: -9223372036854775808
+          format: int64
+      required:
+      - average_happiness_engineer
+      - average_happiness_pioneer
+      - average_happiness_scientist
+      - average_happiness_settler
+      - average_happiness_technician
+      - explorers_grace_enabled
+      - free_engineer
+      - free_pioneer
+      - free_scientist
+      - free_settler
+      - free_technician
+      - need_fulfillment_comfort
+      - need_fulfillment_culture
+      - need_fulfillment_education
+      - need_fulfillment_health
+      - need_fulfillment_life_support
+      - need_fulfillment_safety
+      - next_population_engineer
+      - next_population_pioneer
+      - next_population_scientist
+      - next_population_settler
+      - next_population_technician
+      - open_jobs_engineer
+      - open_jobs_pioneer
+      - open_jobs_scientist
+      - open_jobs_settler
+      - open_jobs_technician
+      - population_difference_engineer
+      - population_difference_pioneer
+      - population_difference_scientist
+      - population_difference_settler
+      - population_difference_technician
+      - simulation_period
+      - unemployment_rate_engineer
+      - unemployment_rate_pioneer
+      - unemployment_rate_scientist
+      - unemployment_rate_settler
+      - unemployment_rate_technician
+    GamePlanetResource:
+      type: object
+      properties:
+        resource_type:
+          enum:
+          - GASEOUS
+          - LIQUID
+          - MINERAL
+          type: string
+          description: |-
+            * `GASEOUS` - Gaseous
+            * `LIQUID` - Liquid
+            * `MINERAL` - Mineral
+          x-spec-enum-id: aa7783350dcd0b91
+        factor:
+          type: number
+          format: double
+        daily_extraction:
+          type: number
+          format: double
+        material_ticker:
+          type: string
+          maxLength: 3
+        max_daily_extraction:
+          type: number
+          format: double
+      required:
+      - factor
+      - resource_type
+    GameRecipe:
+      type: object
+      properties:
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameRecipeInput'
+          readOnly: true
+        outputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameRecipeOutput'
+          readOnly: true
+        recipe_id:
+          type: string
+          description: 'Composite ID formatted as ''BUILDING_TICKER#RECIPE_NAME''.
+            Example: ''BMP#100xPE 25xPG=>20xOVE'''
+          readOnly: true
+        recipe_name:
+          type: string
+          maxLength: 255
+        building_ticker:
+          type: string
+          maxLength: 3
+        time_ms:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - building_ticker
+      - inputs
+      - outputs
+      - recipe_id
+      - recipe_name
+      - time_ms
+    GameRecipeInput:
+      type: object
+      properties:
+        material_ticker:
+          type: string
+          maxLength: 3
+        material_amount:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - material_amount
+      - material_ticker
+    GameRecipeOutput:
+      type: object
+      properties:
+        material_ticker:
+          type: string
+          maxLength: 3
+        material_amount:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - material_amount
+      - material_ticker
+    GameStorage:
+      type: object
+      description: |-
+        Structure:
+            sites_data: [natural identifier]: sites data
+            storage_data:
+                planets (STORE)
+                warehouses (WAREHOUSE_STORE)
+                ships (SHIP_STORE)
+                - all dicts via [natural identifier]: storage data
+            last_modified: storage last update
+      properties:
+        storage_data:
+          allOf:
+          - $ref: '#/components/schemas/StorageDataMap'
+          readOnly: true
+        sites_data:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/FIOUserSiteResponse'
+          readOnly: true
+        last_modified:
+          type: string
+          format: date-time
+      required:
+      - last_modified
+      - sites_data
+      - storage_data
+    PasswordResetConfirm:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          writeOnly: true
+          maxLength: 8
+          minLength: 8
+        new_password:
+          type: string
+          writeOnly: true
+      required:
+      - code
+      - email
+      - new_password
+    PasswordResetRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    PatchedPlanningEmpireStateUpdate:
+      type: object
+      properties:
+        metadata:
+          $ref: '#/components/schemas/PlanningEmpireMetadata'
+        empire_total:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PlanningEmpireMaterialIO'
+        plan_details:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SinglePlanDetail'
+    PatchedUserPreference:
+      type: object
+      description: Mixin to convert complex Python objects into JSON-primitive types.
+      properties:
+        locale:
+          type: string
+          nullable: true
+        defaultEmpireUuid:
+          type: string
+          format: uuid
+          nullable: true
+        defaultCXUuid:
+          type: string
+          format: uuid
+          nullable: true
+        defaultBuyItemsFromCX:
+          type: boolean
+        burnDaysRed:
+          type: integer
+          minimum: 0
+          default: 5
+        burnDaysYellow:
+          type: integer
+          minimum: 0
+          default: 10
+        burnResupplyDays:
+          type: integer
+          minimum: 0
+          default: 18
+        burnOrigin:
+          type: string
+        supplyCartDays:
+          type: number
+          format: double
+          minimum: 0
+          default: 20.0
+        layoutNavigationStyle:
+          enum:
+          - full
+          - collapsed
+          type: string
+          description: |-
+            * `full` - full
+            * `collapsed` - collapsed
+          x-spec-enum-id: 2d06715f919f35f4
+        colorPalette:
+          enum:
+          - default
+          - colorblind
+          type: string
+          description: |-
+            * `default` - default
+            * `colorblind` - colorblind
+          x-spec-enum-id: 39f56c4614795699
+        planSuggestions:
+          type: boolean
+        planOverrides:
+          type: object
+          additionalProperties:
+            allOf:
+            - $ref: '#/components/schemas/PlanOverride'
+            nullable: true
+    PatchedUserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        prun_username:
+          type: string
+          nullable: true
+          maxLength: 255
+        fio_apikey:
+          type: string
+          nullable: true
+          maxLength: 255
+        is_email_verified:
+          type: boolean
+        fio_status:
+          enum:
+          - none
+          - syncing
+          - ok
+          - no_data
+          - invalid_credentials
+          - error
+          type: string
+          description: |-
+            * `none` - none
+            * `syncing` - syncing
+            * `ok` - ok
+            * `no_data` - no_data
+            * `invalid_credentials` - invalid_credentials
+            * `error` - error
+          x-spec-enum-id: d20eaefb4ee2474a
+          readOnly: true
+        fio_last_refreshed_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+    PlanOverride:
+      type: object
+      properties:
+        includeCM:
+          type: boolean
+          default: false
+        visitationMaterialExclusions:
+          type: array
+          items:
+            type: string
+        autoOptimizeHabs:
+          type: boolean
+          default: true
+        constructionBuilt:
+          type: object
+          additionalProperties:
+            type: integer
+            minimum: 0
+    PlanetProductionFeeSchema:
+      type: object
+      properties:
+        currency:
+          enum:
+          - NCC
+          - CIS
+          - AIC
+          - ICA
+          type: string
+          description: |-
+            * `NCC` - Ncc
+            * `CIS` - Cis
+            * `AIC` - Aic
+            * `ICA` - Ica
+          x-spec-enum-id: 97573103d514b88f
+        fees:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: number
+              format: double
+            description: '[PIONEER, SETTLER, TECHNICIAN, ENGINEER, SCIENTIST]'
+            maxItems: 5
+            minItems: 5
+          description: 'Dictionary keys are Building Categories (GameBuildingExpertiseChoices).
+            Valid keys include: AGRICULTURE, CHEMISTRY, CONSTRUCTION, ELECTRONICS,
+            FOOD_INDUSTRIES, MANUFACTURING, METALLURGY, RESOURCE_EXTRACTION, FUEL_REFINING'
+      required:
+      - currency
+      - fees
+    PlanetSearch:
+      type: object
+      properties:
+        materials:
+          type: array
+          items:
+            type: string
+        cogc_programs:
+          type: array
+          items:
+            enum:
+            - ADVERTISING_AGRICULTURE
+            - ADVERTISING_CHEMISTRY
+            - ADVERTISING_CONSTRUCTION
+            - ADVERTISING_ELECTRONICS
+            - ADVERTISING_FOOD_INDUSTRIES
+            - ADVERTISING_FUEL_REFINING
+            - ADVERTISING_MANUFACTURING
+            - ADVERTISING_METALLURGY
+            - ADVERTISING_RESOURCE_EXTRACTION
+            - WORKFORCE_PIONEERS
+            - WORKFORCE_SETTLERS
+            - WORKFORCE_TECHNICIANS
+            - WORKFORCE_ENGINEERS
+            - WORKFORCE_SCIENTISTS
+            type: string
+            description: |-
+              * `ADVERTISING_AGRICULTURE` - Agriculture
+              * `ADVERTISING_CHEMISTRY` - Chemistry
+              * `ADVERTISING_CONSTRUCTION` - Construction
+              * `ADVERTISING_ELECTRONICS` - Electronics
+              * `ADVERTISING_FOOD_INDUSTRIES` - Food Industries
+              * `ADVERTISING_FUEL_REFINING` - Fuel Refining
+              * `ADVERTISING_MANUFACTURING` - Manufacturing
+              * `ADVERTISING_METALLURGY` - Metallurgy
+              * `ADVERTISING_RESOURCE_EXTRACTION` - Resource Extraction
+              * `WORKFORCE_PIONEERS` - Workforce Pioneers
+              * `WORKFORCE_SETTLERS` - Workforce Settlers
+              * `WORKFORCE_TECHNICIANS` - Workforce Technicians
+              * `WORKFORCE_ENGINEERS` - Workforce Engineers
+              * `WORKFORCE_SCIENTISTS` - Workforce Scientists
+            x-spec-enum-id: 1193e2b08441676e
+        must_be_fertile:
+          type: boolean
+        environment_rocky:
+          type: boolean
+        environment_gaseous:
+          type: boolean
+        environment_low_gravity:
+          type: boolean
+        environment_high_gravity:
+          type: boolean
+        environment_low_pressure:
+          type: boolean
+        environment_high_pressure:
+          type: boolean
+        environment_low_temperature:
+          type: boolean
+        environment_high_temperature:
+          type: boolean
+        must_have_localmarket:
+          type: boolean
+        must_have_chamberofcommerce:
+          type: boolean
+        must_have_warehouse:
+          type: boolean
+        must_have_administrationcenter:
+          type: boolean
+        must_have_shipyard:
+          type: boolean
+      required:
+      - cogc_programs
+      - environment_gaseous
+      - environment_high_gravity
+      - environment_high_pressure
+      - environment_high_temperature
+      - environment_low_gravity
+      - environment_low_pressure
+      - environment_low_temperature
+      - environment_rocky
+      - materials
+      - must_be_fertile
+      - must_have_administrationcenter
+      - must_have_chamberofcommerce
+      - must_have_localmarket
+      - must_have_shipyard
+      - must_have_warehouse
+    PlanetSearchIndex:
+      type: object
+      description: Slim planet shape for the client-side planet search; cogc_programs
+        are expected prefetched unexpired.
+      properties:
+        planet_natural_id:
+          type: string
+        planet_name:
+          type: string
+        system_id:
+          type: string
+          maxLength: 32
+        surface:
+          type: boolean
+        gravity_type:
+          enum:
+          - NORMAL
+          - HIGH
+          - LOW
+          type: string
+          description: |-
+            * `NORMAL` - Normal
+            * `HIGH` - High
+            * `LOW` - Low
+          x-spec-enum-id: 667bff964a5be895
+        pressure_type:
+          enum:
+          - NORMAL
+          - HIGH
+          - LOW
+          type: string
+          description: |-
+            * `NORMAL` - Normal
+            * `HIGH` - High
+            * `LOW` - Low
+          x-spec-enum-id: 667bff964a5be895
+        temperature_type:
+          enum:
+          - NORMAL
+          - HIGH
+          - LOW
+          type: string
+          description: |-
+            * `NORMAL` - Normal
+            * `HIGH` - High
+            * `LOW` - Low
+          x-spec-enum-id: 667bff964a5be895
+        fertility:
+          type: number
+          format: double
+          readOnly: true
+        has_localmarket:
+          type: boolean
+        has_chamberofcommerce:
+          type: boolean
+        has_warehouse:
+          type: boolean
+        has_administrationcenter:
+          type: boolean
+        has_shipyard:
+          type: boolean
+        cogc_program_status:
+          enum:
+          - ACTIVE
+          - PLANNED
+          - ON_STRIKE
+          - ''
+          - null
+          type: string
+          description: |-
+            * `ACTIVE` - Active
+            * `PLANNED` - Planned
+            * `ON_STRIKE` - On Strike
+          x-spec-enum-id: f96e779caf00df52
+          nullable: true
+        cogc_programs:
+          type: array
+          items:
+            $ref: '#/components/schemas/GamePlanetCOGCProgram'
+          readOnly: true
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanetSearchIndexResource'
+          readOnly: true
+      required:
+      - cogc_programs
+      - fertility
+      - has_administrationcenter
+      - has_chamberofcommerce
+      - has_localmarket
+      - has_shipyard
+      - has_warehouse
+      - planet_natural_id
+      - resources
+      - surface
+      - system_id
+    PlanetSearchIndexResource:
+      type: object
+      properties:
+        material_ticker:
+          type: string
+          maxLength: 3
+        resource_type:
+          enum:
+          - GASEOUS
+          - LIQUID
+          - MINERAL
+          type: string
+          description: |-
+            * `GASEOUS` - Gaseous
+            * `LIQUID` - Liquid
+            * `MINERAL` - Mineral
+          x-spec-enum-id: aa7783350dcd0b91
+        daily_extraction:
+          type: number
+          format: double
+          readOnly: true
+        max_daily_extraction:
+          type: number
+          format: double
+          readOnly: true
+      required:
+      - daily_extraction
+      - max_daily_extraction
+      - resource_type
+    PlanningCXDetail:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        base_modified_at:
+          type: string
+          format: date-time
+          writeOnly: true
+          nullable: true
+        empires:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningEmpireNested'
+          readOnly: true
+        cx_data: {}
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        cx_name:
+          type: string
+          maxLength: 200
+      required:
+      - cx_data
+      - cx_name
+      - empires
+      - modified_at
+      - uuid
+    PlanningCXEmpireJunction:
+      type: object
+      properties:
+        empire_uuid:
+          type: string
+          format: uuid
+      required:
+      - empire_uuid
+    PlanningCXJunctionUpdate:
+      type: object
+      properties:
+        cx_uuid:
+          type: string
+          format: uuid
+        empires:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningCXEmpireJunction'
+      required:
+      - cx_uuid
+      - empires
+    PlanningCXJunctionsSyncError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+      - error
+    PlanningCXMinimal:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        cx_name:
+          type: string
+          maxLength: 200
+        cx_data: {}
+      required:
+      - cx_name
+      - uuid
+    PlanningEmpireDetail:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        base_modified_at:
+          type: string
+          format: date-time
+          writeOnly: true
+          nullable: true
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningPlanMinimal'
+          readOnly: true
+        cx:
+          allOf:
+          - $ref: '#/components/schemas/PlanningCXMinimal'
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        empire_name:
+          type: string
+          maxLength: 200
+        empire_faction:
+          enum:
+          - NONE
+          - ANTARES
+          - BENTEN
+          - HORTUS
+          - MORIA
+          - OUTSIDEREGION
+          type: string
+          description: |-
+            * `NONE` - None
+            * `ANTARES` - Antares
+            * `BENTEN` - Benten
+            * `HORTUS` - Hortus
+            * `MORIA` - Moria
+            * `OUTSIDEREGION` - Outsideregion
+          x-spec-enum-id: 4c91e1603ea5cbcd
+        empire_permits_used:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 1
+          format: int64
+        empire_permits_total:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 2
+          format: int64
+        needs_state_sync:
+          type: boolean
+      required:
+      - cx
+      - empire_faction
+      - empire_name
+      - empire_permits_total
+      - empire_permits_used
+      - modified_at
+      - plans
+      - uuid
+    PlanningEmpireJunctions:
+      type: object
+      properties:
+        empire_uuid:
+          type: string
+          format: uuid
+        baseplanners:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningEmpireJunctionsPlan'
+      required:
+      - baseplanners
+      - empire_uuid
+    PlanningEmpireJunctionsPlan:
+      type: object
+      properties:
+        baseplanner_uuid:
+          type: string
+          format: uuid
+      required:
+      - baseplanner_uuid
+    PlanningEmpireList:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        empire_name:
+          type: string
+          maxLength: 200
+        empire_faction:
+          enum:
+          - NONE
+          - ANTARES
+          - BENTEN
+          - HORTUS
+          - MORIA
+          - OUTSIDEREGION
+          type: string
+          description: |-
+            * `NONE` - None
+            * `ANTARES` - Antares
+            * `BENTEN` - Benten
+            * `HORTUS` - Hortus
+            * `MORIA` - Moria
+            * `OUTSIDEREGION` - Outsideregion
+          x-spec-enum-id: 4c91e1603ea5cbcd
+        empire_permits_used:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 1
+          format: int64
+        empire_permits_total:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 2
+          format: int64
+        cx:
+          allOf:
+          - $ref: '#/components/schemas/PlanningCXMinimal'
+          readOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - cx
+      - empire_faction
+      - empire_name
+      - empire_permits_total
+      - empire_permits_used
+      - modified_at
+      - uuid
+    PlanningEmpireMaterialIO:
+      type: object
+      properties:
+        p:
+          type: number
+          format: double
+        c:
+          type: number
+          format: double
+        d:
+          type: number
+          format: double
+      required:
+      - c
+      - d
+      - p
+    PlanningEmpireMetadata:
+      type: object
+      properties:
+        faction:
+          enum:
+          - NONE
+          - ANTARES
+          - BENTEN
+          - HORTUS
+          - MORIA
+          - OUTSIDEREGION
+          type: string
+          description: |-
+            * `NONE` - None
+            * `ANTARES` - Antares
+            * `BENTEN` - Benten
+            * `HORTUS` - Hortus
+            * `MORIA` - Moria
+            * `OUTSIDEREGION` - Outsideregion
+          x-spec-enum-id: 4c91e1603ea5cbcd
+        permits_used:
+          type: integer
+          minimum: 0
+        permits_total:
+          type: integer
+          minimum: 0
+        plan_count:
+          type: integer
+          minimum: 0
+        timestamp:
+          type: string
+      required:
+      - faction
+      - permits_total
+      - permits_used
+      - plan_count
+      - timestamp
+    PlanningEmpireNested:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        empire_name:
+          type: string
+          maxLength: 200
+        plans:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningPlanMinimal'
+          readOnly: true
+      required:
+      - empire_name
+      - plans
+      - uuid
+    PlanningEmpirePlanMetadata:
+      type: object
+      properties:
+        planet_natural_id:
+          type: string
+        cogc:
+          enum:
+          - '---'
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - FUEL_REFINING
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - PIONEERS
+          - SETTLERS
+          - TECHNICIANS
+          - ENGINEERS
+          - SCIENTISTS
+          type: string
+          description: |-
+            * `---` - None
+            * `AGRICULTURE` - Agriculture
+            * `CHEMISTRY` - Chemistry
+            * `CONSTRUCTION` - Construction
+            * `ELECTRONICS` - Electronics
+            * `FOOD_INDUSTRIES` - Food Industries
+            * `FUEL_REFINING` - Fuel Refining
+            * `MANUFACTURING` - Manufacturing
+            * `METALLURGY` - Metallurgy
+            * `RESOURCE_EXTRACTION` - Resource Extraction
+            * `PIONEERS` - Pioneers
+            * `SETTLERS` - Settlers
+            * `TECHNICIANS` - Technicians
+            * `ENGINEERS` - Engineers
+            * `SCIENTISTS` - Scientists
+          x-spec-enum-id: f82f62b19a38f13a
+      required:
+      - cogc
+      - planet_natural_id
+    PlanningEmpirePlanSyncError:
+      type: object
+      properties:
+        error:
+          type: string
+          default: Unauthorized or non-existent objects referenced
+        invalid_empires:
+          type: array
+          items:
+            type: string
+            format: uuid
+        invalid_plans:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - invalid_empires
+      - invalid_plans
+    PlanningPlanDetail:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        plan_name:
+          type: string
+          maxLength: 200
+        planet_natural_id:
+          type: string
+          maxLength: 7
+          minLength: 7
+        plan_permits_used:
+          type: integer
+          maximum: 3
+          minimum: 0
+        plan_cogc:
+          enum:
+          - '---'
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - FUEL_REFINING
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - PIONEERS
+          - SETTLERS
+          - TECHNICIANS
+          - ENGINEERS
+          - SCIENTISTS
+          - null
+          type: string
+          description: |-
+            * `---` - None
+            * `AGRICULTURE` - Agriculture
+            * `CHEMISTRY` - Chemistry
+            * `CONSTRUCTION` - Construction
+            * `ELECTRONICS` - Electronics
+            * `FOOD_INDUSTRIES` - Food Industries
+            * `FUEL_REFINING` - Fuel Refining
+            * `MANUFACTURING` - Manufacturing
+            * `METALLURGY` - Metallurgy
+            * `RESOURCE_EXTRACTION` - Resource Extraction
+            * `PIONEERS` - Pioneers
+            * `SETTLERS` - Settlers
+            * `TECHNICIANS` - Technicians
+            * `ENGINEERS` - Engineers
+            * `SCIENTISTS` - Scientists
+          x-spec-enum-id: f82f62b19a38f13a
+          nullable: true
+        plan_corphq:
+          type: boolean
+        plan_data: {}
+        empires:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningEmpireList'
+          readOnly: true
+        cx:
+          allOf:
+          - $ref: '#/components/schemas/PlanningCXDetail'
+          readOnly: true
+        empire_uuid:
+          type: string
+          format: uuid
+          writeOnly: true
+        modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+        base_modified_at:
+          type: string
+          format: date-time
+          writeOnly: true
+          nullable: true
+      required:
+      - cx
+      - empires
+      - modified_at
+      - plan_data
+      - plan_name
+      - plan_permits_used
+      - planet_natural_id
+      - uuid
+    PlanningPlanMinimal:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        plan_name:
+          type: string
+          maxLength: 200
+        planet_natural_id:
+          type: string
+          maxLength: 7
+          minLength: 7
+      required:
+      - plan_name
+      - planet_natural_id
+      - uuid
+    PlanningSaveConflict:
+      type: object
+      properties:
+        detail:
+          type: string
+        code:
+          type: string
+        modified_at:
+          type: string
+          format: date-time
+      required:
+      - code
+      - detail
+      - modified_at
+    PlanningShared:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        plan:
+          type: string
+          format: uuid
+          readOnly: true
+        view_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - plan
+      - uuid
+      - view_count
+    PlanningSharedCreate:
+      type: object
+      properties:
+        plan:
+          type: string
+          format: uuid
+      required:
+      - plan
+    PlanningSharedDetail:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        plan_details:
+          allOf:
+          - $ref: '#/components/schemas/PlanningSharedPlan'
+          readOnly: true
+        view_count:
+          type: integer
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - plan_details
+      - uuid
+      - view_count
+    PlanningSharedPlan:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        plan_name:
+          type: string
+          readOnly: true
+        planet_natural_id:
+          type: string
+          readOnly: true
+        plan_permits_used:
+          type: integer
+          readOnly: true
+        plan_cogc:
+          enum:
+          - '---'
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - FUEL_REFINING
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - PIONEERS
+          - SETTLERS
+          - TECHNICIANS
+          - ENGINEERS
+          - SCIENTISTS
+          - null
+          type: string
+          description: |-
+            * `---` - None
+            * `AGRICULTURE` - Agriculture
+            * `CHEMISTRY` - Chemistry
+            * `CONSTRUCTION` - Construction
+            * `ELECTRONICS` - Electronics
+            * `FOOD_INDUSTRIES` - Food Industries
+            * `FUEL_REFINING` - Fuel Refining
+            * `MANUFACTURING` - Manufacturing
+            * `METALLURGY` - Metallurgy
+            * `RESOURCE_EXTRACTION` - Resource Extraction
+            * `PIONEERS` - Pioneers
+            * `SETTLERS` - Settlers
+            * `TECHNICIANS` - Technicians
+            * `ENGINEERS` - Engineers
+            * `SCIENTISTS` - Scientists
+          x-spec-enum-id: f82f62b19a38f13a
+          nullable: true
+        plan_corphq:
+          type: boolean
+          readOnly: true
+        plan_data: {}
+      required:
+      - plan_corphq
+      - plan_data
+      - plan_name
+      - plan_permits_used
+      - planet_natural_id
+      - uuid
+    SinglePlanDetail:
+      type: object
+      properties:
+        metadata:
+          $ref: '#/components/schemas/PlanningEmpirePlanMetadata'
+        deltas:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/PlanningEmpireMaterialIO'
+          description: Map of material tickers to their P/C/D values
+      required:
+      - deltas
+      - metadata
+    StorageDataMap:
+      type: object
+      properties:
+        planets:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {}
+        warehouses:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {}
+        ships:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: {}
+      required:
+      - planets
+      - ships
+      - warehouses
+    TokenObtainPair:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+        password:
+          type: string
+          writeOnly: true
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          readOnly: true
+      required:
+      - access
+      - password
+      - refresh
+      - username
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+          writeOnly: true
+      required:
+      - access
+      - refresh
+    UserAPIKey:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          description: A free-form name for the API key. Need not be unique. 50 characters
+            max.
+          maxLength: 50
+        prefix:
+          type: string
+          readOnly: true
+        created:
+          type: string
+          format: date-time
+          readOnly: true
+        last_used:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - created
+      - id
+      - last_used
+      - prefix
+    UserAPIKeyCreate:
+      type: object
+      properties:
+        id:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          description: A free-form name for the API key. Need not be unique. 50 characters
+            max.
+          maxLength: 50
+        key:
+          type: string
+          readOnly: true
+          maxLength: 50
+      required:
+      - id
+      - key
+    UserChangePassword:
+      type: object
+      properties:
+        old_password:
+          type: string
+        new_password:
+          type: string
+      required:
+      - new_password
+      - old_password
+    UserPreference:
+      type: object
+      description: Mixin to convert complex Python objects into JSON-primitive types.
+      properties:
+        locale:
+          type: string
+          nullable: true
+        defaultEmpireUuid:
+          type: string
+          format: uuid
+          nullable: true
+        defaultCXUuid:
+          type: string
+          format: uuid
+          nullable: true
+        defaultBuyItemsFromCX:
+          type: boolean
+        burnDaysRed:
+          type: integer
+          minimum: 0
+          default: 5
+        burnDaysYellow:
+          type: integer
+          minimum: 0
+          default: 10
+        burnResupplyDays:
+          type: integer
+          minimum: 0
+          default: 18
+        burnOrigin:
+          type: string
+        supplyCartDays:
+          type: number
+          format: double
+          minimum: 0
+          default: 20.0
+        layoutNavigationStyle:
+          enum:
+          - full
+          - collapsed
+          type: string
+          description: |-
+            * `full` - full
+            * `collapsed` - collapsed
+          x-spec-enum-id: 2d06715f919f35f4
+        colorPalette:
+          enum:
+          - default
+          - colorblind
+          type: string
+          description: |-
+            * `default` - default
+            * `colorblind` - colorblind
+          x-spec-enum-id: 39f56c4614795699
+        planSuggestions:
+          type: boolean
+        planOverrides:
+          type: object
+          additionalProperties:
+            allOf:
+            - $ref: '#/components/schemas/PlanOverride'
+            nullable: true
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        prun_username:
+          type: string
+          nullable: true
+          maxLength: 255
+        fio_apikey:
+          type: string
+          nullable: true
+          maxLength: 255
+        is_email_verified:
+          type: boolean
+        fio_status:
+          enum:
+          - none
+          - syncing
+          - ok
+          - no_data
+          - invalid_credentials
+          - error
+          type: string
+          description: |-
+            * `none` - none
+            * `syncing` - syncing
+            * `ok` - ok
+            * `no_data` - no_data
+            * `invalid_credentials` - invalid_credentials
+            * `error` - error
+          x-spec-enum-id: d20eaefb4ee2474a
+          readOnly: true
+        fio_last_refreshed_at:
+          type: string
+          format: date-time
+          nullable: true
+          readOnly: true
+      required:
+      - fio_last_refreshed_at
+      - fio_status
+      - id
+      - username
+    UserRegister:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        email:
+          type: string
+          format: email
+          nullable: true
+        planet_id:
+          type: string
+          writeOnly: true
+        planet_input:
+          type: string
+          writeOnly: true
+      required:
+      - password
+      - planet_id
+      - planet_input
+      - username
+    VerifyCode:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 8
+          minLength: 8
+      required:
+      - code
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Format: Api-Key <your-key-here>'
+    basicAuth:
+      type: http
+      scheme: basic
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

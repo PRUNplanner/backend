@@ -150,3 +150,4 @@ Before considering a change complete:
 - `uv run pytest` passes, with new tests for new behavior
 - No hand-edited files under any `migrations/` directory.
 - No `typing.Any` introduced; no N+1 queries in list/detail endpoints.
+- An intended API change refreshes the schema snapshot (`UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend/tests/api/test_openapi_schema.py`); the frontend side is checked with `/sync-api`.
