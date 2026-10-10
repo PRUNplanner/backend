@@ -31,6 +31,7 @@ This repository contains the backend engine for **PRUNplanner.org** (a Prosperou
 - **Type Checking**: `uv run ty check --exclude "**/migrations/*.py"`
 - **Unit Tests**: `uv run pytest`
 - **Coverage**: `uv run pytest --cov=. --cov-report=html`
+- **Tests on Postgres**: CI runs the suite on Postgres (`TEST_DB=postgres` + `DATABASE_*`); locally it runs on SQLite unless you set those. Tests of Postgres-only SQL skip on SQLite; the `exchange_analytics_view` fixture swaps in the real materialized view.
 - **Performance / load**: `perf/run.sh` (needs Docker; see `perf/README.md`)
 
 ## Testing Standards

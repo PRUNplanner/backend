@@ -7,7 +7,8 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from pytest_django.fixtures import SettingsWrapper
 
-pytestmark = pytest.mark.django_db
+# on Postgres the seeding refreshes the real exchange analytics view
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('exchange_analytics_view')]
 
 
 @pytest.fixture

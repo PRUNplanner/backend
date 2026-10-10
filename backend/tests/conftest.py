@@ -9,6 +9,8 @@ from django.test import Client
 from model_bakery import baker
 from rest_framework.test import APIClient
 
+EXCHANGE_ANALYTICS = 'prunplanner_game_exchanges_analytics'
+
 
 @pytest.fixture
 def api_client():
@@ -90,15 +92,20 @@ def locmem_cache(settings) -> Iterator[LocMemCache]:
 
 @pytest.fixture(scope='session', autouse=True)
 def create_unmanaged_tables(django_db_setup, django_db_blocker):
-    # the exchange analytics materialized view is unmanaged; SQLite gets a plain table in its place
+    # the exchange analytics materialized view is unmanaged and read-only; factories need a plain table in its
+    # place. On Postgres the migrated view is kept aside under another name, see `exchange_analytics_view`
     with django_db_blocker.unblock():
         from django.db import connection
 
+        is_postgres = connection.vendor == 'postgresql'
+        id_column = 'id serial PRIMARY KEY' if is_postgres else 'id integer PRIMARY KEY AUTOINCREMENT'
+
         with connection.cursor() as cursor:
-            # Manually create the table schema here
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS prunplanner_game_exchanges_analytics (
-                    id integer PRIMARY KEY AUTOINCREMENT,
+            if is_postgres:
+                cursor.execute(f'ALTER MATERIALIZED VIEW {EXCHANGE_ANALYTICS} RENAME TO {EXCHANGE_ANALYTICS}_view')
+            cursor.execute(f"""
+                CREATE TABLE IF NOT EXISTS {EXCHANGE_ANALYTICS} (
+                    {id_column},
                     ticker varchar(20),
                     exchange_code varchar(20),
                     date_epoch bigint,
@@ -113,3 +120,19 @@ def create_unmanaged_tables(django_db_setup, django_db_blocker):
                     vwap_30d decimal
                 )
             """)
+
+
+@pytest.fixture
+def exchange_analytics_view(db) -> None:
+    """
+    Postgres only: puts the migrated materialized view back in place of the plain stand-in table, so the test
+    exercises the real SQL. The test's transaction rolls the swap back. No-op on SQLite, which has no view.
+    """
+    from django.db import connection
+
+    if connection.vendor != 'postgresql':
+        return
+
+    with connection.cursor() as cursor:
+        cursor.execute(f'DROP TABLE {EXCHANGE_ANALYTICS}')
+        cursor.execute(f'ALTER MATERIALIZED VIEW {EXCHANGE_ANALYTICS}_view RENAME TO {EXCHANGE_ANALYTICS}')
