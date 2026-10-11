@@ -32,13 +32,13 @@ class LegacyAwareBackend(ModelBackend):
 
         # Legacy password detection
         if user.password.startswith('$2b$'):
-            if bcrypt.checkpw(password.encode(), user.password.encode()):
-                # Password correct, upgrade to Django native hash
-                user.set_password(password)
-                user.save(update_fields=['password'])
-                return user
-            else:
+            if not (self.user_can_authenticate(user) and bcrypt.checkpw(password.encode(), user.password.encode())):
                 return None
+
+            # Password correct, upgrade to Django native hash
+            user.set_password(password)
+            user.save(update_fields=['password'])
+            return user
 
         # Otherwise, fallback to default check
         if user.check_password(password) and self.user_can_authenticate(user):

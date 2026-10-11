@@ -30,7 +30,8 @@ This repository contains the backend engine for **PRUNplanner.org** (a Prosperou
 - **Linting & Formatting**: `uv run ruff check`
 - **Type Checking**: `uv run ty check --exclude "**/migrations/*.py"`
 - **Unit Tests**: `uv run pytest`
-- **Coverage**: `uv run pytest --cov=. --cov-report=html`
+- **Coverage**: `uv run pytest --cov=. --cov-report=html` (lines and branches; CI fails below `fail_under` in `.coveragerc`)
+- **Tests on Postgres**: CI runs the suite on Postgres (`TEST_DB=postgres` + `DATABASE_*`); locally it runs on SQLite unless you set those. Tests of Postgres-only SQL skip on SQLite; the `exchange_analytics_view` fixture swaps in the real materialized view.
 - **Performance / load**: `perf/run.sh` (needs Docker; see `perf/README.md`)
 
 ## Testing Standards
@@ -149,3 +150,4 @@ Before considering a change complete:
 - `uv run pytest` passes, with new tests for new behavior
 - No hand-edited files under any `migrations/` directory.
 - No `typing.Any` introduced; no N+1 queries in list/detail endpoints.
+- An intended API change refreshes the schema snapshot (`UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend/tests/api/test_openapi_schema.py`); the frontend side is checked with `/sync-api`.

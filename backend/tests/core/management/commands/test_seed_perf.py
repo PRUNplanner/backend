@@ -7,13 +7,22 @@ from analytics.services.planinsight_aggregator_service import PlanInsightAggrega
 from core.management.commands.seed_perf import SCALES, USERNAME_PREFIX
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from gamedata.models import GameExchange, GameExchangeCXPC, GameMaterial, GamePlanet, GameRecipe
 from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.schemas.latest_schemas import LATEST_SCHEMA
 from pytest_django.fixtures import SettingsWrapper
 from user.models import User
 
-pytestmark = pytest.mark.django_db
+# on Postgres the seeding refreshes the real exchange analytics view
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('exchange_analytics_view')]
+
+
+def _allow_flush() -> None:
+    # --flush TRUNCATEs, which Postgres refuses inside the test's transaction while it holds deferred FK checks
+    if connection.vendor == 'postgresql':
+        with connection.cursor() as cursor:
+            cursor.execute('SET CONSTRAINTS ALL IMMEDIATE')
 
 
 @pytest.fixture
@@ -77,6 +86,7 @@ class TestSeedPerf:
         first, second = tmp_path / 'first.json', tmp_path / 'second.json'
 
         call_command('seed_perf', '--scale', 'tiny', '--seed', '7', '--targets-out', str(first))
+        _allow_flush()
         call_command('seed_perf', '--scale', 'tiny', '--seed', '7', '--flush', '--targets-out', str(second))
 
         assert first.read_bytes() == second.read_bytes()
@@ -159,6 +169,7 @@ class TestSeedPerfFromSnapshot:
         args = ['seed_perf', '--scale', 'tiny', '--source', 'snapshot', '--snapshot', str(snapshot_path)]
 
         call_command(*args, '--targets-out', str(first))
+        _allow_flush()
         call_command(*args, '--flush', '--targets-out', str(second))
 
         assert first.read_bytes() == second.read_bytes()

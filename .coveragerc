@@ -1,17 +1,18 @@
 [run]
 source = backend
+branch = True
 omit =
     */migrations/*
     */tests/*
     **/__init__.py
-    **/signals.py
-    */schemas/*
     **/admin/**
     admin.py
     manage.py
 
 [report]
 show_missing = True
+# CI fails below this; raise it as coverage grows
+fail_under = 94
 exclude_lines =
     pragma: no cover
     def __str__

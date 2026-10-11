@@ -4,12 +4,19 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.core import mail
+from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
 from gamedata.gamedata_cache_manager import GamedataCacheManager
 from model_bakery import baker
 from user.models import User, VerificationCode, VerificationeCodeChoices
 from user.models.verification_codes import EXPIRY_TIME
-from user.tasks import user_handle_post_refresh, user_purge_verification_codes
+from user.tasks import (
+    send_email_verification_code,
+    send_password_reset_code,
+    user_handle_post_refresh,
+    user_purge_verification_codes,
+)
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures('locmem_cache')]
 
@@ -108,3 +115,39 @@ class TestUserPurgeVerificationCodes:
         remaining = set(VerificationCode.objects.values_list('pk', flat=True))
         assert remaining == {active.pk}
         assert User.objects.filter(pk=user.pk).exists()
+
+
+CodeEmailTask = Callable[[int, str, str, str], bool]
+
+
+@pytest.mark.parametrize(
+    ('task', 'link', 'subject'),
+    [
+        # the links must match the frontend routes /verify-email/:verifyCode and /password-reset/:resetCode
+        (send_email_verification_code, 'https://prunplanner.org/verify-email/abc123', 'PRUNplanner Email Verification'),
+        (send_password_reset_code, 'https://prunplanner.org/password-reset/abc123', 'PRUNplanner Password Reset'),
+    ],
+)
+class TestCodeEmails:
+    def test_sends_the_code_link_as_html_and_text(self, task: CodeEmailTask, link: str, subject: str) -> None:
+        assert task(1, 'pilot', 'pilot@example.com', 'abc123') is True
+
+        (message,) = mail.outbox
+        assert isinstance(message, EmailMultiAlternatives)
+        assert message.to == ['pilot@example.com']
+        assert message.subject == subject
+        ((html, mimetype),) = message.alternatives
+        assert mimetype == 'text/html'
+        assert isinstance(html, str)
+        assert link in html
+        assert link in message.body
+        assert 'pilot' in message.body
+
+    def test_a_failed_send_is_logged_and_reported(
+        self, task: CodeEmailTask, link: str, subject: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')):
+            assert task(1, 'pilot', 'pilot@example.com', 'abc123') is False
+
+        events = [r.msg['event'] for r in caplog.records if isinstance(r.msg, dict)]
+        assert events == ['email_send_failed']

@@ -303,13 +303,13 @@ class TestRefreshCXPCHistory:
                 self._point(self.HISTORICAL_EPOCH),
                 self._point(recent_epoch),
             ]
-            assert gamedata_refresh_cxpc('FUEL', 'AI1', full=full) is True
+            assert gamedata_refresh_cxpc('RAT', 'AI1', full=full) is True
 
     def _has_history(self) -> bool:
         from gamedata.models import GameExchangeCXPC
 
         return GameExchangeCXPC.objects.filter(
-            ticker='FUEL', exchange_code='AI1', date_epoch=self.HISTORICAL_EPOCH
+            ticker='RAT', exchange_code='AI1', date_epoch=self.HISTORICAL_EPOCH
         ).exists()
 
     def test_new_pair_gets_history(self) -> None:
@@ -320,15 +320,15 @@ class TestRefreshCXPCHistory:
     def test_known_pair_skips_history_but_upserts_recent(self) -> None:
         from gamedata.models import GameExchangeCXPC
 
-        baker.make('gamedata.GameExchangeCXPC', ticker='FUEL', exchange_code='AI1', date_epoch=2_000)
+        baker.make('gamedata.GameExchangeCXPC', ticker='RAT', exchange_code='AI1', date_epoch=2_000)
 
         self._run(full=False)
 
         assert not self._has_history()
-        assert GameExchangeCXPC.objects.filter(ticker='FUEL', exchange_code='AI1').count() == 2
+        assert GameExchangeCXPC.objects.filter(ticker='RAT', exchange_code='AI1').count() == 2
 
     def test_full_refresh_inserts_history_for_known_pair(self) -> None:
-        baker.make('gamedata.GameExchangeCXPC', ticker='FUEL', exchange_code='AI1', date_epoch=2_000)
+        baker.make('gamedata.GameExchangeCXPC', ticker='RAT', exchange_code='AI1', date_epoch=2_000)
 
         self._run(full=True)
 

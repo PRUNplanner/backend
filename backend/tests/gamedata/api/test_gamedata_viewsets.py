@@ -14,6 +14,7 @@ from django.utils import timezone
 from gamedata.gamedata_cache_manager import PLANET
 from gamedata.models.game_exchange import GameExchange
 from gamedata.models.game_planet import GamePlanet, GamePlanetCOGCProgramChoices
+from gamedata.tasks import refresh_exchange_analytics
 from model_bakery import baker
 from rest_framework.test import APIClient
 from rest_framework_csv.renderers import CSVRenderer
@@ -53,14 +54,12 @@ class TestGameExchangeViewSet:
         exchange_analytics_factory(
             ticker='FUEL', exchange_code='AI1', calendar_date=stale_date, vwap_7d=100, avg_traded_7d=10
         )
-        exchange_analytics_factory(ticker='IRON', exchange_code='NC1', calendar_date=now, vwap_7d=50, avg_traded_7d=5)
+        exchange_analytics_factory(ticker='FE', exchange_code='NC1', calendar_date=now, vwap_7d=50, avg_traded_7d=5)
         exchange_analytics_factory(ticker='GOLD', exchange_code='CI1', calendar_date=now, vwap_7d=0, avg_traded_7d=0)
         # exchange code not part of the tracked target list, must be excluded
         exchange_analytics_factory(ticker='VOID', exchange_code='BAD_EXC')
 
-        exchange_factory(
-            ticker_id='IRONNC1', ticker='IRON', exchange_code='NC1', ask=12.5, bid=11.5, supply=5, demand=42
-        )
+        exchange_factory(ticker_id='FE.NC1', ticker='FE', exchange_code='NC1', ask=12.5, bid=11.5, supply=5, demand=42)
 
         response = api_client.get(_exchange_list_url())
 
@@ -71,33 +70,57 @@ class TestGameExchangeViewSet:
         results = {item['ticker']: item for item in data}
 
         assert results['FUEL']['exchange_status'] == 'STALE'
-        assert results['IRON']['exchange_status'] == 'ACTIVE'
+        assert results['FE']['exchange_status'] == 'ACTIVE'
         assert results['GOLD']['exchange_status'] == 'INACTIVE'
-        assert results['IRON']['ticker_id'] == 'IRON.NC1'
+        assert results['FE']['ticker_id'] == 'FE.NC1'
 
         # live data merged in from GameExchange
-        assert results['IRON']['ask'] == 12.5
-        assert results['IRON']['bid'] == 11.5
-        assert results['IRON']['supply'] == 5
-        assert results['IRON']['demand'] == 42
+        assert results['FE']['ask'] == 12.5
+        assert results['FE']['bid'] == 11.5
+        assert results['FE']['supply'] == 5
+        assert results['FE']['demand'] == 42
 
         # no live data available defaults to 0.0
         assert results['FUEL']['ask'] == 0.0
         assert results['FUEL']['bid'] == 0.0
 
-    def test_list_returns_duplicate_ticker_rows_on_sqlite(
-        self, api_client: APIClient, exchange_analytics_factory: Callable[..., object]
-    ) -> None:
-        exchange_analytics_factory(ticker='H2O', exchange_code='AI1', date_epoch=1000)
-        exchange_analytics_factory(ticker='H2O', exchange_code='AI1', date_epoch=5000)
+    @pytest.mark.skipif(connection.vendor != 'postgresql', reason='the materialized view exists on Postgres only')
+    @pytest.mark.usefixtures('exchange_analytics_view')
+    def test_list_serves_the_refreshed_view_one_row_per_pair(self, api_client: APIClient) -> None:
+        today = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-        response = api_client.get(_exchange_list_url())
+        def cxpc(exchange_code: str, days_ago: int, volume: int, traded: int) -> None:
+            date_epoch = int((today - timedelta(days=days_ago)).timestamp() * 1000)
+            baker.make(
+                'gamedata.GameExchangeCXPC',
+                ticker='RAT',
+                exchange_code=exchange_code,
+                date_epoch=date_epoch,
+                volume=volume,
+                traded=traded,
+            )
 
-        h2o_records = [row for row in response.data if row['ticker'] == 'H2O']
+        baker.make('gamedata.GameMaterial', ticker='RAT')
+        cxpc('AI1', days_ago=0, volume=100, traded=10)
+        cxpc('AI1', days_ago=2, volume=300, traded=10)
+        cxpc('CI1', days_ago=3, volume=50, traded=5)  # nothing traded today: the last price carries forward
 
-        assert len(h2o_records) == 2
-        assert h2o_records[0]['date_epoch'] == 5000
-        assert h2o_records[1]['date_epoch'] == 1000
+        assert refresh_exchange_analytics() is True
+
+        rows = api_client.get(_exchange_list_url()).data
+        by_exchange = {row['exchange_code']: row for row in rows}
+
+        assert len(rows) == len(by_exchange) == 5
+        assert sorted(by_exchange) == ['AI1', 'CI1', 'IC1', 'NC1', 'UNIVERSE']
+        assert by_exchange['AI1']['traded_daily'] == 10
+        assert by_exchange['AI1']['vwap_daily'] == 10
+        assert by_exchange['AI1']['sum_traded_7d'] == 20
+        assert by_exchange['AI1']['vwap_7d'] == 20
+        assert by_exchange['AI1']['exchange_status'] == 'ACTIVE'
+        assert by_exchange['CI1']['vwap_daily'] == 10
+        assert by_exchange['NC1']['vwap_7d'] == 0
+        assert by_exchange['NC1']['exchange_status'] == 'INACTIVE'
+        assert by_exchange['UNIVERSE']['sum_traded_7d'] == 25
 
     def test_list_empty_database_returns_empty_list(self, api_client: APIClient) -> None:
         response = api_client.get(_exchange_list_url())
