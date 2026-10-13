@@ -1,13 +1,16 @@
+import structlog
 from django.core.cache import cache
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 from user.api.serializer import (
+    PLANET_CHECKLIST,
     CodeGenericResponseSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
@@ -22,6 +25,8 @@ from user.api.serializer import (
 from user.models import User, UserAPIKey, UserPreference
 from user.services import VerificationeCodeChoices, VerificationService
 from user.tasks import user_handle_post_refresh
+
+logger = structlog.get_logger(__name__)
 
 # a client can refresh its token in bursts; last_login and the FIO check need it once per interval
 POST_REFRESH_INTERVAL_SECONDS = 15 * 60
@@ -81,9 +86,18 @@ class UserRegisterViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     @extend_schema(auth=[], summary='Register account')
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            # codes only: never log the submitted username, password, email or planet name
+            codes = sorted(f'{field}:{error.code}' for field, errors in serializer.errors.items() for error in errors)
+            planet = {}
+            if 'planet_input:planet_mismatch' in codes and request.data.get('planet_id') in PLANET_CHECKLIST:
+                planet['planet_id'] = request.data['planet_id']
+            logger.info('user_signup_rejected', fields=sorted(serializer.errors), codes=codes, **planet)
+            raise ValidationError(serializer.errors)
 
         self.perform_create(serializer)
+        user = serializer.instance
+        logger.info('user_signup_completed', user_id=user.pk, has_email=bool(user.email))
 
         return Response(
             {

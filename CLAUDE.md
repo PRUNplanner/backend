@@ -134,6 +134,10 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
 - No start/finish pairs: one line when done, with `duration_ms`.
 - No secrets, emails, API keys or tokens (the webhook path token is redacted
   by a processor). No unbounded dicts: every key becomes an Axiom column.
+- Signups: one `user_signup_completed` (`user_id`, `has_email`) or
+  `user_signup_rejected` (`fields`, sorted `codes` as `"<field>:<error code>"`,
+  `planet_id` only with `planet_input:planet_mismatch`) per attempt, never the
+  submitted values. Throttled attempts log neither (`request_finished` 429).
 - `fio_request_completed` / `fio_request_failed` fields (`endpoint`, `url`,
   `status_code`, `duration` in seconds, `bytes`) back Axiom dashboards;
   don't rename them.
