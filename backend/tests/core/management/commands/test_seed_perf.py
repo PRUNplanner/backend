@@ -8,7 +8,9 @@ from core.management.commands.seed_perf import SCALES, USERNAME_PREFIX
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
+from django.urls import reverse
 from gamedata.models import GameExchange, GameExchangeCXPC, GameMaterial, GamePlanet, GameRecipe
+from gamedata.services.fio_refresh import fio_connection, request_fio_refresh
 from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.schemas.latest_schemas import LATEST_SCHEMA
 from pytest_django.fixtures import SettingsWrapper
@@ -81,6 +83,29 @@ class TestSeedPerf:
         for cx in PlanningCX.objects.all():
             assert set(cx.cx_data) == fields
             LATEST_SCHEMA['CX_DATA'].model_validate(cx.cx_data)
+
+    def test_power_user_has_fio_storage_for_its_plan_planets(self, perf_mode: SettingsWrapper, api_client) -> None:
+        # the FIO Burn and Repair pages need storage data to show anything in the e2e stack
+        call_command('seed_perf', '--scale', 'tiny')
+
+        power_user = User.objects.get(username=f'{USERNAME_PREFIX}0')
+        planets = set(PlanningPlan.objects.filter(user=power_user).values_list('planet_natural_id', flat=True))
+        assert len(planets) >= 3
+        # the frontend loads storage only for a user with FIO whose status is ok
+        assert power_user.prun_username
+        assert fio_connection(power_user)[0] == 'ok'
+        # the fake key never reaches FIO: every refresh backs off
+        assert not request_fio_refresh(power_user.pk, 'login')
+
+        response = api_client.as_user(power_user).get(reverse('data:storage-retrieve'))
+
+        assert response.status_code == 200
+        stored = response.json()['storage_data']['planets']
+        # the frontend's Zod schema has no null planet names
+        assert all(isinstance(s['PlanetName'], str) for s in response.json()['sites_data'].values())
+        assert set(stored) == planets
+        amounts = {i['MaterialAmount'] for s in stored.values() for i in s['StorageItems']}
+        assert len(amounts) > 5  # spread over red, yellow, fine and beyond the burn axis
 
     def test_same_seed_gives_same_targets(self, perf_mode: SettingsWrapper, tmp_path: Path) -> None:
         first, second = tmp_path / 'first.json', tmp_path / 'second.json'

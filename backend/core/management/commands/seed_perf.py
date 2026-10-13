@@ -7,6 +7,7 @@ built on that game data. Only runs under PERF_MODE (core.config.django.perf),
 never against a dev or production database. See perf/README.md.
 """
 
+import hashlib
 import itertools
 import random
 import string
@@ -40,6 +41,7 @@ from gamedata.models import (
     GameBuildingCost,
     GameExchange,
     GameExchangeCXPC,
+    GameFIOPlayerData,
     GameMaterial,
     GamePlanet,
     GamePlanetCOGCProgram,
@@ -93,6 +95,15 @@ HOT_PLANETS = 20
 HOT_PLANET_SHARE = 0.5
 BATCH_SIZE = 2000
 DAY_MS = 86_400_000
+# FIO stock of the power user: days of its consumption per material, cycled (FIO Burn axis is 3 x yellow = 30 d)
+FIO_FAKE_APIKEY = 'perf-fake-fio-key'  # never sent: the seeded FIO row backs off every refresh
+FIO_STOCK_DAYS = (1.5, 4, 7, 9, 14, 22, 27, 45, 70)
+# workforce goods, consumed by the frontend's workforce calculation the seed doesn't model; plain amounts
+FIO_WORKFORCE_GOODS = (
+    *('DW', 'RAT', 'OVE', 'PWO', 'COF', 'EXO', 'PT', 'REP', 'KOM', 'ALE', 'SC', 'MED', 'HMS', 'SCN'),
+    *('FIM', 'HSS', 'PDA', 'VG', 'GIN', 'MEA', 'LC', 'WS', 'NST', 'WIN', 'GL', 'SEA', 'LIT'),
+)
+FIO_WORKFORCE_STOCK = (15, 60, 140, 300, 900)
 
 type JSONValue = str | int | float | bool | None | list[JSONValue] | dict[str, JSONValue]
 type FieldValue = str | int | float | bool
@@ -616,6 +627,97 @@ class Seeder:
         self._bulk(PlanningShared, shares)
         self.seed_empire_states(links)
 
+    def seed_fio_playerdata(self) -> None:
+        """FIO storage and sites for the power user's planets, so the FIO pages have data (e2e screenshots).
+
+        Stocks come from the seed's own daily consumption times a cycle of day targets (no RNG draws, the rest of
+        the seeded data stays as it was): red, yellow, fine and beyond the burn axis. A fake FIO key (the frontend
+        only loads storage for users with FIO) and a retry far ahead, so no FIO refresh ever runs for it.
+        """
+        users = User.objects.filter(username=f'{USERNAME_PREFIX}0')
+        # update(), not save(): no signal queues a refresh with the fake key
+        users.update(prun_username=f'{USERNAME_PREFIX}0', fio_apikey=FIO_FAKE_APIKEY)
+        user = users.get()
+        plans = list(PlanningPlan.objects.filter(user=user).order_by('planet_natural_id', 'uuid'))
+        consumption: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        for plan in plans:
+            for ticker, (_produced, consumed) in self._plan_material_io(plan).items():
+                consumption[plan.planet_natural_id][ticker] += consumed
+        workforce_goods = [t for t in FIO_WORKFORCE_GOODS if t in set(self.material_tickers)]
+        stamp = datetime.now(tz=UTC).isoformat()
+
+        def fio_id(*parts: str) -> str:
+            return hashlib.md5('#'.join(parts).encode(), usedforsecurity=False).hexdigest()
+
+        sites: list[JSONValue] = []
+        storages: list[JSONValue] = []
+        for p, (planet, io) in enumerate(sorted(consumption.items())):
+            site_id = fio_id('site', planet)
+            amounts = {
+                ticker: round(daily * FIO_STOCK_DAYS[(p + i) % len(FIO_STOCK_DAYS)])
+                for i, (ticker, daily) in enumerate(sorted(io.items()))
+                if daily > 0
+            }
+            for i, ticker in enumerate(workforce_goods):
+                amounts.setdefault(ticker, FIO_WORKFORCE_STOCK[(p + i) % len(FIO_WORKFORCE_STOCK)])
+            sites.append(
+                {
+                    'SiteId': site_id,
+                    'PlanetId': fio_id('planet', planet),
+                    'PlanetIdentifier': planet,
+                    'PlanetName': planet,
+                    'PlanetFoundedEpochMs': 0,
+                    'InvestedPermits': 1,
+                    'MaximumPermits': 3,
+                    'UserNameSubmitted': user.username,
+                    'Timestamp': stamp,
+                    'Buildings': [],
+                }
+            )
+            storages.append(
+                {
+                    'StorageId': fio_id('store', planet),
+                    'AddressableId': site_id,
+                    'Name': None,
+                    'Type': 'STORE',
+                    'UserNameSubmitted': user.username,
+                    'Timestamp': stamp,
+                    'WeightCapacity': 5000.0,
+                    'VolumeCapacity': 5000.0,
+                    'WeightLoad': 0.0,
+                    'VolumeLoad': 0.0,
+                    'StorageItems': [
+                        {
+                            'MaterialId': fio_id('material', ticker),
+                            'MaterialTicker': ticker,
+                            'MaterialWeight': 1.0,
+                            'MaterialVolume': 1.0,
+                            'MaterialAmount': amount,
+                            'MaterialValue': 0.0,
+                            'Type': 'INVENTORY',
+                            'TotalWeight': float(amount),
+                            'TotalVolume': float(amount),
+                        }
+                        for ticker, amount in sorted(amounts.items())
+                    ],
+                }
+            )
+        self._bulk(
+            GameFIOPlayerData,
+            [
+                GameFIOPlayerData(
+                    user=user,
+                    storage_data=storages,
+                    site_data=sites,
+                    warehouse_data=[],
+                    ship_data=[],
+                    fio_status_code=200,
+                    # every refresh request backs off (and beat skips it), the profile still says 'ok'
+                    automation_next_retry_at=datetime.now(tz=UTC) + timedelta(days=3650),
+                )
+            ],
+        )
+
     def seed_insights_planet(self) -> None:
         """INSIGHTS_USERS users with 2 plans each on one planet, all running FRM in two recipe mixes."""
         rng_state = self.rng.getstate()  # leave the rest of the seeded data and the targets as they were
@@ -748,6 +850,7 @@ class Command(BaseCommand):
             else:
                 seeder.seed_snapshot_gamedata(snapshot)
             seeder.seed_users_and_planning()
+            seeder.seed_fio_playerdata()
             seeder.seed_insights_planet()
             seeder.run_analytics()
 
