@@ -1,3 +1,4 @@
+from collections.abc import MutableMapping
 from unittest.mock import patch
 
 import httpx
@@ -8,8 +9,10 @@ from django.test import override_settings
 from django.urls import reverse
 from model_bakery import baker
 from planning.models import PlanningCX, PlanningEmpire
+from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from user.api.serializer import UserChangePasswordSerializer, UserProfileSerializer
+from structlog.testing import capture_logs
+from user.api.serializer import UserChangePasswordSerializer, UserProfileSerializer, UserRegisterSerializer
 from user.api.viewsets import UserProfileViewSet
 from user.models import User, UserAPIKey, UserPreference
 from user.models.verification_codes import VerificationCode, VerificationeCodeChoices
@@ -49,8 +52,10 @@ class TestAuthEndpointThrottling:
             response = api_client.post(url, data={}, format='json')
             assert response.status_code == 400
 
-        response = api_client.post(url, data={}, format='json')
+        with capture_logs() as logs:
+            response = api_client.post(url, data={}, format='json')
         assert response.status_code == 429
+        assert not [e for e in logs if e['event'].startswith('user_signup_')]
 
     @override_settings(CACHES=LOCMEM_CACHES)
     def test_request_email_verification_is_throttled_after_limit(self, api_client, user_factory):
@@ -357,6 +362,104 @@ class TestUserRegisterViewSet:
 
         response = api_client.post(reverse('user:user_signup'), data=self._payload(), format='json')
         assert response.status_code == 400
+
+    def _signup(
+        self, api_client, **overrides: str
+    ) -> tuple[Response, list[MutableMapping[str, object]], list[MutableMapping[str, object]]]:
+        """Post a signup; returns the response, all captured log events and the signup events."""
+        with patch('user.tasks.send_email_verification_code.apply_async'), capture_logs() as logs:
+            response = api_client.post(reverse('user:user_signup'), data=self._payload(**overrides), format='json')
+        return response, logs, [e for e in logs if str(e['event']).startswith('user_signup_')]
+
+    def test_register_logs_completed(self, api_client):
+        response, _, events = self._signup(api_client)
+
+        assert response.status_code == 201
+        assert response.data == {'username': 'newpilot'}
+        user = User.objects.get(username='newpilot')
+        assert events == [
+            {'event': 'user_signup_completed', 'user_id': user.pk, 'has_email': True, 'log_level': 'info'}
+        ]
+
+    def test_register_without_email_logs_has_email_false(self, api_client):
+        _, _, events = self._signup(api_client, email='')
+
+        assert [(e['event'], e['has_email']) for e in events] == [('user_signup_completed', False)]
+
+    @pytest.mark.parametrize(
+        ('overrides', 'codes'),
+        [
+            ({'username': 'taken'}, ['username:username_taken']),
+            ({'planet_input': 'wrong'}, ['planet_input:planet_mismatch']),
+            ({'password': '12345678'}, ['password:password_entirely_numeric', 'password:password_too_common']),
+            ({'password': 'short'}, ['password:min_length', 'password:password_too_short']),
+            # DRF runs validate() (the planet check) only once every field passed
+            (
+                {'username': 'taken', 'planet_input': 'wrong', 'password': '12345678'},
+                ['password:password_entirely_numeric', 'password:password_too_common', 'username:username_taken'],
+            ),
+        ],
+    )
+    def test_register_logs_rejected_codes(self, api_client, user_factory, overrides: dict[str, str], codes: list[str]):
+        user_factory(username='taken')
+
+        response, _, events = self._signup(api_client, **overrides)
+
+        assert response.status_code == 400
+        assert len(events) == 1
+        assert events[0]['event'] == 'user_signup_rejected'
+        assert events[0]['codes'] == codes
+        assert events[0]['fields'] == sorted({c.split(':')[0] for c in codes})
+        # planet_id only on planet mismatches
+        assert ('planet_id' in events[0]) == ('planet_input:planet_mismatch' in codes)
+
+    def test_register_rejected_planet_logs_planet_id(self, api_client):
+        _, _, events = self._signup(api_client, planet_id='KW-020c', planet_input='montem')
+
+        assert events[0]['planet_id'] == 'KW-020c'
+
+    def test_register_rejected_unknown_planet_id_is_not_logged(self, api_client):
+        _, _, events = self._signup(api_client, planet_id='free text from the client')
+
+        assert events[0]['codes'] == ['planet_input:planet_mismatch']
+        assert 'planet_id' not in events[0]
+
+    def test_register_rejected_body_is_unchanged(self, api_client, user_factory):
+        user_factory(username='taken')
+
+        response, _, _ = self._signup(api_client, username='taken', planet_input='wrong', password='12345678')
+
+        # captured before the logging change
+        assert response.data == {
+            'username': ['This username is already taken.'],
+            'password': ['This password is too common.', 'This password is entirely numeric.'],
+        }
+
+    @pytest.mark.parametrize(
+        'overrides',
+        [
+            {},
+            {'username': 'occupied_pilot'},
+            {'planet_input': 'Wrongplanet', 'email': 'secret-mail@example.com'},
+            {'password': 'Sup3rSecretPw!'},
+        ],
+    )
+    def test_register_logs_no_submitted_values(self, api_client, user_factory, overrides: dict[str, str]):
+        user_factory(username='occupied_pilot')
+        payload = self._payload(**overrides)
+
+        _, logs, events = self._signup(api_client, **overrides)
+
+        assert len(events) == 1
+        logged = repr(logs).lower()
+        for field in ('username', 'password', 'email', 'planet_input'):
+            assert payload[field].lower() not in logged, field
+
+    def test_planet_mismatch_error_carries_code(self):
+        serializer = UserRegisterSerializer(data=self._payload(planet_input='wrong'))
+
+        assert not serializer.is_valid()
+        assert serializer.errors['planet_input'][0].code == 'planet_mismatch'
 
     def test_register_silently_drops_duplicate_email(self, api_client, user_factory):
         with patch('user.tasks.send_email_verification_code.apply_async') as send_code:

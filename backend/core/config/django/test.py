@@ -1,5 +1,7 @@
 import os
 
+import structlog
+
 from .base import *  # noqa: F403
 
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # ty:ignore[invalid-assignment]
@@ -22,3 +24,6 @@ CACHES = {
 
 WHITENOISE_KEEP_ONLY_HASHED_FILES = True
 WHITENOISE_AUTOREFRESH = True
+
+# structlog.testing.capture_logs only sees loggers that aren't cached yet
+structlog.configure(cache_logger_on_first_use=False)

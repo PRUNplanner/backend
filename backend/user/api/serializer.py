@@ -76,6 +76,20 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         return VerificationService.execute_password_reset(user=user, code_obj=code_obj, new_password=new_password)
 
 
+# signup "captcha": planet id -> name the user has to type
+PLANET_CHECKLIST = {
+    'OT-580b': 'montem',
+    'KW-688c': 'etherwind',
+    'ZV-759c': 'deimos',
+    'ZV-896b': 'harmonia',
+    'FK-794b': 'boucher',
+    'UV-351c': 'umbra',
+    'RC-040b': 'malahat',
+    'OT-442b': 'danakil',
+    'KW-020c': 'milliways',
+}
+
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     username = serializers.CharField(required=True, min_length=3)
     password = serializers.CharField(write_only=True, min_length=8, validators=[validate_password])
@@ -91,7 +105,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     def validate_username(self, value):
         if User.objects.filter(username__iexact=value).exists():
-            raise serializers.ValidationError('This username is already taken.')
+            raise serializers.ValidationError('This username is already taken.', code='username_taken')
         return value
 
     def validate_email(self, value):
@@ -103,23 +117,13 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         # validate planet captcha
-        PLANET_CHECKLIST = {
-            'OT-580b': 'montem',
-            'KW-688c': 'etherwind',
-            'ZV-759c': 'deimos',
-            'ZV-896b': 'harmonia',
-            'FK-794b': 'boucher',
-            'UV-351c': 'umbra',
-            'RC-040b': 'malahat',
-            'OT-442b': 'danakil',
-            'KW-020c': 'milliways',
-        }
-
         p_id = attrs.get('planet_id')
         p_input = attrs.get('planet_input').strip().lower()
 
         if PLANET_CHECKLIST.get(p_id) != p_input:
-            raise serializers.ValidationError({'planet_input': 'The planet name does not match the provided ID.'})
+            raise serializers.ValidationError(
+                {'planet_input': 'The planet name does not match the provided ID.'}, code='planet_mismatch'
+            )
 
         return attrs
 
