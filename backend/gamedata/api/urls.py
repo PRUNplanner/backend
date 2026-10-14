@@ -38,6 +38,12 @@ urlpatterns = [
         'planets/<str:search_term>/', GamePlanetViewSet.as_view({'get': 'search_single'}), name='planet-search-single'
     ),
     path('planets/', GamePlanetViewSet.as_view({'get': 'list'}), name='planet-list'),
+    # before cxpc/<ticker>/<exchange_code>/, which would capture it
+    path(
+        'cxpc/spark/<str:exchange_code>/',
+        ExchangeCXPCViewSet.as_view({'get': 'cxpc_sparklines'}),
+        name='cxpc-sparklines',
+    ),
     path(
         'cxpc/<str:ticker>/<str:exchange_code>/',
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_exchange_data'}),

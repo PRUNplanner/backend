@@ -134,6 +134,32 @@ paths:
                 items:
                   $ref: '#/components/schemas/GameExchangeCXPC'
           description: ''
+  /data/cxpc/spark/{exchange_code}/:
+    get:
+      operationId: exchange_cxpc_sparklines
+      summary: Get daily VWAP sparklines of every ticker for an Exchange
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
+          maximum: 90
+          minimum: 1
+          default: 30
+      - in: path
+        name: exchange_code
+        schema:
+          type: string
+        required: true
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CXPCSparklines'
+          description: ''
   /data/exchanges/:
     get:
       operationId: data_exchanges_list
@@ -1532,6 +1558,27 @@ components:
       - last_updated
       - planet_natural_id
       - status
+    CXPCSparklines:
+      type: object
+      properties:
+        exchange:
+          type: string
+        days:
+          type: integer
+        series:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: number
+              format: double
+              nullable: true
+          description: Daily VWAP per ticker, oldest first, null for days without
+            trades
+      required:
+      - days
+      - exchange
+      - series
     ClientError:
       type: object
       description: An error report from the browser; every field bounded, since each

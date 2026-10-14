@@ -310,3 +310,30 @@ class TestExchangeCXPCViewSet:
         url_wrong = reverse('data:cxpc-market-data-full', kwargs={'ticker': 'DW', 'exchange_code': 'foo'})
         response_wrong = api_client.get(url_wrong)
         assert response_wrong.status_code == 400
+
+    @pytest.mark.usefixtures('locmem_cache')
+    def test_cxpc_sparklines(self, api_client, exchange_cxpc_factory):
+        today = int(timezone.now().timestamp() * 1000) // 86_400_000 * 86_400_000
+        exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=today, volume=300, traded=3)
+        exchange_cxpc_factory(ticker='RAT', exchange_code='IC1', date_epoch=today, volume=100, traded=1)
+
+        url = reverse('data:cxpc-sparklines', kwargs={'exchange_code': 'UNIVERSE'})
+        first = api_client.get(url)
+        assert first.status_code == 200
+        assert first['X-Cache-Hit'] == '0'
+        body = first.json()
+        assert body['exchange'] == 'UNIVERSE'
+        assert body['days'] == 30
+        assert len(body['series']['RAT']) == 30
+        assert body['series']['RAT'][-1] == 100.0
+        assert body['series']['RAT'][0] is None
+
+        assert api_client.get(url)['X-Cache-Hit'] == '1'
+
+        short = api_client.get(url, {'days': 7}).json()
+        assert len(short['series']['RAT']) == 7
+
+    @pytest.mark.parametrize(('exchange', 'query'), [('foo', {}), ('AI1', {'days': 0}), ('AI1', {'days': 91})])
+    def test_cxpc_sparklines_invalid(self, api_client, exchange, query):
+        url = reverse('data:cxpc-sparklines', kwargs={'exchange_code': exchange})
+        assert api_client.get(url, query).status_code == 400

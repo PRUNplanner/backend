@@ -12,6 +12,8 @@ from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from gamedata.api.serializer import (
+    CXPCSparklinesQuerySerializer,
+    CXPCSparklinesSerializer,
     GameBuildingSerializer,
     GameExchangeCXPCSerializer,
     GameExchangeSerializer,
@@ -54,6 +56,7 @@ from gamedata.models import (
     GameRecipe,
     queryset_gameplanet,
 )
+from gamedata.services.cxpc_sparklines import DAY_MS, build_sparklines
 from gamedata.services.planet_search import GamePlanetSearchService
 from gamedata.tasks import gamedata_process_fio_webhook
 from pydantic import TypeAdapter, ValidationError as PydanticValidationError
@@ -443,6 +446,40 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return self._get_cxpc_response(ticker, exchange_code)
+
+    @extend_schema(
+        auth=[],
+        summary='Get daily VWAP sparklines of every ticker for an Exchange',
+        operation_id='exchange_cxpc_sparklines',
+        parameters=[CXPCSparklinesQuerySerializer],
+        responses={200: CXPCSparklinesSerializer},
+    )
+    @action(detail=False, url_path='spark/(?P<exchange_code>[^/.]+)')
+    def cxpc_sparklines(self, request, exchange_code):
+        if exchange_code not in self.ALLOWED_EXCHANGES:
+            return Response(
+                {'error': f'Invalid exchange code. Supported: {", ".join(self.ALLOWED_EXCHANGES)}'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        query = CXPCSparklinesQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        days: int = query.validated_data['days']
+        # the key holds the day, so a new day starts a new entry; CXPC refreshes invalidate the namespace
+        today_epoch = int(timezone.now().timestamp() * 1000) // DAY_MS * DAY_MS
+
+        return CacheManager.respond(
+            request,
+            CXPC,
+            'sparklines',
+            exchange_code,
+            days,
+            today_epoch,
+            build=lambda: {
+                'exchange': exchange_code,
+                'days': days,
+                'series': build_sparklines(exchange_code, days, today_epoch),
+            },
+        )
 
 
 class FIOWebhookIngest(APIView):
