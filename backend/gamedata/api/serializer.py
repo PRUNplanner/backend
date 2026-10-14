@@ -361,6 +361,19 @@ class GameExchangeCXPCSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class CXPCSparklinesQuerySerializer(serializers.Serializer):
+    days = serializers.IntegerField(min_value=1, max_value=90, default=30)
+
+
+class CXPCSparklinesSerializer(serializers.Serializer):
+    exchange = serializers.CharField()
+    days = serializers.IntegerField()
+    series = serializers.DictField(
+        child=serializers.ListField(child=serializers.FloatField(allow_null=True)),
+        help_text='Daily VWAP per ticker, oldest first, null for days without trades',
+    )
+
+
 class GamePlanetInfrastructureReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = GamePlanetInfrastructureReport
