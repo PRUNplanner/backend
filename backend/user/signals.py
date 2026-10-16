@@ -8,7 +8,7 @@ from structlog import get_logger
 
 from user.services.verification_service import VerificationService
 
-from .models import User, VerificationeCodeChoices
+from .models import User, VerificationCode, VerificationeCodeChoices
 
 logger = get_logger(__name__)
 
@@ -32,6 +32,9 @@ def check_user_changes(sender, instance, **kwargs):
     if old_instance:
         if instance.email != old_instance.email and instance.email:
             instance._email_changed = True
+            instance.is_email_verified = False
+        elif old_instance.email and not instance.email:
+            instance._email_cleared = True
             instance.is_email_verified = False
     elif not instance.pk:
         # It's a brand new user
@@ -96,11 +99,20 @@ def handle_email_verification_trigger(sender, instance, created, **kwargs):
     if getattr(instance, '_migration_in_progress', False):
         return
 
+    if getattr(instance, '_email_cleared', False):
+        del instance._email_cleared
+        # codes of both purposes belong to the removed address
+        VerificationCode.objects.filter(user=instance).delete()
+        logger.info('email_removed', user_id=instance.id)
+        return
+
     # check if email changed or newly created and email given
     if getattr(instance, '_email_changed', False) or (created and instance.email and not instance.is_email_verified):
+        # a reset code sent to the old address must not work any more
+        VerificationCode.objects.filter(user=instance, purpose=VerificationeCodeChoices.PASSWORD_RESET).delete()
         VerificationService.create_and_send_code(instance, VerificationeCodeChoices.EMAIL_VERIFICATION)
 
-        logger.info('email_verification_queued', user_id=instance.id)
+        logger.info('email_verification_requested', user_id=instance.id, reason='signup' if created else 'email_change')
 
         if hasattr(instance, '_email_changed'):
             del instance._email_changed

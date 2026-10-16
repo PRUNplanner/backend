@@ -54,8 +54,8 @@ class RestFrameworkSettings(BaseSettings):
 class EmailSettings(BaseSettings):
     resend_api_key: str = Field(default='')
     from_email: str = Field(default='')
-    verification_expiry_minutes: int = Field(default=30)
-    password_reset_expiry_minutes: int = Field(default=30)
+    verification_expiry_minutes: int = Field(default=1440)
+    password_reset_expiry_minutes: int = Field(default=60)
     model_config = SettingsConfigDict(extra='ignore', env_file=str(ENV_FILE) if ENV_FILE else None, env_prefix='EMAIL_')
 
 

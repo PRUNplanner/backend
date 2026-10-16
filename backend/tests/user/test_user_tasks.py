@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from core.env import settings
 from django.core import mail
 from django.core.mail import EmailMultiAlternatives
 from django.utils import timezone
@@ -12,6 +13,7 @@ from model_bakery import baker
 from user.models import User, VerificationCode, VerificationeCodeChoices
 from user.models.verification_codes import EXPIRY_TIME
 from user.tasks import (
+    expiry_text,
     send_email_verification_code,
     send_password_reset_code,
     user_handle_post_refresh,
@@ -102,13 +104,17 @@ def _code(user: User, purpose: VerificationeCodeChoices, age: timedelta, is_used
     return code
 
 
+# the longer expiry, so no code is purged before it expires
+PURGE_AGE = max(EXPIRY_TIME.values())
+
+
 class TestUserPurgeVerificationCodes:
     @pytest.mark.parametrize('purpose', list(VerificationeCodeChoices))
     def test_deletes_used_and_expired_keeps_active(self, purpose: VerificationeCodeChoices) -> None:
         user: User = baker.make('user.User')
         _code(user, purpose, timedelta(minutes=1), is_used=True)
-        _code(user, purpose, EXPIRY_TIME + timedelta(minutes=1))
-        active = _code(user, purpose, EXPIRY_TIME - timedelta(minutes=1))
+        _code(user, purpose, PURGE_AGE + timedelta(minutes=1))
+        active = _code(user, purpose, PURGE_AGE - timedelta(minutes=1))
 
         user_purge_verification_codes()
 
@@ -151,3 +157,25 @@ class TestCodeEmails:
 
         events = [r.msg['event'] for r in caplog.records if isinstance(r.msg, dict)]
         assert events == ['email_send_failed']
+
+
+@pytest.mark.parametrize(
+    ('minutes', 'text'),
+    [(1440, '24 hours'), (60, '1 hour'), (30, '30 minutes'), (1, '1 minute'), (90, '90 minutes')],
+)
+def test_expiry_text(minutes: int, text: str) -> None:
+    assert expiry_text(minutes) == text
+
+
+@pytest.mark.parametrize(
+    ('task', 'setting'),
+    [
+        (send_email_verification_code, 'verification_expiry_minutes'),
+        (send_password_reset_code, 'password_reset_expiry_minutes'),
+    ],
+)
+def test_code_emails_state_their_expiry(task: CodeEmailTask, setting: str) -> None:
+    task(1, 'pilot', 'pilot@example.com', 'abc123')
+
+    (message,) = mail.outbox
+    assert f'This link expires in {expiry_text(getattr(settings.email, setting))}.' in message.body

@@ -1,11 +1,15 @@
 import pytest
 from model_bakery import baker
-from user.models import VerificationeCodeChoices
+from user.models import User, VerificationeCodeChoices
 
 
 @pytest.fixture
-def user(db):
-    return baker.make('user.User', is_email_verified=False)
+def user(db) -> User:
+    user: User = baker.make('user.User', is_email_verified=False)
+    # update(): an email set through save() would already get a verification code from the signal
+    User.objects.filter(pk=user.pk).update(email='pilot@example.com')
+    user.refresh_from_db()
+    return user
 
 
 @pytest.fixture
