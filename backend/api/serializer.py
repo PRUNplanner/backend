@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from rest_framework import serializers
 
 
@@ -14,8 +14,11 @@ class PydanticJSONField(serializers.JSONField):
         try:
             model_instance = self.pydantic_model.model_validate(data)
             return model_instance.model_dump()
-        except Exception as exc:
-            raise serializers.ValidationError(str(exc)) from exc
+        except ValidationError as exc:
+            # paths and messages only: str(exc) echoes the submitted values back
+            raise serializers.ValidationError(
+                [f'{".".join(map(str, e["loc"])) or "root"}: {e["msg"]}' for e in exc.errors(include_url=False)]
+            ) from exc
 
     def to_representation(self, value):
         return value
