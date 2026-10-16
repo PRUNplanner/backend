@@ -24,6 +24,7 @@ from user.api.serializer import (
 )
 from user.models import User, UserAPIKey, UserPreference
 from user.services import VerificationeCodeChoices, VerificationService
+from user.services.verification_service import CODE_DETAILS
 from user.tasks import user_handle_post_refresh
 
 logger = structlog.get_logger(__name__)
@@ -33,6 +34,10 @@ POST_REFRESH_INTERVAL_SECONDS = 15 * 60
 
 # planOverrides by plan uuid, fioRepairPlanLinks by FIO SiteId
 KEYED_PREFERENCES = ('plan_overrides', 'fio_repair_plan_links')
+
+
+def _coded(code: str, status_code: int) -> Response:
+    return Response({'detail': CODE_DETAILS[code], 'code': code}, status=status_code)
 
 
 def _merge_keyed(stored: dict[str, dict] | None, changes: dict[str, dict | None]) -> dict[str, dict]:
@@ -163,12 +168,15 @@ class UserEmailVerificationViewSet(viewsets.ViewSet):
     def request_code(self, request):
         user: User = request.user
 
+        if not user.email:
+            return _coded('no_email', status.HTTP_400_BAD_REQUEST)
         if user.is_email_verified:
-            return Response({'detail': 'Email already verified.'}, status=status.HTTP_400_BAD_REQUEST)
+            return _coded('already_verified', status.HTTP_400_BAD_REQUEST)
 
         VerificationService.create_and_send_code(user, VerificationeCodeChoices.EMAIL_VERIFICATION)
+        logger.info('email_verification_requested', user_id=user.pk, reason='resend')
 
-        return Response({'detail': 'Verification code sent to your email.'}, status=status.HTTP_200_OK)
+        return _coded('sent', status.HTTP_200_OK)
 
     @extend_schema(
         request=VerifyCodeSerializer,
@@ -187,14 +195,9 @@ class UserEmailVerificationViewSet(viewsets.ViewSet):
         if serializer.is_valid():
             code = serializer.validated_data['code']
 
-            success, message = VerificationService.verify_code(
-                request.user, code.upper(), VerificationeCodeChoices.EMAIL_VERIFICATION
-            )
+            success, result = VerificationService.verify_code(request.user, code)
 
-            if success:
-                return Response({'detail': message}, status=status.HTTP_200_OK)
-
-            return Response({'detail': message}, status=status.HTTP_400_BAD_REQUEST)
+            return _coded(result, status.HTTP_200_OK if success else status.HTTP_400_BAD_REQUEST)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -237,17 +240,20 @@ class UserPasswordResetViewSet(viewsets.ViewSet):
     def request_code(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
 
-        if serializer.is_valid(raise_exception=True):
-            # find user with this email
-            user: User | None = User.objects.filter(email=serializer.validated_data['email']).first()
+        serializer.is_valid(raise_exception=True)
 
-            if user:
-                VerificationService.create_and_send_code(user, VerificationeCodeChoices.PASSWORD_RESET)
-
-        return Response(
-            {'detail': 'If your email is valid and attached to a PRUNplanner user, please check your inbox.'},
-            status=status.HTTP_200_OK,
+        # only a confirmed address gets a code; the answer is the same either way (no account enumeration)
+        # order_by: deterministic while case-duplicate addresses still exist (see migration 0015)
+        user: User | None = (
+            User.objects.filter(email__iexact=serializer.validated_data['email'], is_email_verified=True)
+            .order_by('pk')
+            .first()
         )
+        if user:
+            VerificationService.create_and_send_code(user, VerificationeCodeChoices.PASSWORD_RESET)
+        logger.info('password_reset_requested', matched=user is not None, user_id=user.pk if user else None)
+
+        return _coded('requested', status.HTTP_200_OK)
 
     @extend_schema(
         auth=[],
@@ -261,15 +267,13 @@ class UserPasswordResetViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['post'])
     def password_reset(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
-
         serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
 
-        serializer.save()
+        user, code_obj = VerificationService.get_valid_code_or_raise(data['email'], data['code'])
+        VerificationService.execute_password_reset(user, code_obj, data['new_password'])
 
-        return Response(
-            {'detail': 'Password successfully reset.'},
-            status=status.HTTP_200_OK,
-        )
+        return _coded('reset', status.HTTP_200_OK)
 
 
 @extend_schema(tags=['user : profile'])

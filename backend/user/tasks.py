@@ -15,6 +15,14 @@ from user.models.verification_codes import EXPIRY_TIME
 logger = structlog.get_logger(__name__)
 
 
+def expiry_text(minutes: int) -> str:
+    # "24 hours", "1 hour" or "45 minutes" for the emails
+    if minutes % 60:
+        return f'{minutes} minute{"s" if minutes != 1 else ""}'
+    hours = minutes // 60
+    return f'{hours} hour{"s" if hours != 1 else ""}'
+
+
 @shared_task(name='user_send_email_verification_code')
 def send_email_verification_code(user_id: int, user_username: str, user_email: str, code_str: str):
     log = logger.bind(user_id=user_id, email_kind='verification')
@@ -22,7 +30,7 @@ def send_email_verification_code(user_id: int, user_username: str, user_email: s
     context = {
         'username': user_username,
         'verification_url': f'https://prunplanner.org/verify-email/{code_str}',
-        'verification_expiry': settings.email.verification_expiry_minutes,
+        'verification_expiry': expiry_text(settings.email.verification_expiry_minutes),
     }
     html_content = render_to_string('emails/email_verification.html', context)
     text_content = strip_tags(html_content)
@@ -52,7 +60,7 @@ def send_password_reset_code(user_id: int, user_username: str, user_email: str, 
     context = {
         'username': user_username,
         'password_reset_url': f'https://prunplanner.org/password-reset/{code_str}',
-        'password_reset_expiry': settings.email.password_reset_expiry_minutes,
+        'password_reset_expiry': expiry_text(settings.email.password_reset_expiry_minutes),
     }
     html_content = render_to_string('emails/email_passwordreset.html', context)
     text_content = strip_tags(html_content)
@@ -88,7 +96,7 @@ def user_handle_post_refresh(user_id: int):
 
 @shared_task(name='user_purge_verification_codes', ignore_result=True)
 def user_purge_verification_codes() -> None:
-    # same cutoff as VerificationCode.is_expired
-    cutoff = timezone.now() - EXPIRY_TIME
+    # every code past its purpose's expiry (VerificationCode.is_expired) is gone by then
+    cutoff = timezone.now() - max(EXPIRY_TIME.values())
     deleted, _ = VerificationCode.objects.filter(Q(is_used=True) | Q(created_at__lt=cutoff)).delete()
     logger.info('verification_codes_purged', deleted=deleted)

@@ -1652,6 +1652,8 @@ components:
       properties:
         detail:
           type: string
+        code:
+          type: string
       required:
       - detail
     FIORepairPlanLink:
@@ -2674,6 +2676,21 @@ components:
             allOf:
             - $ref: '#/components/schemas/FIORepairPlanLink'
             nullable: true
+        emailNudgeDismissal:
+          enum:
+          - later
+          - never
+          - null
+          type: string
+          description: |-
+            * `later` - later
+            * `never` - never
+          x-spec-enum-id: 86b248dfe80280a6
+          nullable: true
+        emailNudgeDismissedAt:
+          type: string
+          format: date-time
+          nullable: true
     PatchedUserProfile:
       type: object
       properties:
@@ -3769,6 +3786,21 @@ components:
             allOf:
             - $ref: '#/components/schemas/FIORepairPlanLink'
             nullable: true
+        emailNudgeDismissal:
+          enum:
+          - later
+          - never
+          - null
+          type: string
+          description: |-
+            * `later` - later
+            * `never` - never
+          x-spec-enum-id: 86b248dfe80280a6
+          nullable: true
+        emailNudgeDismissedAt:
+          type: string
+          format: date-time
+          nullable: true
     UserProfile:
       type: object
       properties:

@@ -13,7 +13,6 @@ from planning.models import PlanningCX, PlanningEmpire
 from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_CX_NAME, SIGNUP_EMPIRE
 from rest_framework import serializers
 from user.models import User, UserAPIKey
-from user.services.verification_service import VerificationService
 
 logger = structlog.get_logger(__name__)
 
@@ -41,6 +40,8 @@ class UserAPIKeyCreateSerializer(serializers.ModelSerializer):
 
 class CodeGenericResponseSerializer(serializers.Serializer):
     detail = serializers.CharField()
+    # machine-readable result, see verification_service.CODE_DETAILS
+    code = serializers.CharField(required=False)
 
 
 class VerifyCodeSerializer(serializers.Serializer):
@@ -52,6 +53,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
+    # the code is checked by the viewset, so its result keeps the {detail, code} shape
     email = serializers.EmailField()
     code = serializers.CharField(write_only=True, min_length=8, max_length=8)
     new_password = serializers.CharField(write_only=True, style={'input_type': 'password'})
@@ -60,20 +62,11 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         validate_password(value)
         return value
 
-    def validate(self, attrs):
-        user, code_obj = VerificationService.get_valid_code_or_raise(attrs['email'], attrs['code'])
 
-        attrs['user_obj'] = user
-        attrs['code_obj'] = code_obj
-
-        return attrs
-
-    def save(self, **kwargs):
-        user = self.validated_data['user_obj']
-        code_obj = self.validated_data['code_obj']
-        new_password = self.validated_data['new_password']
-
-        return VerificationService.execute_password_reset(user=user, code_obj=code_obj, new_password=new_password)
+def normalize_email(value: str | None) -> str | None:
+    """Stored form of an address: trimmed, domain lower-cased, empty as None."""
+    value = (value or '').strip()
+    return User.objects.normalize_email(value) if value else None
 
 
 # signup "captcha": planet id -> name the user has to type
@@ -111,6 +104,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         # Don't reveal whether an email is already registered (account enumeration):
         # silently drop it so registration still succeeds, just without that email attached.
+        value = normalize_email(value)
         if value and User.objects.filter(email__iexact=value).exists():
             return None
         return value
@@ -154,6 +148,7 @@ def deep_merge(base, overrides):
 
 LAYOUT_NAVIGATION_STYLES = ['full', 'collapsed']
 COLOR_PALETTES = ['default', 'colorblind']
+EMAIL_NUDGE_DISMISSALS = ['later', 'never']
 
 DEFAULT_PREFERENCES = {
     'locale': 'en_US',
@@ -173,6 +168,8 @@ DEFAULT_PREFERENCES = {
     'fio_repair_due_soon_days': 7,
     'fio_repair_arrival_days': 2,
     'fio_repair_plan_links': {},
+    'email_nudge_dismissal': None,
+    'email_nudge_dismissed_at': None,
 }
 
 
@@ -241,6 +238,13 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     fioRepairPlanLinks = serializers.DictField(
         source='fio_repair_plan_links', child=FIORepairPlanLinkSerializer(allow_null=True), required=False
     )
+    # "add your email" nudge, null: not dismissed
+    emailNudgeDismissal = serializers.ChoiceField(
+        source='email_nudge_dismissal', choices=EMAIL_NUDGE_DISMISSALS, allow_null=True, required=False
+    )
+    emailNudgeDismissedAt = serializers.DateTimeField(
+        source='email_nudge_dismissed_at', allow_null=True, required=False
+    )
 
     def validate_fioRepairPlanLinks(self, value: dict[str, dict | None]) -> dict[str, dict | None]:
         if len(value) > MAX_FIO_REPAIR_PLAN_LINKS:
@@ -262,6 +266,8 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
                 merged[keyed] = {}
         if merged['layout_navigation_style'] not in LAYOUT_NAVIGATION_STYLES:
             merged['layout_navigation_style'] = 'full'
+        if merged['email_nudge_dismissal'] not in (*EMAIL_NUDGE_DISMISSALS, None):
+            merged['email_nudge_dismissal'] = None
         if merged['color_palette'] not in COLOR_PALETTES:
             merged['color_palette'] = 'default'
         return super().to_representation(merged)
@@ -286,6 +292,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'fio_status',
             'fio_last_refreshed_at',
         ]
+        # the model's exact-match UniqueValidator would let case variants through; validate_email checks instead
+        extra_kwargs = {'email': {'validators': []}}
+
+    def validate_email(self, value: str | None) -> str | None:
+        """Errors carry a code as their message."""
+        value = normalize_email(value)
+        if value and User.objects.filter(email__iexact=value).exclude(pk=getattr(self.instance, 'pk', None)).exists():
+            raise serializers.ValidationError('email_taken', code='email_taken')
+        return value
 
     def to_representation(self, instance: User) -> dict[str, object]:
         # one query for both fields

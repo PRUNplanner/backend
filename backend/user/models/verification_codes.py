@@ -4,12 +4,16 @@ from core.env import settings
 from django.db import models
 from django.utils import timezone
 
-EXPIRY_TIME = timedelta(minutes=settings.email.verification_expiry_minutes)
-
 
 class VerificationeCodeChoices(models.TextChoices):
     EMAIL_VERIFICATION = 'Email Verification'
     PASSWORD_RESET = 'Password Reset'
+
+
+EXPIRY_TIME = {
+    VerificationeCodeChoices.EMAIL_VERIFICATION: timedelta(minutes=settings.email.verification_expiry_minutes),
+    VerificationeCodeChoices.PASSWORD_RESET: timedelta(minutes=settings.email.password_reset_expiry_minutes),
+}
 
 
 class VerificationCode(models.Model):
@@ -34,5 +38,5 @@ class VerificationCode(models.Model):
         return f'{self.user.email} - {self.purpose}'
 
     @property
-    def is_expired(self):
-        return timezone.now() > self.created_at + EXPIRY_TIME
+    def is_expired(self) -> bool:
+        return timezone.now() > self.created_at + EXPIRY_TIME[VerificationeCodeChoices(self.purpose)]
