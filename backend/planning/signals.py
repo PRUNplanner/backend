@@ -33,7 +33,23 @@ def drop_plan_overrides(
 
     # replaces the frontend's cleanPlanPreferences(), which also dropped plans created in another tab
     preference = UserPreference.objects.select_for_update().filter(user_id=instance.user_id).first()  # type: ignore
-    overrides = preference.preferences.get('plan_overrides') if preference else None
-    if preference and overrides and str(instance.uuid) in overrides:
-        del overrides[str(instance.uuid)]
+    if not preference:
+        return
+    plan_uuid = str(instance.uuid)
+    changed = False
+
+    overrides = preference.preferences.get('plan_overrides')
+    if overrides and plan_uuid in overrides:
+        del overrides[plan_uuid]
+        changed = True
+
+    # FIO Repair: sites linked to this plan go back to automatic matching
+    links = preference.preferences.get('fio_repair_plan_links')
+    if links:
+        kept = {site: link for site, link in links.items() if (link or {}).get('plan_uuid') != plan_uuid}
+        if len(kept) < len(links):
+            preference.preferences['fio_repair_plan_links'] = kept
+            changed = True
+
+    if changed:
         preference.save(update_fields=['preferences'])

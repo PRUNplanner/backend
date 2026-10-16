@@ -54,7 +54,6 @@ class FIOUserSiteSchema(BaseModel):
     def to_game_storage_dict(self):
         return self.model_dump(
             exclude={
-                'SiteId': True,
                 'PlanetId': True,
                 'PlanetFoundedEpochMs': True,
                 'UserNameSubmitted': True,
@@ -63,7 +62,6 @@ class FIOUserSiteSchema(BaseModel):
                     '__all__': {
                         'SiteBuildingId': True,
                         'BuildingId': True,
-                        'BuildingCreated': True,
                         'BuildingName': True,
                         'ReclaimableMaterials': {'__all__': {'MaterialId': True, 'MaterialName': True}},
                         'RepairMaterials': {'__all__': {'MaterialId': True, 'MaterialName': True}},
@@ -77,6 +75,7 @@ class FIOUserSiteSchema(BaseModel):
 drf_sites_schema = inline_serializer(
     name='FIOUserSiteResponse',
     fields={
+        'SiteId': serializers.CharField(min_length=32, max_length=32),
         'PlanetIdentifier': serializers.CharField(min_length=7),
         'PlanetName': serializers.CharField(allow_null=True),
         'PlanetFoundedEpochMs': serializers.IntegerField(),
@@ -87,6 +86,7 @@ drf_sites_schema = inline_serializer(
             many=True,
             fields={
                 'BuildingTicker': serializers.CharField(min_length=2, max_length=3),
+                'BuildingCreated': serializers.IntegerField(),
                 'BuildingLastRepair': serializers.IntegerField(allow_null=True),
                 'Condition': serializers.FloatField(min_value=0.0),
                 'ReclaimableMaterials': inline_serializer(

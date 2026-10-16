@@ -1654,6 +1654,15 @@ components:
           type: string
       required:
       - detail
+    FIORepairPlanLink:
+      type: object
+      properties:
+        planUuid:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - planUuid
     FIOUserSiteBuildingResponse:
       type: object
       properties:
@@ -1661,6 +1670,8 @@ components:
           type: string
           maxLength: 3
           minLength: 2
+        BuildingCreated:
+          type: integer
         BuildingLastRepair:
           type: integer
           nullable: true
@@ -1677,6 +1688,7 @@ components:
           items:
             $ref: '#/components/schemas/FIOUserSiteMaterialResponseRef'
       required:
+      - BuildingCreated
       - BuildingLastRepair
       - BuildingTicker
       - Condition
@@ -1711,6 +1723,10 @@ components:
     FIOUserSiteResponse:
       type: object
       properties:
+        SiteId:
+          type: string
+          maxLength: 32
+          minLength: 32
         PlanetIdentifier:
           type: string
           minLength: 7
@@ -1734,6 +1750,7 @@ components:
       - PlanetFoundedEpochMs
       - PlanetIdentifier
       - PlanetName
+      - SiteId
     GameBuilding:
       type: object
       description: Mixin to serialize '' as None for nullable fields that may still
@@ -2638,6 +2655,24 @@ components:
           additionalProperties:
             allOf:
             - $ref: '#/components/schemas/PlanOverride'
+            nullable: true
+        fioRepairIntervalDays:
+          type: integer
+          maximum: 180
+          minimum: 1
+        fioRepairDueSoonDays:
+          type: integer
+          maximum: 60
+          minimum: 0
+        fioRepairArrivalDays:
+          type: integer
+          maximum: 30
+          minimum: 0
+        fioRepairPlanLinks:
+          type: object
+          additionalProperties:
+            allOf:
+            - $ref: '#/components/schemas/FIORepairPlanLink'
             nullable: true
     PatchedUserProfile:
       type: object
@@ -3715,6 +3750,24 @@ components:
           additionalProperties:
             allOf:
             - $ref: '#/components/schemas/PlanOverride'
+            nullable: true
+        fioRepairIntervalDays:
+          type: integer
+          maximum: 180
+          minimum: 1
+        fioRepairDueSoonDays:
+          type: integer
+          maximum: 60
+          minimum: 0
+        fioRepairArrivalDays:
+          type: integer
+          maximum: 30
+          minimum: 0
+        fioRepairPlanLinks:
+          type: object
+          additionalProperties:
+            allOf:
+            - $ref: '#/components/schemas/FIORepairPlanLink'
             nullable: true
     UserProfile:
       type: object

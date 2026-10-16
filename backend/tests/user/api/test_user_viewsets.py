@@ -1,4 +1,4 @@
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from unittest.mock import patch
 
 import httpx
@@ -887,3 +887,84 @@ class TestUpdateProfileFioCheck:
         assert response.status_code == 429
         # reading the profile is not throttled by it
         assert api_client.as_user(user).get(reverse('user:user_profile')).status_code == 200
+
+
+class TestFIORepairPreferences:
+    SITE_A = 'a' * 32
+    SITE_B = 'b' * 32
+    PLAN = '11111111-1111-1111-1111-111111111111'
+
+    def _patch(self, api_client, user: User, payload: Mapping[str, object]):
+        return api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
+
+    def test_retrieve_returns_defaults_for_stored_preferences_without_them(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'locale': 'de_DE', 'fio_repair_plan_links': None})
+
+        response = api_client.as_user(user).get(reverse('user:user_preferences'))
+
+        assert response.status_code == 200
+        assert response.data['fioRepairIntervalDays'] == 60
+        assert response.data['fioRepairDueSoonDays'] == 7
+        assert response.data['fioRepairArrivalDays'] == 2
+        assert response.data['fioRepairPlanLinks'] == {}
+
+    def test_update_persists_settings(self, api_client, user_factory):
+        user = user_factory(id=1)
+        payload = {'fioRepairIntervalDays': 180, 'fioRepairDueSoonDays': 0, 'fioRepairArrivalDays': 30}
+
+        response = self._patch(api_client, user, payload)
+
+        assert response.status_code == 200
+        assert {k: response.data[k] for k in payload} == payload
+        stored = UserPreference.objects.get(user=user).preferences
+        assert (stored['fio_repair_interval_days'], stored['fio_repair_arrival_days']) == (180, 30)
+
+    @pytest.mark.parametrize(
+        'payload',
+        [
+            {'fioRepairIntervalDays': 0},
+            {'fioRepairIntervalDays': 181},
+            {'fioRepairDueSoonDays': -1},
+            {'fioRepairDueSoonDays': 61},
+            {'fioRepairArrivalDays': -1},
+            {'fioRepairArrivalDays': 31},
+            {'fioRepairPlanLinks': {'A' * 32: {'planUuid': None}}},
+            {'fioRepairPlanLinks': {'a' * 31: {'planUuid': None}}},
+            {'fioRepairPlanLinks': {f'{i:032x}': {'planUuid': None} for i in range(201)}},
+            {'fioRepairPlanLinks': {'a' * 32: {'planUuid': 'not-a-uuid'}}},
+            {'fioRepairPlanLinks': {'a' * 32: {}}},
+            {'fioRepairPlanLinks': None},
+        ],
+    )
+    def test_update_rejects_invalid_values(self, api_client, user_factory, payload):
+        user = user_factory(id=1)
+
+        assert self._patch(api_client, user, payload).status_code == 400
+
+    def test_update_accepts_200_plan_links(self, api_client, user_factory):
+        user = user_factory(id=1)
+        links = {f'{i:032x}': {'planUuid': None} for i in range(200)}
+
+        assert self._patch(api_client, user, {'fioRepairPlanLinks': links}).status_code == 200
+
+    def test_plan_links_merge_per_site(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'burn_days_red': 3, 'plan_overrides': {'p1': None}})
+
+        self._patch(api_client, user, {'fioRepairPlanLinks': {self.SITE_A: {'planUuid': self.PLAN}}})
+        response = self._patch(api_client, user, {'fioRepairPlanLinks': {self.SITE_B: {'planUuid': None}}})
+
+        assert response.status_code == 200
+        assert response.data['fioRepairPlanLinks'] == {
+            self.SITE_A: {'planUuid': self.PLAN},
+            self.SITE_B: {'planUuid': None},
+        }
+
+        response = self._patch(api_client, user, {'fioRepairPlanLinks': {self.SITE_A: None}})
+
+        assert response.status_code == 200
+        assert response.data['fioRepairPlanLinks'] == {self.SITE_B: {'planUuid': None}}
+        stored = UserPreference.objects.get(user=user).preferences
+        assert stored['fio_repair_plan_links'] == {self.SITE_B: {'plan_uuid': None}}
+        assert (stored['burn_days_red'], stored['plan_overrides']) == (3, {'p1': None})
