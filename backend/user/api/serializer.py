@@ -169,11 +169,17 @@ DEFAULT_PREFERENCES = {
     'color_palette': 'default',
     'plan_overrides': {},
     'plan_suggestions': True,
+    'fio_repair_interval_days': 60,
+    'fio_repair_due_soon_days': 7,
+    'fio_repair_arrival_days': 2,
+    'fio_repair_plan_links': {},
 }
 
 
 BUILDING_TICKER = re.compile(r'[A-Z0-9]{1,3}')
 MAX_CONSTRUCTION_BUILT = 100
+FIO_SITE_ID = re.compile(r'[0-9a-f]{32}')
+MAX_FIO_REPAIR_PLAN_LINKS = 200
 
 
 class PlanOverrideSerializer(serializers.Serializer):
@@ -193,6 +199,11 @@ class PlanOverrideSerializer(serializers.Serializer):
         if bad:
             raise serializers.ValidationError(f'Invalid building tickers: {", ".join(bad)}')
         return value
+
+
+class FIORepairPlanLinkSerializer(serializers.Serializer):
+    # null: the user chose "no plan" for the site
+    planUuid = serializers.UUIDField(source='plan_uuid', allow_null=True)
 
 
 class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
@@ -217,12 +228,38 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
         source='plan_overrides', child=PlanOverrideSerializer(allow_null=True), required=False
     )
 
+    fioRepairIntervalDays = serializers.IntegerField(
+        source='fio_repair_interval_days', min_value=1, max_value=180, required=False
+    )
+    fioRepairDueSoonDays = serializers.IntegerField(
+        source='fio_repair_due_soon_days', min_value=0, max_value=60, required=False
+    )
+    fioRepairArrivalDays = serializers.IntegerField(
+        source='fio_repair_arrival_days', min_value=0, max_value=30, required=False
+    )
+    # keyed by FIO SiteId
+    fioRepairPlanLinks = serializers.DictField(
+        source='fio_repair_plan_links', child=FIORepairPlanLinkSerializer(allow_null=True), required=False
+    )
+
+    def validate_fioRepairPlanLinks(self, value: dict[str, dict | None]) -> dict[str, dict | None]:
+        if len(value) > MAX_FIO_REPAIR_PLAN_LINKS:
+            raise serializers.ValidationError(f'At most {MAX_FIO_REPAIR_PLAN_LINKS} sites.')
+        bad = [key for key in value if not FIO_SITE_ID.fullmatch(key)]
+        if bad:
+            raise serializers.ValidationError(f'Invalid site ids: {", ".join(bad)}')
+        # a partial PATCH makes nested fields optional too, so planUuid's presence is checked here
+        if any(link is not None and 'plan_uuid' not in link for link in value.values()):
+            raise serializers.ValidationError('planUuid is required.')
+        return value
+
     def to_representation(self, instance):
         data_from_db = instance if isinstance(instance, dict) else {}
         merged = deep_merge(DEFAULT_PREFERENCES, data_from_db)
         # ChoiceField / allow_null only guard writes, fix up values stored before they existed
-        if merged['plan_overrides'] is None:
-            merged['plan_overrides'] = {}
+        for keyed in ('plan_overrides', 'fio_repair_plan_links'):
+            if merged[keyed] is None:
+                merged[keyed] = {}
         if merged['layout_navigation_style'] not in LAYOUT_NAVIGATION_STYLES:
             merged['layout_navigation_style'] = 'full'
         if merged['color_palette'] not in COLOR_PALETTES:

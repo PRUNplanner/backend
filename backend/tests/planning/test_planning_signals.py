@@ -269,6 +269,24 @@ class TestPlanDeleteDropsOverrides:
         assert UserPreference.objects.get(user=other).preferences == {'plan_overrides': {str(plan.uuid): self.OVERRIDE}}
         assert PlanningPlan.objects.filter(pk=other_plan.pk).exists()
 
+    def test_delete_removes_only_fio_repair_links_to_that_plan(self, user_factory, plan_factory) -> None:
+        user = user_factory()
+        plan, kept = plan_factory(user=user), plan_factory(user=user)
+        links = {
+            'a' * 32: {'plan_uuid': str(plan.uuid)},
+            'b' * 32: {'plan_uuid': str(kept.uuid)},
+            'c' * 32: {'plan_uuid': None},
+            'd' * 32: {'plan_uuid': str(plan.uuid)},
+        }
+        UserPreference.objects.create(user=user, preferences={'burn_days_red': 3, 'fio_repair_plan_links': links})
+
+        plan.delete()
+
+        assert UserPreference.objects.get(user=user).preferences == {
+            'burn_days_red': 3,
+            'fio_repair_plan_links': {'b' * 32: {'plan_uuid': str(kept.uuid)}, 'c' * 32: {'plan_uuid': None}},
+        }
+
     def test_delete_without_preferences_or_override(self, user_factory, plan_factory) -> None:
         user = user_factory()
         plan_factory(user=user).delete()
@@ -282,7 +300,11 @@ class TestPlanDeleteDropsOverrides:
         user = user_factory()
         plans = [plan_factory(user=user) for _ in range(5)]
         UserPreference.objects.create(
-            user=user, preferences={'plan_overrides': {str(p.uuid): self.OVERRIDE for p in plans}}
+            user=user,
+            preferences={
+                'plan_overrides': {str(p.uuid): self.OVERRIDE for p in plans},
+                'fio_repair_plan_links': {f'{i:032x}': {'plan_uuid': str(p.uuid)} for i, p in enumerate(plans)},
+            },
         )
         table = UserPreference._meta.db_table
 

@@ -31,6 +31,19 @@ logger = structlog.get_logger(__name__)
 # a client can refresh its token in bursts; last_login and the FIO check need it once per interval
 POST_REFRESH_INTERVAL_SECONDS = 15 * 60
 
+# planOverrides by plan uuid, fioRepairPlanLinks by FIO SiteId
+KEYED_PREFERENCES = ('plan_overrides', 'fio_repair_plan_links')
+
+
+def _merge_keyed(stored: dict[str, dict] | None, changes: dict[str, dict | None]) -> dict[str, dict]:
+    merged = dict(stored or {})
+    for key, value in changes.items():
+        if value is None:
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    return merged
+
 
 @extend_schema(tags=['user : profile'])
 class UserPreferenceViewSet(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):
@@ -52,22 +65,16 @@ class UserPreferenceViewSet(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, 
         serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
-        # top-level merge: omitted keys keep their stored value; planOverrides merges per plan uuid, null deletes one
+        # top-level merge: omitted keys keep their stored value; keyed preferences merge per key, null deletes one
         changes = dict(serializer.validated_data)
-        overrides: dict[str, dict | None] | None = changes.pop('plan_overrides', None)
+        keyed = {key: changes.pop(key) for key in KEYED_PREFERENCES if key in changes}
 
         # locked, so another tab's PATCH in between isn't lost
         with transaction.atomic():
             obj, _ = UserPreference.objects.select_for_update().get_or_create(user=request.user)
             preferences = {**obj.preferences, **changes}
-            if overrides is not None:
-                merged = dict(obj.preferences.get('plan_overrides') or {})
-                for plan_uuid, override in overrides.items():
-                    if override is None:
-                        merged.pop(plan_uuid, None)
-                    else:
-                        merged[plan_uuid] = override
-                preferences['plan_overrides'] = merged
+            for key, key_changes in keyed.items():
+                preferences[key] = _merge_keyed(obj.preferences.get(key), key_changes)
             obj.preferences = preferences
             obj.save()
 

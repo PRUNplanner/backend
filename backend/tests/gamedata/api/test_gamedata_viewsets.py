@@ -1,4 +1,5 @@
 import copy
+import re
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from gamedata.fio.schemas.fio_sites import FIOUserSiteSchema
 from gamedata.gamedata_cache_manager import PLANET
 from gamedata.models.game_exchange import GameExchange
 from gamedata.models.game_planet import GamePlanet, GamePlanetCOGCProgramChoices
@@ -392,6 +394,35 @@ class TestGameStorageViewSet:
         planets = response.data['storage_data']['planets'].values()
         assert all(isinstance(p['StorageItems'], list) for p in planets)
         assert sum(p['StorageItems'] == [] for p in planets) >= 2
+
+    def test_sites_carry_site_id_and_building_created(
+        self,
+        api_client: APIClient,
+        user_factory: Callable[..., User],
+        fio_playerdata_factory: Callable[..., object],
+    ) -> None:
+        user = user_factory()
+        fio_playerdata_factory(
+            user=user,
+            storage_data=fio_storage_data,
+            site_data=fio_sites_data,
+            warehouse_data=fio_warehouse_data,
+            ship_data=fio_ship_data,
+        )
+
+        response = api_client.as_user(user).get(reverse('data:storage-retrieve'))  # ty:ignore[unresolved-attribute]
+
+        assert response.status_code == 200
+        sites = response.data['sites_data']
+        fio_sites = [FIOUserSiteSchema.model_validate(s) for s in fio_sites_data]
+        assert sites.keys() == {s.PlanetIdentifier for s in fio_sites}
+        for fio_site in fio_sites:
+            site = sites[fio_site.PlanetIdentifier]
+            assert re.fullmatch(r'[0-9a-f]{32}', site['SiteId'])
+            assert site['SiteId'] == fio_site.SiteId
+            assert [b['BuildingCreated'] for b in site['Buildings']] == [b.BuildingCreated for b in fio_site.Buildings]
+            # unchanged: both only present once a building was repaired
+            assert all(('BuildingLastRepair' in b) == ('AgeDays' in b) for b in site['Buildings'])
 
 
 class TestFIOWebhookIngestConcurrency:
