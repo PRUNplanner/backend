@@ -116,3 +116,34 @@ class PlanningEmpireStateUpdateSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         raise NotImplementedError('Use the main Empire serializer for creation.')
+
+
+class PlanningEmpireMaterialIOExportRowSerializer(serializers.Serializer):
+    ticker = serializers.CharField()
+    material_name = serializers.CharField(allow_null=True)
+    production = serializers.FloatField(help_text='Per day')
+    consumption = serializers.FloatField(help_text='Per day')
+    delta = serializers.FloatField(help_text='Per day, production - consumption')
+    updated_at = serializers.CharField(allow_null=True, help_text='When the empire state was last saved')
+
+
+class PlanningEmpireMaterialIOExportSerializer(serializers.Serializer):
+    updated_at = serializers.CharField(allow_null=True, help_text='When the empire state was last saved')
+    rows = PlanningEmpireMaterialIOExportRowSerializer(many=True)
+
+
+class PlanningEmpirePlanMaterialIOExportRowSerializer(serializers.Serializer):
+    plan_uuid = serializers.UUIDField()
+    plan_name = serializers.CharField()
+    planet_natural_id = serializers.CharField(allow_null=True)
+    cogc = serializers.CharField(allow_null=True)
+    ticker = serializers.CharField()
+    production = serializers.FloatField(help_text='Per day')
+    consumption = serializers.FloatField(help_text='Per day')
+    delta = serializers.FloatField(help_text='Per day, production - consumption')
+    updated_at = serializers.CharField(allow_null=True, help_text='When the empire state was last saved')
+
+
+class PlanningEmpirePlanMaterialIOExportSerializer(serializers.Serializer):
+    updated_at = serializers.CharField(allow_null=True, help_text='When the empire state was last saved')
+    rows = PlanningEmpirePlanMaterialIOExportRowSerializer(many=True)

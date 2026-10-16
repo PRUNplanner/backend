@@ -8,9 +8,9 @@ from core.env import settings
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'user.auth_apikey.LoggedJWTAuthentication',
         'user.auth_apikey.UserAPIKeyAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
+        'user.auth_apikey.LoggedBasicAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': [
@@ -35,7 +35,13 @@ REST_FRAMEWORK = {
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'PRUNplanner API',
-    'DESCRIPTION': 'API endpoints for PRUNplanner.org allowing Empire and Base planning and management',
+    'DESCRIPTION': (
+        'API endpoints for PRUNplanner.org allowing Empire and Base planning and management.\n\n'
+        'Scripts and sheets authenticate with an API key, created on the API Keys page: either as the header '
+        '`Authorization: Api-Key <KEY>` or as the query parameter `?api_key=<KEY>` (for tools that only take a URL, '
+        'such as Google Sheets `IMPORTDATA`). A key has full access to your account, so anyone who can see a URL '
+        'with your key can use it. Revoke a key you no longer need.'
+    ),
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
     'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],

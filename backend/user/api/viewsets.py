@@ -137,6 +137,7 @@ class UserAPIKeyViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
 
         api_key, key = UserAPIKey.objects.create_key(name=serializer.validated_data['name'], user=request.user)
+        logger.info('api_key_created', user_id=request.user.pk, api_key_prefix=api_key.prefix)
 
         return Response(
             {
@@ -147,6 +148,11 @@ class UserAPIKeyViewSet(viewsets.ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    def perform_destroy(self, instance):
+        # the API Keys page revokes a key by deleting it
+        instance.delete()
+        logger.info('api_key_revoked', user_id=instance.user_id, api_key_prefix=instance.prefix)
 
 
 @extend_schema(tags=['user : authentication'])

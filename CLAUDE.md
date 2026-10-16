@@ -118,7 +118,10 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
   `task_succeeded` and `task_failed`; `queue_ms` (publish to start, including
   time held back by a rate limit or eta) on every line of a task, so read it
   from `task_started`. A task queued without the publish-time header has no
-  `queue_ms`.
+  `queue_ms`. `request_finished` also gets `auth` (`jwt` | `api_key` |
+  `basic` | `none`), and for keys `api_key_prefix` / `api_key_via`
+  (`header` | `query`) or `auth_error` (`api_key_invalid` |
+  `api_key_revoked`), set by the classes in `user/auth_apikey.py`.
 - `celery_queue_depth` (`depth`, `depth_high` / `depth_normal` / `depth_low`
   for priority 0-3 / 4-6 / 7-10) is logged about once a minute by the beat
   scheduler (`core/beat.py`), `celery_queue_depth_failed` once per Redis
@@ -132,8 +135,9 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
   (bad user FIO key, invalid webhook payload), `logger.exception` inside
   `except` for what needs a look. Log a failure once, where it's handled.
 - No start/finish pairs: one line when done, with `duration_ms`.
-- No secrets, emails, API keys or tokens (the webhook path token is redacted
-  by a processor). No unbounded dicts: every key becomes an Axiom column.
+- No secrets, emails, API keys or tokens (the webhook path token and
+  `api_key` query values in `request` / `url` are redacted by
+  `redact_secrets`). No unbounded dicts: every key becomes an Axiom column.
 - Signups: one `user_signup_completed` (`user_id`, `has_email`) or
   `user_signup_rejected` (`fields`, sorted `codes` as `"<field>:<error code>"`,
   `planet_id` only with `planet_input:planet_mismatch`) per attempt, never the

@@ -9,8 +9,10 @@ from gamedata.api.viewsets import (
     GameMaterialViewSet,
     GamePlanetViewSet,
     GameRecipeViewSet,
+    GameStorageRowsViewSet,
     GameStorageViewSet,
 )
+from rest_framework_csv.renderers import CSVRenderer
 
 app_name = 'data'
 
@@ -53,6 +55,12 @@ urlpatterns = [
         'cxpc/<str:ticker>/',
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_ticker_data'}),
         name='cxpc-market-data-ticker',
+    ),
+    path('storage/rows/', GameStorageRowsViewSet.as_view({'get': 'rows'}), name='storage-rows'),
+    path(
+        'storage/csv/',
+        GameStorageRowsViewSet.as_view({'get': 'csv'}, renderer_classes=[CSVRenderer]),
+        name='storage-csv',
     ),
     path('storage/', GameStorageViewSet.as_view(actions={'get': 'retrieve'}), name='storage-retrieve'),
     path('ingest/<uuid:token>', FIOWebhookIngest.as_view(), name='fio-webhook-ingest'),

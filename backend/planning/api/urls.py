@@ -1,4 +1,5 @@
 from django.urls import path
+from rest_framework_csv.renderers import CSVRenderer
 
 from .viewsets import CXViewSet, EmpireViewSet, PlanViewSet, SharedViewSet
 
@@ -26,6 +27,31 @@ urlpatterns = [
         'empire/<uuid:pk>/plans/',
         EmpireViewSet.as_view({'get': 'retrieve_plans'}),
         name='empire-plan-list',
+    ),
+    path(
+        'empire/<uuid:pk>/plans/csv/',
+        EmpireViewSet.as_view({'get': 'retrieve_plans_csv'}, renderer_classes=[CSVRenderer]),
+        name='empire-plan-list-csv',
+    ),
+    path(
+        'empire/<uuid:pk>/plans/material_io/',
+        EmpireViewSet.as_view({'get': 'plans_material_io'}),
+        name='empire-plans-material-io',
+    ),
+    path(
+        'empire/<uuid:pk>/plans/material_io/csv/',
+        EmpireViewSet.as_view({'get': 'plans_material_io_csv'}, renderer_classes=[CSVRenderer]),
+        name='empire-plans-material-io-csv',
+    ),
+    path(
+        'empire/<uuid:pk>/material_io/',
+        EmpireViewSet.as_view({'get': 'material_io'}),
+        name='empire-material-io',
+    ),
+    path(
+        'empire/<uuid:pk>/material_io/csv/',
+        EmpireViewSet.as_view({'get': 'material_io_csv'}, renderer_classes=[CSVRenderer]),
+        name='empire-material-io-csv',
     ),
     path(
         'empire/<uuid:pk>/state/',

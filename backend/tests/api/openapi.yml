@@ -2,8 +2,10 @@ openapi: 3.0.3
 info:
   title: PRUNplanner API
   version: 1.0.0
-  description: API endpoints for PRUNplanner.org allowing Empire and Base planning
-    and management
+  description: |-
+    API endpoints for PRUNplanner.org allowing Empire and Base planning and management.
+
+    Scripts and sheets authenticate with an API key, created on the API Keys page: either as the header `Authorization: Api-Key <KEY>` or as the query parameter `?api_key=<KEY>` (for tools that only take a URL, such as Google Sheets `IMPORTDATA`). A key has full access to your account, so anyone who can see a URL with your key can use it. Revoke a key you no longer need.
 paths:
   /analytics/planet_insights/{planet_natural_id}/:
     get:
@@ -406,6 +408,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -413,6 +416,53 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GameStorage'
+          description: ''
+  /data/storage/csv/:
+    get:
+      operationId: data_storage_csv_retrieve
+      description: One row per material in each FIO storage (planet bases, warehouses,
+        ships).
+      summary: Retrieve users storage data (CSV)
+      tags:
+      - 'data : csv'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+              examples:
+                CSVExample:
+                  value: |
+                    location,storage_type,storage_name,ticker,amount,updated_at
+                    OT-580b,STORE,,RAT,1200,2026-10-16T08:01:12+00:00
+                    ANT,WAREHOUSE_STORE,,DW,4000,2026-10-16T08:01:12+00:00
+                  summary: CSV Example
+          description: ''
+  /data/storage/rows/:
+    get:
+      operationId: data_storage_rows_retrieve
+      description: One row per material in each FIO storage (planet bases, warehouses,
+        ships).
+      summary: Retrieve users storage data as rows
+      tags:
+      - data
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameStorageRows'
           description: ''
   /planning/cx/:
     get:
@@ -423,6 +473,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -453,6 +504,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '201':
@@ -477,6 +529,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -512,6 +565,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -541,6 +595,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '204':
@@ -572,6 +627,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -603,6 +659,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -633,6 +690,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '201':
@@ -657,6 +715,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -692,6 +751,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -721,10 +781,74 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '204':
           description: No response body
+  /planning/empire/{id}/material_io/:
+    get:
+      operationId: planning_empire_material_io_retrieve
+      description: Production, consumption and delta per material and day, from the
+        empire state the frontend saved when it last calculated the empire (`updated_at`).
+        An empire without a saved state has no rows.
+      summary: Get the empire material i/o
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : empire'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpireMaterialIOExport'
+          description: ''
+  /planning/empire/{id}/material_io/csv/:
+    get:
+      operationId: planning_empire_material_io_csv_retrieve
+      description: Production, consumption and delta per material and day, from the
+        empire state the frontend saved when it last calculated the empire (`updated_at`).
+        Header only for an empire without a saved state.
+      summary: Get the empire material i/o (CSV)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : csv'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+              examples:
+                CSVExample:
+                  value: |
+                    ticker,material_name,production,consumption,delta,updated_at
+                    DW,drinkingWater,120.0,95.5,24.5,2026-10-16T09:12:44.123Z
+                    RAT,rations,80.0,100.0,-20.0,2026-10-16T09:12:44.123Z
+                  summary: CSV Example
+          description: ''
   /planning/empire/{id}/plans/:
     get:
       operationId: planning_empire_plans_retrieve
@@ -741,6 +865,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -748,6 +873,100 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlanningEmpireDetail'
+          description: ''
+  /planning/empire/{id}/plans/csv/:
+    get:
+      operationId: planning_empire_plans_csv_retrieve
+      summary: Get all plans of the users specific empire (CSV)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : csv'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+              examples:
+                CSVExample:
+                  value: |
+                    plan_uuid,plan_name,planet_natural_id,plan_cogc,plan_permits_used,plan_corphq,modified_at
+                    0b4f3c1e-8a52-4d1b-9c55-1f0e4d2a7b10,Montem RAT,OT-580b,FOOD_INDUSTRIES,1,False,2026-10-16T09:12:44.123456Z
+                  summary: CSV Example
+          description: ''
+  /planning/empire/{id}/plans/material_io/:
+    get:
+      operationId: planning_empire_plans_material_io_retrieve
+      description: Production, consumption and delta per plan, material and day, from
+        the empire state the frontend saved when it last calculated the empire (`updated_at`).
+        Only plans linked to the empire; a newly linked plan has rows after the next
+        state save.
+      summary: Get the material i/o of each plan in the empire
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : empire'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningEmpirePlanMaterialIOExport'
+          description: ''
+  /planning/empire/{id}/plans/material_io/csv/:
+    get:
+      operationId: planning_empire_plans_material_io_csv_retrieve
+      description: Production, consumption and delta per plan, material and day, from
+        the empire state the frontend saved when it last calculated the empire (`updated_at`).
+        Only plans linked to the empire.
+      summary: Get the material i/o of each plan in the empire (CSV)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : csv'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+              examples:
+                CSVExample:
+                  value: |
+                    plan_uuid,plan_name,planet_natural_id,cogc,ticker,production,consumption,delta,updated_at
+                    0b4f3c1e-8a52-4d1b-9c55-1f0e4d2a7b10,Montem RAT,OT-580b,FOOD_INDUSTRIES,RAT,80.0,0.0,80.0,2026-10-16T09:12:44.123Z
+                  summary: CSV Example
           description: ''
   /planning/empire/{id}/state/:
     patch:
@@ -776,6 +995,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -811,6 +1031,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -836,6 +1057,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -866,6 +1088,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '201':
@@ -890,6 +1113,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -925,6 +1149,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -954,6 +1179,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '204':
@@ -974,6 +1200,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '201':
@@ -991,6 +1218,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1060,6 +1288,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '204':
@@ -1091,6 +1320,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1107,6 +1337,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1136,6 +1367,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '201':
@@ -1158,6 +1390,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '204':
@@ -1183,6 +1416,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1259,6 +1493,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1286,6 +1521,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1303,6 +1539,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1330,6 +1567,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1375,6 +1613,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -1490,6 +1729,7 @@ paths:
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
+      - ApiKeyQuery: []
       - basicAuth: []
       responses:
         '200':
@@ -2557,6 +2797,40 @@ components:
       - last_modified
       - sites_data
       - storage_data
+    GameStorageRow:
+      type: object
+      properties:
+        location:
+          type: string
+          nullable: true
+        storage_type:
+          type: string
+        storage_name:
+          type: string
+          nullable: true
+        ticker:
+          type: string
+        amount:
+          type: integer
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - amount
+      - location
+      - storage_name
+      - storage_type
+      - ticker
+      - updated_at
+    GameStorageRows:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameStorageRow'
+      required:
+      - rows
     PasswordResetConfirm:
       type: object
       properties:
@@ -3226,6 +3500,51 @@ components:
       - c
       - d
       - p
+    PlanningEmpireMaterialIOExport:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          nullable: true
+          description: When the empire state was last saved
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningEmpireMaterialIOExportRow'
+      required:
+      - rows
+      - updated_at
+    PlanningEmpireMaterialIOExportRow:
+      type: object
+      properties:
+        ticker:
+          type: string
+        material_name:
+          type: string
+          nullable: true
+        production:
+          type: number
+          format: double
+          description: Per day
+        consumption:
+          type: number
+          format: double
+          description: Per day
+        delta:
+          type: number
+          format: double
+          description: Per day, production - consumption
+        updated_at:
+          type: string
+          nullable: true
+          description: When the empire state was last saved
+      required:
+      - consumption
+      - delta
+      - material_name
+      - production
+      - ticker
+      - updated_at
     PlanningEmpireMetadata:
       type: object
       properties:
@@ -3282,6 +3601,62 @@ components:
       - empire_name
       - plans
       - uuid
+    PlanningEmpirePlanMaterialIOExport:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          nullable: true
+          description: When the empire state was last saved
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlanningEmpirePlanMaterialIOExportRow'
+      required:
+      - rows
+      - updated_at
+    PlanningEmpirePlanMaterialIOExportRow:
+      type: object
+      properties:
+        plan_uuid:
+          type: string
+          format: uuid
+        plan_name:
+          type: string
+        planet_natural_id:
+          type: string
+          nullable: true
+        cogc:
+          type: string
+          nullable: true
+        ticker:
+          type: string
+        production:
+          type: number
+          format: double
+          description: Per day
+        consumption:
+          type: number
+          format: double
+          description: Per day
+        delta:
+          type: number
+          format: double
+          description: Per day, production - consumption
+        updated_at:
+          type: string
+          nullable: true
+          description: When the empire state was last saved
+      required:
+      - cogc
+      - consumption
+      - delta
+      - plan_name
+      - plan_uuid
+      - planet_natural_id
+      - production
+      - ticker
+      - updated_at
     PlanningEmpirePlanMetadata:
       type: object
       properties:
@@ -3893,6 +4268,11 @@ components:
       in: header
       name: Authorization
       description: 'Format: Api-Key <your-key-here>'
+    ApiKeyQuery:
+      type: apiKey
+      in: query
+      name: api_key
+      description: The key as ?api_key=<your-key-here>, e.g. for Google Sheets IMPORTDATA
     basicAuth:
       type: http
       scheme: basic
