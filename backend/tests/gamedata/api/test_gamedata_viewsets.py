@@ -1,8 +1,10 @@
 import copy
+import gzip
 import re
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from typing import cast
 from unittest.mock import patch
 
 import orjson
@@ -675,3 +677,105 @@ class TestPublicEndpointsSkipAuthentication:
 
         assert response.status_code == 200
         assert response['X-Cache-Hit'] == '1'
+
+
+class TestGameStorageRowsViewSet:
+    @pytest.fixture
+    def storage_user(self, user_factory: Callable[..., User], fio_playerdata_factory: Callable[..., object]) -> User:
+        user = user_factory()
+        fio_playerdata_factory(
+            user=user,
+            storage_data=fio_storage_data,
+            site_data=fio_sites_data,
+            warehouse_data=fio_warehouse_data,
+            ship_data=fio_ship_data,
+        )
+        return user
+
+    def test_rows_match_storage_endpoint(self, api_client: APIClient, storage_user: User) -> None:
+        client = api_client.as_user(storage_user)  # ty:ignore[unresolved-attribute]
+        storage = client.get(reverse('data:storage-retrieve')).data['storage_data']
+
+        response = client.get(reverse('data:storage-rows'))
+
+        assert response.status_code == 200
+        expected = sorted(
+            (location, item['MaterialTicker'], item['MaterialAmount'])
+            for group in ('planets', 'warehouses', 'ships')
+            for location, store in storage[group].items()
+            for item in store['StorageItems']
+        )
+        rows = response.data['rows']
+        assert sorted((r['location'], r['ticker'], r['amount']) for r in rows) == expected
+        assert expected
+        assert {r['storage_type'] for r in rows} <= {'STORE', 'WAREHOUSE_STORE', 'SHIP_STORE'}
+        assert all(r['ticker'] for r in rows)
+
+    def test_csv_matches_json_rows(self, api_client: APIClient, storage_user: User) -> None:
+        client = api_client.as_user(storage_user)  # ty:ignore[unresolved-attribute]
+        rows = client.get(reverse('data:storage-rows')).data['rows']
+
+        response = client.get(reverse('data:storage-csv'))
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'text/csv; charset=utf-8'
+        lines = response.content.decode().splitlines()
+        assert lines[0] == 'location,storage_type,storage_name,ticker,amount,updated_at'
+        assert len(lines) == len(rows) + 1
+        first = rows[0]
+        assert lines[1].split(',')[3:5] == [first['ticker'], str(first['amount'])]
+
+    def test_blocked_materials_without_ticker_are_dropped(
+        self,
+        api_client: APIClient,
+        user_factory: Callable[..., User],
+        fio_playerdata_factory: Callable[..., object],
+    ) -> None:
+        user = user_factory()
+        storage_data = copy.deepcopy(fio_storage_data)
+        store = next(s for s in storage_data if s['Type'] == 'STORE' and s.get('StorageItems'))
+        cast(list[dict[str, object]], store['StorageItems'])[0]['MaterialTicker'] = None
+        fio_playerdata_factory(
+            user=user,
+            storage_data=storage_data,
+            site_data=fio_sites_data,
+            warehouse_data=fio_warehouse_data,
+            ship_data=fio_ship_data,
+        )
+
+        rows = api_client.as_user(user).get(reverse('data:storage-rows')).data['rows']  # ty:ignore[unresolved-attribute]
+
+        assert all(r['ticker'] is not None for r in rows)
+
+    @pytest.mark.parametrize('route', ['data:storage-rows', 'data:storage-csv'])
+    def test_no_fio_data_is_404(self, api_client: APIClient, user_factory: Callable[..., User], route: str) -> None:
+        response = api_client.as_user(user_factory()).get(reverse(route))  # ty:ignore[unresolved-attribute]
+
+        assert response.status_code == 404
+
+    @pytest.mark.parametrize('route', ['data:storage-rows', 'data:storage-csv'])
+    def test_requires_auth(self, api_client: APIClient, route: str) -> None:
+        assert api_client.get(reverse(route)).status_code == 401
+
+    def test_csv_with_api_key_in_query(self, api_client: APIClient, storage_user: User) -> None:
+        _, key = UserAPIKey.objects.create_key(name='sheet', user=storage_user)
+
+        response = api_client.get(
+            reverse('data:storage-csv'),
+            {'api_key': key},
+            HTTP_USER_AGENT='Mozilla/5.0 (compatible; GoogleDocs; apps-spreadsheets; +http://docs.google.com)',
+            HTTP_ACCEPT_ENCODING='gzip',
+        )
+
+        assert response.status_code == 200
+        assert response['Content-Encoding'] == 'gzip'
+        body = gzip.decompress(response.content).decode()
+        assert body.startswith('location,storage_type,storage_name,ticker,amount,updated_at\r\n')
+
+    def test_csv_accepts_text_csv(self, api_client: APIClient, storage_user: User) -> None:
+        response = api_client.as_user(storage_user).get(  # ty:ignore[unresolved-attribute]
+            reverse('data:storage-csv'), HTTP_ACCEPT='text/csv'
+        )
+
+        assert response.status_code == 200
+        assert response['Content-Type'] == 'text/csv; charset=utf-8'

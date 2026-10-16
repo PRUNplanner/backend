@@ -23,6 +23,10 @@ _DROPPED_EVENTS = frozenset(
 )
 # the FIO webhook authenticates by a token in its path
 _WEBHOOK_TOKEN = re.compile(r'(/ingest/)[0-9a-fA-F-]{36}')
+# API keys sent as ?api_key= (Google Sheets URLs)
+_API_KEY_PARAM = re.compile(r'([?&]api_key=)[^&#\s]*', re.IGNORECASE)
+# fields that can hold a path with its query string
+_PATH_FIELDS = ('request', 'url')
 # message header carrying the publish time, for queue_ms
 _PUBLISHED_AT_HEADER = 'published_at_ms'
 _TASK_FINISHED_EVENTS = frozenset({'task_succeeded', 'task_failed'})
@@ -45,10 +49,11 @@ def add_task_db_stats(_, __, event_dict):
     return event_dict
 
 
-def redact_webhook_token(_, __, event_dict):
-    request = event_dict.get('request')
-    if isinstance(request, str):
-        event_dict['request'] = _WEBHOOK_TOKEN.sub(r'\1***', request)
+def redact_secrets(_, __, event_dict):
+    for field in _PATH_FIELDS:
+        value = event_dict.get(field)
+        if isinstance(value, str):
+            event_dict[field] = _API_KEY_PARAM.sub(r'\1***', _WEBHOOK_TOKEN.sub(r'\1***', value))
     return event_dict
 
 
@@ -115,7 +120,7 @@ structlog.configure(
         structlog.stdlib.filter_by_level,
         drop_duplicate_events,
         add_task_db_stats,
-        redact_webhook_token,
+        redact_secrets,
         structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
         structlog.stdlib.PositionalArgumentsFormatter(),
@@ -149,6 +154,12 @@ def add_request_duration(request, logger, response, log_kwargs, **kwargs):
     # was on request_started, which is dropped
     log_kwargs['user_agent'] = request.META.get('HTTP_USER_AGENT')
     log_kwargs.update(db_stats.snapshot())
+
+    # set by the authentication classes (user/auth_apikey.py)
+    log_kwargs['auth'] = getattr(request, '_auth', 'none')
+    for field in ('api_key_prefix', 'api_key_via', 'auth_error'):
+        if value := getattr(request, f'_{field}', None):
+            log_kwargs[field] = value
 
     if request.resolver_match:
         view_name = request.resolver_match.view_name

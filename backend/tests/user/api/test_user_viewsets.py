@@ -541,6 +541,18 @@ class TestUserAPIKeyViewSet:
 
         assert response.status_code == 404
 
+    def test_create_and_revoke_log_the_prefix_never_the_key(self, api_client, user_factory, caplog):
+        user = user_factory(id=1)
+        client = api_client.as_user(user)
+
+        created = client.post(reverse('user:user_apikey_list'), data={'name': 'sheet'}, format='json').data
+        client.delete(reverse('user:user_apikey_detail', kwargs={'pk': created['id']}))
+
+        lines = {r.msg['event']: r.msg for r in caplog.records if isinstance(r.msg, dict)}
+        for event in ('api_key_created', 'api_key_revoked'):
+            assert (lines[event]['user_id'], lines[event]['api_key_prefix']) == (user.pk, created['prefix'])
+        assert created['api_key'].partition('.')[2] not in caplog.text
+
 
 def _backdate(code: VerificationCode, age: timedelta) -> None:
     # created_at is auto_now_add, so backdate after creation

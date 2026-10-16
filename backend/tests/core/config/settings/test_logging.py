@@ -1,3 +1,4 @@
+import base64
 import logging
 import sys
 import uuid
@@ -9,7 +10,7 @@ import orjson
 import pytest
 import structlog
 from asgiref.sync import async_to_sync
-from core.config.settings.logging import drop_duplicate_events, redact_webhook_token
+from core.config.settings.logging import drop_duplicate_events, redact_secrets
 from django.db import connection
 from django.test import AsyncClient
 from django.test.utils import CaptureQueriesContext
@@ -21,6 +22,8 @@ from gamedata.models import GameMaterial
 from gamedata.tasks import gamedata_clean_user_fiodata
 from model_bakery import baker
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
+from user.models import UserAPIKey
 
 pytestmark = pytest.mark.django_db
 
@@ -44,7 +47,7 @@ class TestProcessors:
         token = uuid.uuid4()
         path = reverse('data:fio-webhook-ingest', kwargs={'token': token})
 
-        logged = redact_webhook_token(None, 'info', {'request': f'POST {path}'})
+        logged = redact_secrets(None, 'info', {'request': f'POST {path}'})
 
         assert str(token) not in logged['request']
         assert logged['request'].endswith('/ingest/***')
@@ -198,3 +201,102 @@ class TestTaskLog:
         failed = run('fails', 2)
         assert (failed['event'], failed['db_queries']) == ('task_failed', 2)
         assert isinstance(failed['db_ms'], float)
+
+
+class TestRedaction:
+    @pytest.mark.parametrize(
+        ('logged', 'expected'),
+        [
+            ('GET /data/exchanges/csv/?foo=1&api_key=SECRET', 'GET /data/exchanges/csv/?foo=1&api_key=***'),
+            ('GET /csv/exchange?api_key=SECRET', 'GET /csv/exchange?api_key=***'),
+            ('GET /csv/exchange?API_KEY=SECRET&foo=1', 'GET /csv/exchange?API_KEY=***&foo=1'),
+            ('GET /data/storage/?my_api_key=1', 'GET /data/storage/?my_api_key=1'),
+        ],
+    )
+    def test_api_key_query_value_is_redacted(self, logged: str, expected: str) -> None:
+        assert redact_secrets(None, 'info', {'request': logged, 'url': logged}) == {
+            'request': expected,
+            'url': expected,
+        }
+
+
+class TestRequestAuthLog:
+    @staticmethod
+    def finished(caplog: pytest.LogCaptureFixture) -> dict[str, object]:
+        (line,) = [r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'request_finished']
+        return line
+
+    @pytest.fixture
+    def key(self) -> tuple[UserAPIKey, str]:
+        return UserAPIKey.objects.create_key(name='script', user=baker.make('user.User'))
+
+    def test_public_request_logs_no_auth(self, api_client: APIClient, caplog: pytest.LogCaptureFixture) -> None:
+        api_client.get(reverse('data:material-list'))
+
+        line = self.finished(caplog)
+        assert line['auth'] == 'none'
+        assert 'api_key_prefix' not in line
+
+    def test_jwt_request(self, api_client: APIClient, caplog: pytest.LogCaptureFixture) -> None:
+        token = AccessToken.for_user(baker.make('user.User'))
+
+        response = api_client.get(reverse('planning:empire'), HTTP_AUTHORIZATION=f'Bearer {token}')
+
+        assert response.status_code == 200
+        assert self.finished(caplog)['auth'] == 'jwt'
+
+    def test_basic_request(self, api_client: APIClient, caplog: pytest.LogCaptureFixture) -> None:
+        user = baker.make('user.User', username='basic')
+        user.set_password('pw')
+        user.save()
+        credentials = base64.b64encode(b'basic:pw').decode()
+
+        response = api_client.get(reverse('planning:empire'), HTTP_AUTHORIZATION=f'Basic {credentials}')
+
+        assert response.status_code == 200
+        assert self.finished(caplog)['auth'] == 'basic'
+
+    def test_api_key_in_header(
+        self, api_client: APIClient, caplog: pytest.LogCaptureFixture, key: tuple[UserAPIKey, str]
+    ) -> None:
+        api_key, plain = key
+
+        response = api_client.get(reverse('planning:empire'), HTTP_AUTHORIZATION=f'Api-Key {plain}')
+
+        assert response.status_code == 200
+        line = self.finished(caplog)
+        assert (line['auth'], line['api_key_prefix'], line['api_key_via']) == ('api_key', api_key.prefix, 'header')
+        assert plain not in caplog.text
+
+    def test_api_key_in_query_is_redacted(
+        self, api_client: APIClient, caplog: pytest.LogCaptureFixture, key: tuple[UserAPIKey, str]
+    ) -> None:
+        api_key, plain = key
+
+        response = api_client.get(reverse('planning:empire'), {'foo': '1', 'api_key': plain})
+
+        assert response.status_code == 200
+        line = self.finished(caplog)
+        assert (line['auth'], line['api_key_prefix'], line['api_key_via']) == ('api_key', api_key.prefix, 'query')
+        assert line['request'] == f'GET {reverse("planning:empire")}?foo=1&api_key=***'
+        assert plain not in caplog.text
+
+    def test_unknown_key(self, api_client: APIClient, caplog: pytest.LogCaptureFixture) -> None:
+        response = api_client.get(reverse('planning:empire'), {'api_key': 'SECRET.unknown'})
+
+        assert response.status_code == 401
+        line = self.finished(caplog)
+        assert (line['auth'], line['auth_error']) == ('none', 'api_key_invalid')
+        assert 'SECRET' not in caplog.text
+
+    def test_revoked_key(
+        self, api_client: APIClient, caplog: pytest.LogCaptureFixture, key: tuple[UserAPIKey, str]
+    ) -> None:
+        api_key, plain = key
+        UserAPIKey.objects.filter(pk=api_key.pk).update(revoked=True)
+
+        response = api_client.get(reverse('planning:empire'), HTTP_AUTHORIZATION=f'Api-Key {plain}')
+
+        assert response.status_code == 401
+        assert response.data['detail'] == 'This API key has been revoked'
+        assert self.finished(caplog)['auth_error'] == 'api_key_revoked'

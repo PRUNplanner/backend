@@ -7,10 +7,11 @@ from core.services.cache_manager import CacheManager
 from django.db import connection
 from django.db.models import Case, CharField, F, Prefetch, Q, QuerySet, Value, When
 from django.db.models.functions import Concat
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, inline_serializer
 from gamedata.api.serializer import (
     CXPCSparklinesQuerySerializer,
     CXPCSparklinesSerializer,
@@ -60,7 +61,7 @@ from gamedata.services.cxpc_sparklines import DAY_MS, build_sparklines
 from gamedata.services.planet_search import GamePlanetSearchService
 from gamedata.tasks import gamedata_process_fio_webhook
 from pydantic import TypeAdapter, ValidationError as PydanticValidationError
-from rest_framework import exceptions, mixins, status, viewsets
+from rest_framework import exceptions, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -68,7 +69,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_csv.renderers import CSVRenderer
-from user.models import GlobalConfigWebhook, WebhookSenderChoices
+from user.models import GlobalConfigWebhook, User, WebhookSenderChoices
 
 logger = structlog.get_logger(__name__)
 
@@ -362,41 +363,125 @@ class GameStorageViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
     serializer_class = GameStorageSerializer
     permission_classes = [IsAuthenticated]
 
+    @staticmethod
+    def load_storage(user: User) -> dict:
+        """The user's validated FIO sites and storages, with the site map from storage ids to location names."""
+        data_object = GameFIOPlayerData.objects.filter(user=user).first()
+
+        # user must have data, rows without a successful refresh keep the {} model default
+        if not data_object or not data_object.storage_data:
+            raise NotFound(detail='No storage data available.')
+
+        # validate schemas of stored data
+        try:
+            sites_data = TypeAdapter(list[FIOUserSiteSchema]).validate_python(data_object.site_data)
+            storage_data = TypeAdapter(list[FIOUserStorageSchema]).validate_python(data_object.storage_data)
+            warehouse_data = TypeAdapter(list[FIOUserSiteWarehouseSchema]).validate_python(data_object.warehouse_data)
+            ship_data = TypeAdapter(list[FIOUserShipSiteSchema]).validate_python(data_object.ship_data)
+        except PydanticValidationError as err:
+            raise exceptions.ValidationError(detail=err.errors()) from err
+
+        return {
+            'site_map': dict(item.map_entry for item in chain(sites_data, warehouse_data, ship_data)),
+            'pydantic_sites_data': sites_data,
+            'pydantic_storage_data': storage_data,
+            'last_modified': storage_data[0].Timestamp if storage_data else None,
+        }
+
     @extend_schema(summary='Retrieve users storage data')
     def retrieve(self, request, *ars, **kwargs):
         def fetch_data():
-            def _build_site_map(sites, warehouses, ships) -> dict:
-                return dict(item.map_entry for item in chain(sites, warehouses, ships))
-
-            data_object = GameFIOPlayerData.objects.filter(user=request.user).first()
-
-            # user must have data, rows without a successful refresh keep the {} model default
-            if not data_object or not data_object.storage_data:
-                raise NotFound(detail='No storage data available.')
-
-            # validate schemas of stored data
-            try:
-                sites_data = TypeAdapter(list[FIOUserSiteSchema]).validate_python(data_object.site_data)
-                storage_data = TypeAdapter(list[FIOUserStorageSchema]).validate_python(data_object.storage_data)
-                warehouse_data = TypeAdapter(list[FIOUserSiteWarehouseSchema]).validate_python(
-                    data_object.warehouse_data
-                )
-                ship_data = TypeAdapter(list[FIOUserShipSiteSchema]).validate_python(data_object.ship_data)
-            except PydanticValidationError as err:
-                raise exceptions.ValidationError(detail=err.errors()) from err
-
-            response_data = {
-                'site_map': _build_site_map(sites_data, warehouse_data, ship_data),
-                'pydantic_sites_data': sites_data,
-                'pydantic_storage_data': storage_data,
-                'last_modified': storage_data[0].Timestamp if storage_data else None,
-            }
-
-            # serialize
-            serializer = self.get_serializer(response_data)
-            return serializer.data
+            return self.get_serializer(self.load_storage(request.user)).data
 
         return CacheManager.respond(request, STORAGE, 'retrieve', build=fetch_data, scope=request.user.id)
+
+
+class GameStorageRowsViewSet(viewsets.GenericViewSet):
+    """data/storage/ as one row per material and storage, for sheets and scripts."""
+
+    permission_classes = [IsAuthenticated]
+
+    header = ['location', 'storage_type', 'storage_name', 'ticker', 'amount', 'updated_at']
+    # the storages data/storage/ returns, and the id each is located by there (GameStorageSerializer)
+    LOCATION_ID = {'STORE': 'AddressableId', 'WAREHOUSE_STORE': 'StorageId', 'SHIP_STORE': 'StorageId'}
+
+    def _respond(self, request, fmt: str) -> HttpResponse:
+        def fetch_data():
+            storage = GameStorageViewSet.load_storage(request.user)
+            site_map: dict[str, str] = storage['site_map']
+            rows = [
+                {
+                    'location': site_map.get(getattr(store, self.LOCATION_ID[store.Type])),
+                    'storage_type': store.Type,
+                    'storage_name': store.Name,
+                    'ticker': item.MaterialTicker,
+                    'amount': item.MaterialAmount,
+                    'updated_at': store.Timestamp.isoformat(),
+                }
+                for store in storage['pydantic_storage_data']
+                if store.Type in self.LOCATION_ID
+                for item in store.StorageItems
+                # no ticker: blocked contract materials, dropped as in to_game_storage_dict
+                if item.MaterialTicker is not None
+            ]
+            return rows if fmt == 'csv' else {'rows': rows}
+
+        return CacheManager.respond(
+            request,
+            STORAGE,
+            'rows',
+            build=fetch_data,
+            scope=request.user.id,
+            fmt=fmt,
+            csv_header=self.header if fmt == 'csv' else None,
+        )
+
+    @extend_schema(
+        summary='Retrieve users storage data as rows',
+        description='One row per material in each FIO storage (planet bases, warehouses, ships).',
+        responses={
+            200: inline_serializer(
+                name='GameStorageRows',
+                fields={
+                    'rows': serializers.ListField(
+                        child=inline_serializer(
+                            name='GameStorageRow',
+                            fields={
+                                'location': serializers.CharField(allow_null=True),
+                                'storage_type': serializers.CharField(),
+                                'storage_name': serializers.CharField(allow_null=True),
+                                'ticker': serializers.CharField(),
+                                'amount': serializers.IntegerField(),
+                                'updated_at': serializers.DateTimeField(),
+                            },
+                        )
+                    )
+                },
+            )
+        },
+    )
+    def rows(self, request, *args, **kwargs) -> HttpResponse:
+        return self._respond(request, 'json')
+
+    @extend_schema(
+        tags=['data : csv'],
+        summary='Retrieve users storage data (CSV)',
+        description='One row per material in each FIO storage (planet bases, warehouses, ships).',
+        responses={(200, 'text/csv'): OpenApiTypes.STR},
+        examples=[
+            OpenApiExample(
+                'CSV Example',
+                value=(
+                    'location,storage_type,storage_name,ticker,amount,updated_at\n'
+                    'OT-580b,STORE,,RAT,1200,2026-10-16T08:01:12+00:00\n'
+                    'ANT,WAREHOUSE_STORE,,DW,4000,2026-10-16T08:01:12+00:00\n'
+                ),
+                media_type='text/csv',
+            )
+        ],
+    )
+    def csv(self, request, *args, **kwargs) -> HttpResponse:
+        return self._respond(request, 'csv')
 
 
 class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
