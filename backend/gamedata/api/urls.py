@@ -46,6 +46,7 @@ urlpatterns = [
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_sparklines'}),
         name='cxpc-sparklines',
     ),
+    path('market/summary/', ExchangeCXPCViewSet.as_view({'get': 'market_summary'}), name='market-summary'),
     path(
         'cxpc/<str:ticker>/<str:exchange_code>/',
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_exchange_data'}),

@@ -80,6 +80,22 @@ class CacheManager:
         transaction.on_commit(lambda: cls.invalidate(ns, scope))
 
     @classmethod
+    def warm(
+        cls,
+        ns: CacheNamespace,
+        endpoint: str,
+        *parts: str | int | UUID | None,
+        build: Callable[[], object],
+        scope: int | str | None = None,
+    ) -> bool:
+        """Builds the JSON entry `respond` serves for these parts, unless it is cached. True when it built one."""
+        key = cls.key(ns, endpoint, *parts, scope=scope)
+        if cache.get(key) is not None:
+            return False
+        cls._rebuild(key, build, ns.ttl, 'json', None)
+        return True
+
+    @classmethod
     def _rebuild(
         cls, key: str, build: Callable[[], object], ttl: int, fmt: str, csv_header: list[str] | None
     ) -> CacheEntry:

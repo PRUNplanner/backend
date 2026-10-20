@@ -59,3 +59,23 @@ def test_one_query(exchange_cxpc_factory: Callable[..., object], django_assert_n
 
     with django_assert_num_queries(1):
         assert len(build_sparklines('UNIVERSE', 30, TODAY)) == 3
+
+
+def test_vwap_7d_rolls_over_the_trailing_week(exchange_cxpc_factory: Callable[..., object]) -> None:
+    # 6 days before the window still counts for its first point
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(35), volume=100, traded=1)
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(3), volume=300, traded=1)
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(0), volume=100, traded=1)
+
+    series = build_sparklines('AI1', 30, TODAY, 'vwap_7d')['RAT']
+
+    assert series[0] == 100.0
+    assert series[1] is None
+    assert series[-4:] == [300.0, 300.0, 300.0, 200.0]
+
+
+def test_tickers_limit_the_series(exchange_cxpc_factory: Callable[..., object]) -> None:
+    for ticker in ['RAT', 'DW', 'FE']:
+        exchange_cxpc_factory(ticker=ticker, exchange_code='AI1', date_epoch=_day(0), volume=10, traded=1)
+
+    assert set(build_sparklines('AI1', 30, TODAY, tickers=['RAT', 'DW', 'XYZ'])) == {'RAT', 'DW'}

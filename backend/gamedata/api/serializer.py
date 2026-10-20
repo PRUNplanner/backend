@@ -362,7 +362,23 @@ class GameExchangeCXPCSerializer(serializers.ModelSerializer):
 
 
 class CXPCSparklinesQuerySerializer(serializers.Serializer):
+    MAX_TICKERS = 50
+
     days = serializers.IntegerField(min_value=1, max_value=90, default=30)
+    metric = serializers.ChoiceField(
+        choices=['vwap_daily', 'vwap_7d'],
+        default='vwap_daily',
+        help_text='vwap_daily: VWAP of the day; vwap_7d: rolling VWAP over the trailing 7 days',
+    )
+    tickers = serializers.CharField(
+        required=False, help_text=f'Comma separated, at most {MAX_TICKERS}; unknown tickers are ignored'
+    )
+
+    def validate_tickers(self, value: str) -> list[str]:
+        tickers = sorted({ticker.strip() for ticker in value.split(',') if ticker.strip()})
+        if len(tickers) > self.MAX_TICKERS:
+            raise serializers.ValidationError(f'At most {self.MAX_TICKERS} tickers.')
+        return tickers
 
 
 class CXPCSparklinesSerializer(serializers.Serializer):
@@ -370,8 +386,59 @@ class CXPCSparklinesSerializer(serializers.Serializer):
     days = serializers.IntegerField()
     series = serializers.DictField(
         child=serializers.ListField(child=serializers.FloatField(allow_null=True)),
-        help_text='Daily VWAP per ticker, oldest first, null for days without trades',
+        help_text='VWAP per ticker (daily, or rolling 7 days with metric=vwap_7d), oldest first, null without trades',
     )
+
+
+def _day_series(help_text: str) -> serializers.ListField:
+    return serializers.ListField(child=serializers.FloatField(allow_null=True), help_text=help_text)
+
+
+class MarketSummaryIndexSerializer(serializers.Serializer):
+    base = serializers.IntegerField(help_text='Epoch ms of day 0, where every index is 100')
+    combined = _day_series('ALL exchanges, one decimal, oldest first')
+    per_exchange = serializers.DictField(child=_day_series('Index of one exchange'))
+    per_sector = serializers.DictField(child=_day_series('Index of one sector, on ALL prices'))
+    members = serializers.DictField(child=serializers.IntegerField(), help_text='Members per ALL, exchange and sector')
+    coverage = serializers.DictField(
+        child=serializers.FloatField(), help_text="Members' share of the 30-day turnover, per ALL and exchange"
+    )
+
+
+class MarketSummarySectorSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    categories = serializers.ListField(child=serializers.CharField())
+
+
+class MarketSummaryMaterialSerializer(serializers.Serializer):
+    ticker = serializers.CharField()
+    name = serializers.CharField(help_text='Material name, empty for a ticker missing from the materials')
+    category = serializers.CharField()
+    sector = serializers.CharField()
+    turnover_30d = serializers.FloatField(help_text='Whole ȼ, 4 significant digits')
+    turnover_7d = serializers.FloatField(help_text='Whole ȼ, 4 significant digits')
+    units_7d = serializers.IntegerField()
+    vwap_7d = serializers.FloatField(allow_null=True)
+    vwap_30d = serializers.FloatField(allow_null=True)
+    change_pct = serializers.FloatField(allow_null=True, help_text='vwap_7d / vwap_30d - 1, in %')
+    spark = _day_series('ALL VWAP 7D of the last 15 days, oldest first, 4 significant digits')
+    is_flat = serializers.BooleanField(help_text='Held at one price, e.g. by market makers')
+    turnover_7d_by_exchange = serializers.DictField(
+        child=serializers.FloatField(),
+        help_text='Whole ȼ, 3 significant digits; exchanges without trades in 7 days are left out',
+    )
+
+
+class MarketSummarySerializer(serializers.Serializer):
+    as_of = serializers.IntegerField(help_text='Epoch ms of the newest complete UTC day')
+    start = serializers.IntegerField(help_text='Epoch ms of the first day')
+    days = serializers.IntegerField()
+    turnover_daily = serializers.DictField(
+        child=_day_series('Turnover per day in ȼ, null without trades'), help_text='Per exchange'
+    )
+    index = MarketSummaryIndexSerializer()
+    sectors = MarketSummarySectorSerializer(many=True)
+    materials = MarketSummaryMaterialSerializer(many=True, help_text='Tickers traded in the last 30 days')
 
 
 class GamePlanetInfrastructureReportSerializer(serializers.ModelSerializer):

@@ -153,6 +153,27 @@ paths:
         schema:
           type: string
         required: true
+      - in: query
+        name: metric
+        schema:
+          enum:
+          - vwap_daily
+          - vwap_7d
+          type: string
+          x-spec-enum-id: ec800711d13f1704
+          default: vwap_daily
+          minLength: 1
+        description: |-
+          vwap_daily: VWAP of the day; vwap_7d: rolling VWAP over the trailing 7 days
+
+          * `vwap_daily` - vwap_daily
+          * `vwap_7d` - vwap_7d
+      - in: query
+        name: tickers
+        schema:
+          type: string
+          minLength: 1
+        description: Comma separated, at most 50; unknown tickers are ignored
       tags:
       - data
       responses:
@@ -222,6 +243,20 @@ paths:
           description: Invalid JSON structure received
         '404':
           description: Invalid or revoked webhook token
+  /data/market/summary/:
+    get:
+      operationId: market_summary
+      summary: 'Get the public market summary: turnover, VWAP 7D indices and one row
+        per traded material'
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketSummary'
+          description: ''
   /data/materials/:
     get:
       operationId: data_materials_list
@@ -1813,8 +1848,8 @@ components:
               type: number
               format: double
               nullable: true
-          description: Daily VWAP per ticker, oldest first, null for days without
-            trades
+          description: VWAP per ticker (daily, or rolling 7 days with metric=vwap_7d),
+            oldest first, null without trades
       required:
       - days
       - exchange
@@ -2831,6 +2866,174 @@ components:
             $ref: '#/components/schemas/GameStorageRow'
       required:
       - rows
+    MarketSummary:
+      type: object
+      properties:
+        as_of:
+          type: integer
+          description: Epoch ms of the newest complete UTC day
+        start:
+          type: integer
+          description: Epoch ms of the first day
+        days:
+          type: integer
+        turnover_daily:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: number
+              format: double
+              nullable: true
+            description: Turnover per day in ȼ, null without trades
+          description: Per exchange
+        index:
+          $ref: '#/components/schemas/MarketSummaryIndex'
+        sectors:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketSummarySector'
+        materials:
+          type: array
+          items:
+            $ref: '#/components/schemas/MarketSummaryMaterial'
+          description: Tickers traded in the last 30 days
+      required:
+      - as_of
+      - days
+      - index
+      - materials
+      - sectors
+      - start
+      - turnover_daily
+    MarketSummaryIndex:
+      type: object
+      properties:
+        base:
+          type: integer
+          description: Epoch ms of day 0, where every index is 100
+        combined:
+          type: array
+          items:
+            type: number
+            format: double
+            nullable: true
+          description: ALL exchanges, one decimal, oldest first
+        per_exchange:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: number
+              format: double
+              nullable: true
+            description: Index of one exchange
+        per_sector:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: number
+              format: double
+              nullable: true
+            description: Index of one sector, on ALL prices
+        members:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Members per ALL, exchange and sector
+        coverage:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: Members' share of the 30-day turnover, per ALL and exchange
+      required:
+      - base
+      - combined
+      - coverage
+      - members
+      - per_exchange
+      - per_sector
+    MarketSummaryMaterial:
+      type: object
+      properties:
+        ticker:
+          type: string
+        name:
+          type: string
+          description: Material name, empty for a ticker missing from the materials
+        category:
+          type: string
+        sector:
+          type: string
+        turnover_30d:
+          type: number
+          format: double
+          description: Whole ȼ, 4 significant digits
+        turnover_7d:
+          type: number
+          format: double
+          description: Whole ȼ, 4 significant digits
+        units_7d:
+          type: integer
+        vwap_7d:
+          type: number
+          format: double
+          nullable: true
+        vwap_30d:
+          type: number
+          format: double
+          nullable: true
+        change_pct:
+          type: number
+          format: double
+          nullable: true
+          description: vwap_7d / vwap_30d - 1, in %
+        spark:
+          type: array
+          items:
+            type: number
+            format: double
+            nullable: true
+          description: ALL VWAP 7D of the last 15 days, oldest first, 4 significant
+            digits
+        is_flat:
+          type: boolean
+          description: Held at one price, e.g. by market makers
+        turnover_7d_by_exchange:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+          description: Whole ȼ, 3 significant digits; exchanges without trades in
+            7 days are left out
+      required:
+      - category
+      - change_pct
+      - is_flat
+      - name
+      - sector
+      - spark
+      - ticker
+      - turnover_30d
+      - turnover_7d
+      - turnover_7d_by_exchange
+      - units_7d
+      - vwap_30d
+      - vwap_7d
+    MarketSummarySector:
+      type: object
+      properties:
+        key:
+          type: string
+        categories:
+          type: array
+          items:
+            type: string
+      required:
+      - categories
+      - key
     PasswordResetConfirm:
       type: object
       properties:

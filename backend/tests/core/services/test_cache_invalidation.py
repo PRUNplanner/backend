@@ -73,7 +73,7 @@ def _cxpc(a: User, b: User) -> tuple[str, Change]:
 
     def change() -> None:
         baker.make('gamedata.GameExchangeCXPC', ticker='FE', exchange_code='NC1', date_epoch=2)
-        with patch('django.db.connection.cursor'):
+        with patch('django.db.connection.cursor'), patch('gamedata.tasks.gamedata_warm_market_summary.delay'):
             refresh_exchange_analytics()
 
     return reverse('data:cxpc-market-data-full', kwargs={'ticker': 'FE', 'exchange_code': 'NC1'}), change
