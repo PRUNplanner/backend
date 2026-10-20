@@ -8,7 +8,7 @@ wsgi_app = 'core.asgi:application'
 # worker
 workers = int(os.getenv('GUNICORN_WORKERS', 3))
 # threads = int(os.getenv('GUNICORN_THREADS', 2)) # not required on UvicornWorker
-worker_class = 'uvicorn.workers.UvicornWorker'
+worker_class = 'core.workers.HttpOnlyUvicornWorker'
 preload_app = True
 
 # restart logic
