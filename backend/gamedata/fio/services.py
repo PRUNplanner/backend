@@ -6,6 +6,7 @@ from typing import Literal, TypeVar
 import httpx
 import structlog
 from pydantic import TypeAdapter, ValidationError
+from structlog.typing import FilteringBoundLogger
 
 from gamedata.fio.schemas import (
     FIOBuildingSchema,
@@ -89,6 +90,20 @@ class FIOURL:
 
 
 logger = structlog.get_logger(__name__)
+
+
+def log_refresh_failure(log: FilteringBoundLogger, event: str, exc: Exception, **fields: object) -> None:
+    """Log a refresh failure once, from inside its except block.
+
+    A FIO error status or transport failure (timeout, dropped connection) is expected: a warning,
+    fio_request_completed / fio_request_failed have the details. Anything else gets a traceback.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        log.warning(event, status_code=exc.response.status_code, **fields)
+    elif isinstance(exc, httpx.TransportError):
+        log.warning(event, **fields)
+    else:
+        log.exception(event, **fields)
 
 
 _shared_client: httpx.Client | None = None

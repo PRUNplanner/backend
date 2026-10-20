@@ -12,7 +12,7 @@ from django.db.models import F, Max, Q
 from django.utils import timezone
 
 from gamedata.fio.schemas import FIOWebhookRootSchema
-from gamedata.fio.services import get_fio_service
+from gamedata.fio.services import get_fio_service, log_refresh_failure
 from gamedata.gamedata_cache_manager import CXPC, EXCHANGES, GamedataCacheManager
 from gamedata.services.cxpc_refresh import CXPCFetch, cxpc_window_start_ms, select_cxpc_pairs
 
@@ -33,8 +33,8 @@ def gamedata_refresh_planet_infrastructure(planet_natural_id: str) -> bool:
     try:
         import_planet_infrastructure(planet_natural_id)
         return True
-    except Exception:
-        logger.exception('planet_infrastructure_refresh_failed', planet_natural_id=planet_natural_id)
+    except Exception as exc:
+        log_refresh_failure(logger, 'planet_infrastructure_refresh_failed', exc, planet_natural_id=planet_natural_id)
         return False
 
 
@@ -73,18 +73,7 @@ def gamedata_refresh_planet() -> bool:
         return True
 
     except Exception as exc:
-        if isinstance(exc, httpx.HTTPStatusError):
-            # FIO answered with an error status: expected, no traceback
-            logger.warning(
-                'planet_refresh_failed',
-                planet_natural_id=to_update.planet_natural_id,
-                status_code=exc.response.status_code,
-            )
-        elif isinstance(exc, httpx.TransportError):
-            # FIO slow or unreachable (timeout, dropped connection): expected, fio_request_failed has the error
-            logger.warning('planet_refresh_failed', planet_natural_id=to_update.planet_natural_id)
-        else:
-            logger.exception('planet_refresh_failed', planet_natural_id=to_update.planet_natural_id)
+        log_refresh_failure(logger, 'planet_refresh_failed', exc, planet_natural_id=to_update.planet_natural_id)
         to_update.update_refresh_result(error=exc)
 
         return False
@@ -392,8 +381,8 @@ def gamedata_refresh_cxpc(ticker: str, exchange_code: str, full: bool = False, s
                     historical=len(historical_objs),
                 )
 
-    except Exception:
-        log.exception('cxpc_refresh_failed')
+    except Exception as exc:
+        log_refresh_failure(log, 'cxpc_refresh_failed', exc)
         return False
 
     return True

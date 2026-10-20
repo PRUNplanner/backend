@@ -16,7 +16,7 @@ from gamedata.fio.schemas.fio_planet import (
     FIOPlanetProductionFeeSchema,
     FIOPlanetResourceSchema,
 )
-from gamedata.fio.services import get_fio_service
+from gamedata.fio.services import get_fio_service, log_refresh_failure
 from gamedata.gamedata_cache_manager import (
     BUILDINGS,
     EXCHANGES,
@@ -369,8 +369,8 @@ def import_all_exchanges() -> bool:
         save_exchanges(exchanges)
         return True
 
-    except Exception:
-        logger.exception('exchanges_refresh_failed')
+    except Exception as exc:
+        log_refresh_failure(logger, 'exchanges_refresh_failed', exc)
         return False
 
 

@@ -91,6 +91,56 @@ class TestGamedataTasks:
         assert (planet.automation_refresh_status, planet.automation_error_count) == ('retrying', 1)
         assert planet.automation_next_retry_at is not None
 
+    @pytest.mark.parametrize(
+        'error, level, status_code',
+        [
+            (httpx.HTTPStatusError('502', request=MagicMock(), response=MagicMock(status_code=502)), 'WARNING', 502),
+            (httpx.ReadTimeout('The read operation timed out'), 'WARNING', None),
+            (ValueError('bug'), 'ERROR', None),
+        ],
+        ids=['502', 'timeout', 'bug'],
+    )
+    @pytest.mark.parametrize(
+        'run, fio_service, event, fields',
+        [
+            (
+                lambda: gamedata_refresh_planet_infrastructure('M'),
+                'gamedata.fio.importers.get_fio_service',
+                'planet_infrastructure_refresh_failed',
+                {'planet_natural_id': 'M'},
+            ),
+            (
+                lambda: gamedata_refresh_cxpc('RAT', 'NC1'),
+                'gamedata.tasks.get_fio_service',
+                'cxpc_refresh_failed',
+                {'ticker': 'RAT', 'exchange_code': 'NC1'},
+            ),
+            (refresh_exchanges, 'gamedata.fio.importers.get_fio_service', 'exchanges_refresh_failed', {}),
+        ],
+        ids=['planet_infrastructure', 'cxpc', 'exchanges'],
+    )
+    def test_fio_refreshes_log_their_failure(
+        self,
+        run: Callable[[], bool],
+        fio_service: str,
+        event: str,
+        fields: dict[str, str],
+        error: Exception,
+        level: str,
+        status_code: int | None,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        with patch(fio_service, side_effect=error):
+            assert run() is False
+
+        failed = [(r.levelname, r.msg) for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == event]
+        assert [lvl for lvl, _ in failed] == [level]
+        msg = failed[0][1]
+        assert {k: msg[k] for k in fields} == fields
+        assert msg.get('status_code') == status_code
+        # a traceback only for what is not an HTTP error status or transport failure
+        assert ('exception' in msg) is (level == 'ERROR')
+
     @pytest.mark.parametrize('scenario', ['missing', 'fio_fail', 'success'])
     @patch('gamedata.tasks.get_fio_service')
     def test_refresh_user_fiodata(self, mock_get_fio, scenario):
