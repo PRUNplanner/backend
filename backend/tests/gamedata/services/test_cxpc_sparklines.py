@@ -61,17 +61,29 @@ def test_one_query(exchange_cxpc_factory: Callable[..., object], django_assert_n
         assert len(build_sparklines('UNIVERSE', 30, TODAY)) == 3
 
 
-def test_vwap_7d_rolls_over_the_trailing_week(exchange_cxpc_factory: Callable[..., object]) -> None:
-    # 6 days before the window still counts for its first point
-    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(35), volume=100, traded=1)
-    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(3), volume=300, traded=1)
-    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(0), volume=100, traded=1)
+def test_vwap_7d_rolls_over_the_trailing_week_up_to_yesterday(exchange_cxpc_factory: Callable[..., object]) -> None:
+    # the window ends yesterday; 6 days before it still count for its first point
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(36), volume=100, traded=1)
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(4), volume=300, traded=1)
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(1), volume=100, traded=1)
 
     series = build_sparklines('AI1', 30, TODAY, 'vwap_7d')['RAT']
 
+    assert len(series) == 30
     assert series[0] == 100.0
     assert series[1] is None
+    # the last point is yesterday's VWAP 7D: days 7..1 ago
     assert series[-4:] == [300.0, 300.0, 300.0, 200.0]
+
+
+def test_vwap_7d_ignores_today(exchange_cxpc_factory: Callable[..., object]) -> None:
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(1), volume=100, traded=1)
+    before = build_sparklines('AI1', 7, TODAY, 'vwap_7d')
+
+    exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_day(0), volume=900, traded=1)
+    exchange_cxpc_factory(ticker='DW', exchange_code='AI1', date_epoch=_day(0), volume=900, traded=1)
+
+    assert build_sparklines('AI1', 7, TODAY, 'vwap_7d') == before == {'RAT': [None] * 6 + [100.0]}
 
 
 def test_tickers_limit_the_series(exchange_cxpc_factory: Callable[..., object]) -> None:

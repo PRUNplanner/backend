@@ -26,18 +26,20 @@ def build_sparklines(
     tickers: list[str] | None = None,
 ) -> dict[str, list[float | None]]:
     """
-    VWAP (volume / traded) per ticker for the `days` days up to `today_epoch` (UTC midnight, ms), oldest first,
-    rounded to cents: daily, or `vwap_7d` over the trailing 7 days. UNIVERSE sums the physical exchanges, like the
-    analytics view. A day without trades is None; tickers without any value in the window are left out, and
-    `tickers` limits the result to those. One query.
+    VWAP (volume / traded) per ticker for `days` days, oldest first, rounded to cents: daily up to `today_epoch`
+    (UTC midnight, ms), or `vwap_7d` over the trailing 7 days up to yesterday, so every point is a complete day and
+    the last one matches the market summary's `as_of`. UNIVERSE sums the physical exchanges, like the analytics
+    view. A day without trades is None; tickers without any value in the window are left out, and `tickers` limits
+    the result to those. One query.
     """
-    # vwap_7d reads 6 more days, so the first point has a full window
+    # vwap_7d ends on the last complete day and reads 6 more days, so the first point has a full window
     lead = 6 if metric == 'vwap_7d' else 0
-    start = today_epoch - (days - 1 + lead) * DAY_MS
+    end = today_epoch - DAY_MS if metric == 'vwap_7d' else today_epoch
+    start = end - (days - 1 + lead) * DAY_MS
     exchanges = PHYSICAL_EXCHANGES if exchange_code == 'UNIVERSE' else [exchange_code]
 
     qs = GameExchangeCXPC.objects.filter(
-        exchange_code__in=exchanges, date_epoch__gte=start, date_epoch__lt=today_epoch + DAY_MS
+        exchange_code__in=exchanges, date_epoch__gte=start, date_epoch__lt=end + DAY_MS
     )
     if tickers is not None:
         qs = qs.filter(ticker__in=tickers)

@@ -139,7 +139,8 @@ paths:
   /data/cxpc/spark/{exchange_code}/:
     get:
       operationId: exchange_cxpc_sparklines
-      summary: Get daily VWAP sparklines of every ticker for an Exchange
+      summary: 'Get VWAP sparklines of every ticker for an Exchange: daily up to today,
+        or VWAP 7D up to yesterday'
       parameters:
       - in: query
         name: days
@@ -164,7 +165,7 @@ paths:
           default: vwap_daily
           minLength: 1
         description: |-
-          vwap_daily: VWAP of the day; vwap_7d: rolling VWAP over the trailing 7 days
+          vwap_daily: VWAP of the day, up to today; vwap_7d: trailing 7 days VWAP, up to yesterday
 
           * `vwap_daily` - vwap_daily
           * `vwap_7d` - vwap_7d
@@ -1848,8 +1849,8 @@ components:
               type: number
               format: double
               nullable: true
-          description: VWAP per ticker (daily, or rolling 7 days with metric=vwap_7d),
-            oldest first, null without trades
+          description: 'VWAP per ticker, oldest first, null without trades: daily
+            up to today, or vwap_7d up to yesterday'
       required:
       - days
       - exchange

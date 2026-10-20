@@ -368,7 +368,7 @@ class CXPCSparklinesQuerySerializer(serializers.Serializer):
     metric = serializers.ChoiceField(
         choices=['vwap_daily', 'vwap_7d'],
         default='vwap_daily',
-        help_text='vwap_daily: VWAP of the day; vwap_7d: rolling VWAP over the trailing 7 days',
+        help_text='vwap_daily: VWAP of the day, up to today; vwap_7d: trailing 7 days VWAP, up to yesterday',
     )
     tickers = serializers.CharField(
         required=False, help_text=f'Comma separated, at most {MAX_TICKERS}; unknown tickers are ignored'
@@ -386,7 +386,7 @@ class CXPCSparklinesSerializer(serializers.Serializer):
     days = serializers.IntegerField()
     series = serializers.DictField(
         child=serializers.ListField(child=serializers.FloatField(allow_null=True)),
-        help_text='VWAP per ticker (daily, or rolling 7 days with metric=vwap_7d), oldest first, null without trades',
+        help_text='VWAP per ticker, oldest first, null without trades: daily up to today, or vwap_7d up to yesterday',
     )
 
 
