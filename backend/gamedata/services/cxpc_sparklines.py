@@ -1,30 +1,47 @@
 from collections import defaultdict
 from decimal import Decimal
+from typing import Literal
 
 from django.db.models import Sum
+from django.utils import timezone
 
 from gamedata.models import GameExchangeCXPC
 
 DAY_MS = 24 * 60 * 60 * 1000
 PHYSICAL_EXCHANGES = ['AI1', 'CI1', 'IC1', 'NC1']
 
+type SparkMetric = Literal['vwap_daily', 'vwap_7d']
 
-def build_sparklines(exchange_code: str, days: int, today_epoch: int) -> dict[str, list[float | None]]:
+
+def utc_today_epoch() -> int:
+    """Today 00:00 UTC in epoch ms."""
+    return int(timezone.now().timestamp() * 1000) // DAY_MS * DAY_MS
+
+
+def build_sparklines(
+    exchange_code: str,
+    days: int,
+    today_epoch: int,
+    metric: SparkMetric = 'vwap_daily',
+    tickers: list[str] | None = None,
+) -> dict[str, list[float | None]]:
     """
-    Daily VWAP (volume / traded) per ticker for the `days` days up to `today_epoch` (UTC midnight, ms), oldest
-    first, rounded to cents. UNIVERSE sums the physical exchanges, like the analytics view. A day without trades
-    is None; tickers without any trade in the window are left out. One query.
+    VWAP (volume / traded) per ticker for the `days` days up to `today_epoch` (UTC midnight, ms), oldest first,
+    rounded to cents: daily, or `vwap_7d` over the trailing 7 days. UNIVERSE sums the physical exchanges, like the
+    analytics view. A day without trades is None; tickers without any value in the window are left out, and
+    `tickers` limits the result to those. One query.
     """
-    start = today_epoch - (days - 1) * DAY_MS
+    # vwap_7d reads 6 more days, so the first point has a full window
+    lead = 6 if metric == 'vwap_7d' else 0
+    start = today_epoch - (days - 1 + lead) * DAY_MS
     exchanges = PHYSICAL_EXCHANGES if exchange_code == 'UNIVERSE' else [exchange_code]
 
-    rows = (
-        GameExchangeCXPC.objects.filter(
-            exchange_code__in=exchanges, date_epoch__gte=start, date_epoch__lt=today_epoch + DAY_MS
-        )
-        .values('ticker', 'date_epoch')
-        .annotate(volume_sum=Sum('volume'), traded_sum=Sum('traded'))
+    qs = GameExchangeCXPC.objects.filter(
+        exchange_code__in=exchanges, date_epoch__gte=start, date_epoch__lt=today_epoch + DAY_MS
     )
+    if tickers is not None:
+        qs = qs.filter(ticker__in=tickers)
+    rows = qs.values('ticker', 'date_epoch').annotate(volume_sum=Sum('volume'), traded_sum=Sum('traded'))
 
     # (volume, traded) per ticker and day; epochs that aren't midnight-aligned still land on their day
     totals: dict[str, dict[int, list[Decimal]]] = defaultdict(lambda: defaultdict(lambda: [Decimal(0), Decimal(0)]))
@@ -35,9 +52,11 @@ def build_sparklines(exchange_code: str, days: int, today_epoch: int) -> dict[st
 
     series: dict[str, list[float | None]] = {}
     for ticker, by_day in totals.items():
-        if not any(traded for _, traded in by_day.values()):
-            continue
-        series[ticker] = [
-            round(float(by_day[i][0] / by_day[i][1]), 2) if i in by_day and by_day[i][1] else None for i in range(days)
-        ]
+        points: list[float | None] = []
+        for i in range(days):
+            window = [by_day[j] for j in range(i, i + lead + 1) if j in by_day]
+            volume, traded = sum((v for v, _ in window), Decimal(0)), sum((t for _, t in window), Decimal(0))
+            points.append(round(float(volume / traded), 2) if traded else None)
+        if any(point is not None for point in points):
+            series[ticker] = points
     return series

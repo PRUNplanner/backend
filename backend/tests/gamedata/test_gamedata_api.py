@@ -1,8 +1,12 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
+from core.services.cache_manager import CacheManager
 from django.urls import reverse
 from django.utils import timezone
+from gamedata.gamedata_cache_manager import CXPC
+from gamedata.tasks import gamedata_warm_market_summary, refresh_exchange_analytics
 from rest_framework import status
 from tests.fixtures.fxt_fio_ship_data import fio_ship_data
 from tests.fixtures.fxt_fio_sites_data import fio_sites_data
@@ -333,7 +337,87 @@ class TestExchangeCXPCViewSet:
         short = api_client.get(url, {'days': 7}).json()
         assert len(short['series']['RAT']) == 7
 
-    @pytest.mark.parametrize(('exchange', 'query'), [('foo', {}), ('AI1', {'days': 0}), ('AI1', {'days': 91})])
+    @pytest.mark.usefixtures('locmem_cache')
+    def test_cxpc_sparklines_vwap_7d_for_chosen_tickers(self, api_client, exchange_cxpc_factory):
+        today = int(timezone.now().timestamp() * 1000) // 86_400_000 * 86_400_000
+        for ticker in ['RAT', 'DW', 'FE']:
+            exchange_cxpc_factory(
+                ticker=ticker, exchange_code='AI1', date_epoch=today - 86_400_000, volume=100, traded=1
+            )
+            exchange_cxpc_factory(ticker=ticker, exchange_code='AI1', date_epoch=today, volume=300, traded=1)
+        url = reverse('data:cxpc-sparklines', kwargs={'exchange_code': 'AI1'})
+        daily = api_client.get(url).json()
+
+        body = api_client.get(url, {'metric': 'vwap_7d', 'tickers': 'RAT,DW,XYZ'}).json()
+
+        assert set(body['series']) == {'RAT', 'DW'}
+        assert body['series']['RAT'][-2:] == [100.0, 200.0]
+        assert daily['series']['RAT'][-2:] == [100.0, 300.0]
+        assert set(daily['series']) == {'RAT', 'DW', 'FE'}
+
+    @pytest.mark.parametrize(
+        ('exchange', 'query'),
+        [
+            ('foo', {}),
+            ('AI1', {'days': 0}),
+            ('AI1', {'days': 91}),
+            ('AI1', {'metric': 'vwap_90d'}),
+            ('AI1', {'tickers': ','.join(f'T{i:02}' for i in range(51))}),
+        ],
+    )
     def test_cxpc_sparklines_invalid(self, api_client, exchange, query):
         url = reverse('data:cxpc-sparklines', kwargs={'exchange_code': exchange})
         assert api_client.get(url, query).status_code == 400
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestMarketSummary:
+    URL = '/data/market/summary/'
+
+    def test_anonymous_gets_every_field(self, api_client, exchange_cxpc_factory, material_factory):
+        today = int(timezone.now().timestamp() * 1000) // 86_400_000 * 86_400_000
+        material_factory(ticker='RAT', name='rations', category_name='consumables (basic)')
+        exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=today - 86_400_000, volume=300, traded=3)
+
+        response = api_client.get(reverse('data:market-summary'))
+
+        assert reverse('data:market-summary') == self.URL
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body) == {'as_of', 'start', 'days', 'turnover_daily', 'index', 'sectors', 'materials'}
+        assert body['as_of'] == today - 86_400_000
+        assert set(body['index']) == {'base', 'combined', 'per_exchange', 'per_sector', 'members', 'coverage'}
+        assert set(body['materials'][0]) == {
+            'ticker',
+            'name',
+            'category',
+            'sector',
+            'turnover_30d',
+            'turnover_7d',
+            'units_7d',
+            'vwap_7d',
+            'vwap_30d',
+            'change_pct',
+            'spark',
+            'is_flat',
+            'turnover_7d_by_exchange',
+        }
+        assert body['materials'][0]['vwap_7d'] == 100.0
+
+    def test_second_request_hits_and_a_cxpc_refresh_invalidates(self, api_client, django_assert_num_queries):
+        assert api_client.get(self.URL)['X-Cache-Hit'] == '0'
+
+        with django_assert_num_queries(0):
+            assert api_client.get(self.URL)['X-Cache-Hit'] == '1'
+
+        with patch('django.db.connection.cursor'), patch('gamedata.tasks.gamedata_warm_market_summary.delay'):
+            refresh_exchange_analytics()
+        assert api_client.get(self.URL)['X-Cache-Hit'] == '0'
+
+    def test_warm_task_builds_the_entry_before_the_next_visitor(self, api_client):
+        CacheManager.invalidate(CXPC)
+
+        assert gamedata_warm_market_summary() is True
+        assert gamedata_warm_market_summary() is False
+
+        assert api_client.get(self.URL)['X-Cache-Hit'] == '1'

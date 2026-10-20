@@ -597,6 +597,7 @@ PUBLIC_ROUTES: list[tuple[str, dict[str, str], object | None]] = [
     ('cxpc-market-data-ticker', {'ticker': 'FUEL'}, None),
     ('cxpc-market-data-full', {'ticker': 'FUEL', 'exchange_code': 'AI1'}, None),
     ('cxpc-sparklines', {'exchange_code': 'UNIVERSE'}, None),
+    ('market-summary', {}, None),
 ]
 
 

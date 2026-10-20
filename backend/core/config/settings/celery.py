@@ -67,4 +67,5 @@ CELERY_TASK_ANNOTATIONS = {
     },
     'gamedata_refresh_cxpc': {'priority': 9, 'rate_limit': '10/s', 'acks_late': True, 'ignore_results': False},
     'gamedata_refresh_exchange_analytics': {'priority': 9},
+    'gamedata_warm_market_summary': {'priority': 9},
 }

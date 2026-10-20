@@ -23,6 +23,7 @@ from gamedata.api.serializer import (
     GamePlanetSerializer,
     GameRecipeSerializer,
     GameStorageSerializer,
+    MarketSummarySerializer,
     PlanetIdsSerializer,
     PlanetSearchIndexSerializer,
     PlanetSearchSerializer,
@@ -57,7 +58,8 @@ from gamedata.models import (
     GameRecipe,
     queryset_gameplanet,
 )
-from gamedata.services.cxpc_sparklines import DAY_MS, build_sparklines
+from gamedata.services.cxpc_sparklines import build_sparklines, utc_today_epoch
+from gamedata.services.market_summary import MARKET_SUMMARY_ENDPOINT, build_market_summary
 from gamedata.services.planet_search import GamePlanetSearchService
 from gamedata.tasks import gamedata_process_fio_webhook
 from pydantic import TypeAdapter, ValidationError as PydanticValidationError
@@ -549,8 +551,10 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
         query = CXPCSparklinesQuerySerializer(data=request.query_params)
         query.is_valid(raise_exception=True)
         days: int = query.validated_data['days']
+        metric = query.validated_data['metric']
+        tickers: list[str] | None = query.validated_data.get('tickers')
         # the key holds the day, so a new day starts a new entry; CXPC refreshes invalidate the namespace
-        today_epoch = int(timezone.now().timestamp() * 1000) // DAY_MS * DAY_MS
+        today_epoch = utc_today_epoch()
 
         return CacheManager.respond(
             request,
@@ -559,11 +563,27 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
             exchange_code,
             days,
             today_epoch,
+            metric,
+            None if tickers is None else ','.join(tickers),
             build=lambda: {
                 'exchange': exchange_code,
                 'days': days,
-                'series': build_sparklines(exchange_code, days, today_epoch),
+                'series': build_sparklines(exchange_code, days, today_epoch, metric, tickers),
             },
+        )
+
+    @extend_schema(
+        auth=[],
+        summary='Get the public market summary: turnover, VWAP 7D indices and one row per traded material',
+        operation_id='market_summary',
+        responses={200: MarketSummarySerializer},
+    )
+    @action(detail=False, url_path='market/summary')
+    def market_summary(self, request):
+        # warmed by gamedata_warm_market_summary after each CXPC refresh; a new day starts a new entry
+        today_epoch = utc_today_epoch()
+        return CacheManager.respond(
+            request, CXPC, MARKET_SUMMARY_ENDPOINT, today_epoch, build=lambda: build_market_summary(today_epoch)
         )
 
 

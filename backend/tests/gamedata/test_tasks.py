@@ -191,9 +191,14 @@ class TestGamedataTasks:
             assert gamedata_refresh_cxpc('F', 'A') is False
 
     def test_analytics_and_cleanup(self):
-        with patch('django.db.connection.cursor'), patch('gamedata.tasks.CacheManager') as m:
+        with (
+            patch('django.db.connection.cursor'),
+            patch('gamedata.tasks.CacheManager') as m,
+            patch('gamedata.tasks.gamedata_warm_market_summary.delay') as warm,
+        ):
             assert refresh_exchange_analytics() is True
             assert m.invalidate.call_count == 2
+        warm.assert_called_once_with()
         user = baker.make('user.User')
         baker.make('gamedata.GameFIOPlayerData', user=user)
         gamedata_clean_user_fiodata(user.id)

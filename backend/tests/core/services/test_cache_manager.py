@@ -77,6 +77,24 @@ class TestInvalidate:
 
 
 @pytest.mark.usefixtures('locmem_cache')
+class TestWarm:
+    def test_builds_the_entry_respond_serves_only_on_a_miss(self) -> None:
+        builds: list[int] = []
+
+        def build() -> dict[str, int]:
+            builds.append(1)
+            return {'n': len(builds)}
+
+        assert CacheManager.warm(PUBLIC, 'endpoint', build=build) is True
+        assert CacheManager.warm(PUBLIC, 'endpoint', build=build) is False
+
+        response = _respond(build=build)
+        assert response['X-Cache-Hit'] == '1'
+        assert orjson.loads(response.content) == {'n': 1}
+        assert len(builds) == 1
+
+
+@pytest.mark.usefixtures('locmem_cache')
 class TestRespond:
     def test_miss_then_hit(self) -> None:
         first = _respond()

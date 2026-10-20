@@ -15,6 +15,7 @@ from gamedata.fio.schemas import FIOWebhookRootSchema
 from gamedata.fio.services import get_fio_service
 from gamedata.gamedata_cache_manager import CXPC, EXCHANGES, GamedataCacheManager
 from gamedata.services.cxpc_refresh import CXPCFetch, cxpc_window_start_ms, select_cxpc_pairs
+from gamedata.services.cxpc_sparklines import utc_today_epoch
 
 logger = structlog.get_logger(__name__)
 
@@ -407,8 +408,20 @@ def refresh_exchange_analytics():
 
     CacheManager.invalidate(EXCHANGES)
     CacheManager.invalidate(CXPC)
+    # the public market page is built before its next visitor asks
+    gamedata_warm_market_summary.delay()
 
     return True
+
+
+@shared_task(name='gamedata_warm_market_summary')
+def gamedata_warm_market_summary() -> bool:
+    from gamedata.services.market_summary import MARKET_SUMMARY_ENDPOINT, build_market_summary
+
+    today_epoch = utc_today_epoch()
+    return CacheManager.warm(
+        CXPC, MARKET_SUMMARY_ENDPOINT, today_epoch, build=lambda: build_market_summary(today_epoch)
+    )
 
 
 @shared_task(name='gamedata_process_fio_webhook')
