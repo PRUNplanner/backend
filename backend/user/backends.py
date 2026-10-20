@@ -32,7 +32,10 @@ class LegacyAwareBackend(ModelBackend):
 
         # Legacy password detection
         if user.password.startswith('$2b$'):
-            if not (self.user_can_authenticate(user) and bcrypt.checkpw(password.encode(), user.password.encode())):
+            # the old system hashed only the first 72 bytes, as bcrypt does; bcrypt 5 raises instead of truncating
+            if not (
+                self.user_can_authenticate(user) and bcrypt.checkpw(password.encode()[:72], user.password.encode())
+            ):
                 return None
 
             # Password correct, upgrade to Django native hash
