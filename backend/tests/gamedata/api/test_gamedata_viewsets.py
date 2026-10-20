@@ -109,7 +109,8 @@ class TestGameExchangeViewSet:
         cxpc('AI1', days_ago=2, volume=300, traded=10)
         cxpc('CI1', days_ago=3, volume=50, traded=5)  # nothing traded today: the last price carries forward
 
-        assert refresh_exchange_analytics() is True
+        with patch('gamedata.tasks.gamedata_warm_market_summary.delay'):
+            assert refresh_exchange_analytics() is True
 
         rows = api_client.get(_exchange_list_url()).data
         by_exchange = {row['exchange_code']: row for row in rows}
