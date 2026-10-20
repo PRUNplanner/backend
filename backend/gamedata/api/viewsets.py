@@ -536,7 +536,7 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
 
     @extend_schema(
         auth=[],
-        summary='Get daily VWAP sparklines of every ticker for an Exchange',
+        summary='Get VWAP sparklines of every ticker for an Exchange: daily up to today, or VWAP 7D up to yesterday',
         operation_id='exchange_cxpc_sparklines',
         parameters=[CXPCSparklinesQuerySerializer],
         responses={200: CXPCSparklinesSerializer},
@@ -559,7 +559,8 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
         return CacheManager.respond(
             request,
             CXPC,
-            'sparklines',
+            # v2: vwap_7d ends on yesterday; drops entries built when it ended on today
+            'sparklines-v2',
             exchange_code,
             days,
             today_epoch,

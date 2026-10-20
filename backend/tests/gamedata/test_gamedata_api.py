@@ -350,8 +350,10 @@ class TestExchangeCXPCViewSet:
 
         body = api_client.get(url, {'metric': 'vwap_7d', 'tickers': 'RAT,DW,XYZ'}).json()
 
+        # vwap_7d ends yesterday: today's rows don't count
         assert set(body['series']) == {'RAT', 'DW'}
-        assert body['series']['RAT'][-2:] == [100.0, 200.0]
+        assert len(body['series']['RAT']) == 30
+        assert body['series']['RAT'][-2:] == [None, 100.0]
         assert daily['series']['RAT'][-2:] == [100.0, 300.0]
         assert set(daily['series']) == {'RAT', 'DW', 'FE'}
 
