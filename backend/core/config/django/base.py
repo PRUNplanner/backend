@@ -131,7 +131,8 @@ AUTH_PASSWORD_VALIDATORS = [
 AUTH_USER_MODEL = 'user.User'
 
 PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.BCryptPasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'user.hashers.BCryptPasswordHasher',
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
 ]
 

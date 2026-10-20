@@ -5,6 +5,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 from django.conf import settings
+from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
 from django.test import override_settings
 from django.urls import reverse
@@ -23,6 +24,8 @@ pytestmark = pytest.mark.django_db
 
 # Test settings use DummyCache, which never throttles; ScopedRateThrottle needs a real cache backend.
 LOCMEM_CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'throttle-test'}}
+
+LONG_PASSWORD = ('Xk7!qzR9pLm2' * 9)[:100]  # over bcrypt's 72-byte limit
 
 
 def throttle_limit(scope: str) -> int:
@@ -364,6 +367,18 @@ class TestUserRegisterViewSet:
 
         response = api_client.post(reverse('user:user_signup'), data=self._payload(), format='json')
         assert response.status_code == 400
+
+    def test_register_accepts_a_password_over_72_bytes(self, api_client):
+        with patch('user.tasks.send_email_verification_code.apply_async'):
+            response = api_client.post(
+                reverse('user:user_signup'), data=self._payload(password=LONG_PASSWORD), format='json'
+            )
+
+        assert response.status_code == 201
+        login = api_client.post(
+            reverse('user:token_obtain_pair'), data={'username': 'newpilot', 'password': LONG_PASSWORD}
+        )
+        assert login.status_code == 200
 
     def _signup(
         self, api_client, **overrides: str
@@ -791,6 +806,22 @@ class TestUserPasswordResetViewSet:
         )
         assert login.status_code == 200
 
+    def test_password_reset_accepts_a_password_over_72_bytes(self, api_client, user_factory):
+        user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
+        _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+
+        response = api_client.post(
+            reverse('user:user_password_reset'),
+            data={'email': user.email, 'code': 'RESET123', 'new_password': LONG_PASSWORD},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        login = api_client.post(
+            reverse('user:token_obtain_pair'), data={'username': user.username, 'password': LONG_PASSWORD}
+        )
+        assert login.status_code == 200
+
     @pytest.mark.parametrize(
         ('verified', 'code_input', 'age', 'expected'),
         [
@@ -879,6 +910,34 @@ class TestUserProfileViewSet:
         assert response.status_code == 200
         user.refresh_from_db()
         assert user.check_password('Xk7!qzR9pLm2')
+
+    def test_change_password_accepts_a_password_over_72_bytes(self, api_client, user_factory):
+        user = user_factory(id=1)
+        user.set_password('CorrectHorse1!')
+        user.save()
+
+        response = api_client.as_user(user).post(
+            reverse('user:user_change_password'),
+            data={'old_password': 'CorrectHorse1!', 'new_password': LONG_PASSWORD},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        login = api_client.post(
+            reverse('user:token_obtain_pair'), data={'username': user.username, 'password': LONG_PASSWORD}
+        )
+        assert login.status_code == 200
+
+    def test_change_password_wrong_old_password_over_72_bytes_returns_400(self, api_client, user_factory):
+        user = user_factory(id=1, password=make_password('CorrectHorse1!', hasher='bcrypt'))  # not yet rehashed
+
+        response = api_client.as_user(user).post(
+            reverse('user:user_change_password'),
+            data={'old_password': LONG_PASSWORD, 'new_password': 'Xk7!qzR9pLm2'},
+            format='json',
+        )
+
+        assert response.status_code == 400
 
     def test_get_serializer_class_depends_on_action(self):
         viewset = UserProfileViewSet()
