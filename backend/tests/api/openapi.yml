@@ -3128,6 +3128,15 @@ components:
             * `default` - default
             * `colorblind` - colorblind
           x-spec-enum-id: 39f56c4614795699
+        marketCardTrigger:
+          enum:
+          - hover
+          - click
+          type: string
+          description: |-
+            * `hover` - hover
+            * `click` - click
+          x-spec-enum-id: db06a6e7c950e12c
         planSuggestions:
           type: boolean
         planOverrides:
@@ -4339,6 +4348,15 @@ components:
             * `default` - default
             * `colorblind` - colorblind
           x-spec-enum-id: 39f56c4614795699
+        marketCardTrigger:
+          enum:
+          - hover
+          - click
+          type: string
+          description: |-
+            * `hover` - hover
+            * `click` - click
+          x-spec-enum-id: db06a6e7c950e12c
         planSuggestions:
           type: boolean
         planOverrides:

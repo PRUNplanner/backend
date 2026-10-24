@@ -100,6 +100,7 @@ class TestUserPreferenceViewSet:
         assert response.data['locale'] == 'en_US'
         assert response.data['burnDaysRed'] == 5
         assert response.data['colorPalette'] == 'default'
+        assert response.data['marketCardTrigger'] == 'hover'
         assert UserPreference.objects.filter(user=user).exists()
 
     def test_update_persists_preferences(self, api_client, user_factory):
@@ -126,6 +127,40 @@ class TestUserPreferenceViewSet:
         assert response.status_code == 200
         assert response.data['colorPalette'] == 'colorblind'
         assert UserPreference.objects.get(user=user).preferences['color_palette'] == 'colorblind'
+
+    def test_update_persists_market_card_trigger(self, api_client, user_factory):
+        user = user_factory(id=1)
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'marketCardTrigger': 'click'}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert response.data['marketCardTrigger'] == 'click'
+        assert UserPreference.objects.get(user=user).preferences['market_card_trigger'] == 'click'
+
+    def test_update_rejects_unknown_market_card_trigger(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'market_card_trigger': 'click'})
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'marketCardTrigger': 'always'}, format='json'
+        )
+
+        assert response.status_code == 400
+        assert UserPreference.objects.get(user=user).preferences == {'market_card_trigger': 'click'}
+
+    def test_update_other_key_keeps_market_card_trigger(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'market_card_trigger': 'click'})
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'), data={'burnDaysRed': 3}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert response.data['marketCardTrigger'] == 'click'
+        assert UserPreference.objects.get(user=user).preferences['market_card_trigger'] == 'click'
 
     def test_plan_suggestions_defaults_true_for_stored_preferences_without_it(self, api_client, user_factory):
         user = user_factory(id=1)
@@ -166,7 +201,12 @@ class TestUserPreferenceViewSet:
         baker.make(
             UserPreference,
             user=user,
-            preferences={'plan_overrides': None, 'layout_navigation_style': 'x', 'color_palette': 'x'},
+            preferences={
+                'plan_overrides': None,
+                'layout_navigation_style': 'x',
+                'color_palette': 'x',
+                'market_card_trigger': 'x',
+            },
         )
 
         response = api_client.as_user(user).get(reverse('user:user_preferences'))
@@ -175,6 +215,7 @@ class TestUserPreferenceViewSet:
         assert response.data['planOverrides'] == {}
         assert response.data['layoutNavigationStyle'] == 'full'
         assert response.data['colorPalette'] == 'default'
+        assert response.data['marketCardTrigger'] == 'hover'
 
     def test_update_round_trips_construction_built(self, api_client, user_factory):
         user = user_factory(id=1)
