@@ -9,8 +9,6 @@ from pydantic import TypeAdapter, ValidationError
 from structlog.typing import FilteringBoundLogger
 
 from gamedata.fio.schemas import (
-    FIOAPIPlanetPlotsSchema,
-    FIOAPIPlanetSiteSchema,
     FIOBuildingSchema,
     FIOExchangeCXPC,
     FIOExchangeFullSChema,
@@ -24,6 +22,7 @@ from gamedata.fio.schemas import (
     FIOUserSiteWarehouseSchema,
     FIOUserStorageSchema,
 )
+from gamedata.fio.schemas.fio_api_planet_plots import FIOAPIPlanetPlotsSchema, FIOAPIPlanetSiteSchema
 
 type Endpoint = Literal[
     'allrecipes',

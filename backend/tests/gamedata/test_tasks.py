@@ -625,6 +625,7 @@ class TestRefreshPlanetResult:
         with (
             patch('gamedata.fio.importers.import_planet', side_effect=import_side_effect),
             patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+            patch('gamedata.tasks.gamedata_refresh_planet_plots.delay'),
         ):
             gamedata_refresh_planet()
 
@@ -663,6 +664,7 @@ class TestPendingLease:
         with (
             patch('gamedata.fio.importers.import_planet', return_value=True) as import_planet,
             patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+            patch('gamedata.tasks.gamedata_refresh_planet_plots.delay'),
         ):
             gamedata_refresh_planet()
         return [call.args[0] for call in import_planet.call_args_list]
@@ -694,6 +696,7 @@ class TestPendingLease:
         with (
             patch('gamedata.fio.importers.import_planet', side_effect=import_that_looks),
             patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+            patch('gamedata.tasks.gamedata_refresh_planet_plots.delay'),
         ):
             gamedata_refresh_planet()
 
