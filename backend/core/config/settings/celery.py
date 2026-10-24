@@ -58,6 +58,10 @@ CELERY_TASK_ANNOTATIONS = {
         'priority': 5,
         'rate_limit': '2/s',
     },
+    'gamedata_refresh_planet_plots': {
+        'priority': 5,
+        'rate_limit': '2/s',
+    },
     # ahead of user FIO refreshes (3), so a webhook never waits behind them
     'gamedata_process_fio_webhook': {'priority': 2},
     'gamedata_dispatch_fio_updates': {'priority': 3},

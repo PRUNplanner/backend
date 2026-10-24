@@ -139,6 +139,7 @@ class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
             'cogc_programs',
             'active_cogc_program_type',
             'production_fees',
+            *GamePlanet.PLOT_FIELDS,
         ]
 
     @extend_schema_field(
@@ -229,6 +230,7 @@ class PlanetSearchIndexSerializer(BlankAsNullMixin, serializers.ModelSerializer)
             'cogc_program_status',
             'cogc_programs',
             'resources',
+            *GamePlanet.PLOT_FIELDS,
         ]
 
 

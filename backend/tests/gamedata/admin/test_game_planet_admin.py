@@ -70,12 +70,16 @@ class TestDeleteAllPlanets:
 class TestQueuedActions:
     """AC4: actions return at once and enqueue the task (mocked .delay), each with one LogEntry."""
 
-    def test_import_from_fio(self, admin_client: Client) -> None:
+    @pytest.mark.parametrize(
+        'url_path, kind',
+        [('changelist-fio-import-all-planet', 'planets'), ('changelist-fio-import-all-planet-plots', 'planet_plots')],
+    )
+    def test_import_from_fio(self, admin_client: Client, url_path: str, kind: str) -> None:
         with patch('gamedata.admin.fio_import.gamedata_admin_import.delay') as delay:
-            response = admin_client.get(f'{CHANGELIST}changelist-fio-import-all-planet/')
+            response = admin_client.get(f'{CHANGELIST}{url_path}/')
 
         assert response.status_code == 302
-        delay.assert_called_once_with('planets')
+        delay.assert_called_once_with(kind)
         assert LogEntry.objects.count() == 1
 
     @pytest.mark.parametrize(

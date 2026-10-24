@@ -95,7 +95,7 @@ class GamePlanetAdmin(
     ]
 
     actions = ['action_reset_and_retry']
-    actions_list = ['action_fio_import_all_planet', 'action_delete_all_planets']
+    actions_list = ['action_fio_import_all_planet', 'action_fio_import_all_planet_plots', 'action_delete_all_planets']
     actions_row = ['action_refresh_planet', 'action_refresh_planet_infrastructure']
     actions_detail = ['action_detail_reset_and_retry']
 
@@ -128,6 +128,10 @@ class GamePlanetAdmin(
     @action(description='Import from FIO', url_path='changelist-fio-import-all-planet', icon='download')
     def action_fio_import_all_planet(self, request: HttpRequest) -> HttpResponseRedirect:
         return queue_fio_import(request, GamePlanet, 'planets')
+
+    @action(description='Import plots from FIO', url_path='changelist-fio-import-all-planet-plots', icon='download')
+    def action_fio_import_all_planet_plots(self, request: HttpRequest) -> HttpResponseRedirect:
+        return queue_fio_import(request, GamePlanet, 'planet_plots')
 
     @action(
         description='Delete all planets',

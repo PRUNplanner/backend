@@ -127,7 +127,7 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
   scheduler (`core/beat.py`), `celery_queue_depth_failed` once per Redis
   outage. Beat has to run with `--scheduler core.beat:QueueDepthScheduler`.
 - Refresh failures: `fio_refresh_failed`, `planet_refresh_failed`,
-  `planet_infrastructure_refresh_failed`, `cxpc_refresh_failed`,
+  `planet_infrastructure_refresh_failed`, `planet_plots_refresh_failed`, `cxpc_refresh_failed`,
   `exchanges_refresh_failed`. A FIO error status (with `status_code`) or
   transport error (timeout, dropped connection) is a warning, anything else
   `logger.exception`.

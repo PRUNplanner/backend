@@ -2474,6 +2474,28 @@ components:
           allOf:
           - $ref: '#/components/schemas/PlanetProductionFeeSchema'
           readOnly: true
+        plots_total:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        plots_used:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        ghost_sites:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        supports_ghost_sites:
+          type: boolean
+          nullable: true
+        plots_updated:
+          type: string
+          format: date-time
+          nullable: true
       required:
       - active_cogc_program_type
       - cogc_programs
@@ -3447,6 +3469,28 @@ components:
           items:
             $ref: '#/components/schemas/PlanetSearchIndexResource'
           readOnly: true
+        plots_total:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        plots_used:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        ghost_sites:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+        supports_ghost_sites:
+          type: boolean
+          nullable: true
+        plots_updated:
+          type: string
+          format: date-time
+          nullable: true
       required:
       - cogc_programs
       - fertility

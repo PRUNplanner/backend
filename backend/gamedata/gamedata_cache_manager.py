@@ -11,11 +11,11 @@ BUILDINGS = CacheNamespace('gamedata:buildings', DAY)
 EXCHANGES = CacheNamespace('gamedata:exchanges', 10 * 60)
 CXPC = CacheNamespace('gamedata:cxpc', 3 * HOUR)
 # scope: planet natural id. 1 h, as the active cogc program is computed against the build time
-PLANET = CacheNamespace('gamedata:planet', HOUR)
+PLANET = CacheNamespace('gamedata:planet:v2', HOUR)
 # single planet refreshes (~9 s apart) rely on the short ttl, full imports invalidate
-PLANET_LIST = CacheNamespace('gamedata:planet-list', 15 * 60)
+PLANET_LIST = CacheNamespace('gamedata:planet-list:v2', 15 * 60)
 # same ttl as the planet list; full imports invalidate, single refreshes rely on the ttl
-PLANET_SEARCH_INDEX = CacheNamespace('gamedata:planet-search-index', 15 * 60)
+PLANET_SEARCH_INDEX = CacheNamespace('gamedata:planet-search-index:v2', 15 * 60)
 # bump the version when the response shape changes, so cached old shapes aren't served until the ttl ends
 STORAGE = CacheNamespace('gamedata:storage:v2', 3 * HOUR, private=True)
 

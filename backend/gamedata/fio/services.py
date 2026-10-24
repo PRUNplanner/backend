@@ -9,6 +9,8 @@ from pydantic import TypeAdapter, ValidationError
 from structlog.typing import FilteringBoundLogger
 
 from gamedata.fio.schemas import (
+    FIOAPIPlanetPlotsSchema,
+    FIOAPIPlanetSiteSchema,
     FIOBuildingSchema,
     FIOExchangeCXPC,
     FIOExchangeFullSChema,
@@ -33,6 +35,8 @@ type Endpoint = Literal[
     'allplanets',
     'planet',
     'planet_infrastructure',
+    'api_planet',
+    'api_planet_sites',
     'user_storage',
     'user_sites',
     'user_sites_warehouses',
@@ -45,6 +49,8 @@ type VerifyResult = Literal['ok', 'invalid_key', 'username_mismatch', 'unavailab
 
 class FIOURL:
     FIO_BASE_URL: str = 'https://rest.fnar.net/'
+    # the FIO API, public, no key; only the plots refresh reads it, every other import stays on FIO REST
+    FIO_API_BASE_URL: str = 'https://api.fnar.net/'
 
     endpoint_url: dict[Endpoint, str] = {
         'allrecipes': FIO_BASE_URL + 'recipes/allrecipes',
@@ -56,6 +62,8 @@ class FIOURL:
         'allplanets': FIO_BASE_URL + 'planet/allplanets/full',
         'planet': FIO_BASE_URL + 'planet/',
         'planet_infrastructure': FIO_BASE_URL + 'infrastructure/',
+        'api_planet': FIO_API_BASE_URL + 'planet/',
+        'api_planet_sites': FIO_API_BASE_URL + 'planet/sites/',
         'user_storage': FIO_BASE_URL + 'storage/',
         'user_sites': FIO_BASE_URL + 'sites/',
         'user_sites_warehouses': FIO_BASE_URL + 'sites/warehouses/',
@@ -72,6 +80,8 @@ class FIOURL:
         'allplanets': 10,
         'planet': 3,
         'planet_infrastructure': 5,
+        'api_planet': 5,
+        'api_planet_sites': 10,
         'cxpc': 3,
         'user_storage': 3,
         'user_sites': 3,
@@ -195,6 +205,26 @@ class FIOService:
         return self._fetch(
             endpoint='planet_infrastructure', schema=FIOPlanetInfrastructure, path_suffix=planet_natural_id
         )
+
+    def get_planet_plots(self, planet_natural_id: str) -> FIOAPIPlanetPlotsSchema | None:
+        """None when the FIO API doesn't know the planet (204)."""
+        response = self._execute_request(
+            f'{FIOURL.get_url("api_planet")}{planet_natural_id}', 'api_planet', self._get_auth_headers(None)
+        )
+        if response.status_code == 204:
+            return None
+        return self._json_to_pydantic(response.content, FIOAPIPlanetPlotsSchema)
+
+    def get_planet_sites(self, planet_natural_id: str) -> list[FIOAPIPlanetSiteSchema]:
+        """Empty when the planet has no sites (204)."""
+        response = self._execute_request(
+            f'{FIOURL.get_url("api_planet_sites")}{planet_natural_id}',
+            'api_planet_sites',
+            self._get_auth_headers(None),
+        )
+        if response.status_code == 204:
+            return []
+        return self._json_to_pydantic(response.content, list[FIOAPIPlanetSiteSchema])
 
     def get_all_exchanges(self) -> list[FIOExchangeSchema]:
         return self._fetch(endpoint='allexchange', schema=list[FIOExchangeSchema])
