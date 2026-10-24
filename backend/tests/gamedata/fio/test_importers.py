@@ -1,21 +1,28 @@
 from collections.abc import Callable
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 from core.services.cache_manager import CacheManager
 from django.forms.models import model_to_dict
+from django.utils import timezone
 from gamedata.fio.importers import (
     import_all_buildings,
     import_all_exchanges,
     import_all_materials,
+    import_all_planet_plots,
     import_planet,
     import_planet_infrastructure,
+    import_planet_plots,
     save_exchanges,
 )
 from gamedata.gamedata_cache_manager import BUILDINGS, EXCHANGES, MATERIALS, PLANET, PLANET_LIST
 from gamedata.models import GamePlanet, GamePlanetCOGCProgram, GamePlanetProductionFee, GamePlanetResource
+from gamedata.tasks import gamedata_refresh_planet_plots
 from model_bakery import baker
+from pytest_httpx import HTTPXMock
+from tests.gamedata.fio.conftest import fixture_bytes
 
 pytestmark = pytest.mark.django_db
 
@@ -241,3 +248,125 @@ def _fio_returning(**methods: object) -> MagicMock:
     for name, payload in methods.items():
         getattr(context.__enter__.return_value, name).return_value = payload
     return context
+
+
+API = 'https://api.fnar.net/'
+MONTEM = 'OT-580b'
+SALADIN = 'PG-899b'
+
+
+def plots(planet_natural_id: str) -> dict[str, object]:
+    planet = GamePlanet.objects.get(planet_natural_id=planet_natural_id)
+    return {f: getattr(planet, f) for f in GamePlanet.PLOT_FIELDS}
+
+
+def mock_planet(httpx_mock: HTTPXMock, natural_id: str, name: str) -> None:
+    httpx_mock.add_response(url=f'{API}planet/{natural_id}', content=fixture_bytes(f'fxt_fio_api_planet_{name}'))
+    httpx_mock.add_response(
+        url=f'{API}planet/sites/{natural_id}', content=fixture_bytes(f'fxt_fio_api_planet_sites_{name}')
+    )
+
+
+class TestImportPlanetPlots:
+    def test_montem_full_with_ghost_sites(self, httpx_mock: HTTPXMock) -> None:
+        baker.make(GamePlanet, planet_natural_id=MONTEM)
+        mock_planet(httpx_mock, MONTEM, 'montem')
+
+        assert import_planet_plots(MONTEM) is True
+
+        assert plots(MONTEM) == {
+            'plots_total': 418,
+            'plots_used': 418,  # 412 bases and HQs plus 6 planetary projects
+            'ghost_sites': 96,
+            'supports_ghost_sites': True,
+            'plots_updated': datetime(2026, 10, 24, 17, 37, 45, 416641, tzinfo=UTC),
+        }
+
+    def test_saladin_with_free_plots_and_no_ghost_sites(self, httpx_mock: HTTPXMock) -> None:
+        baker.make(GamePlanet, planet_natural_id=SALADIN)
+        mock_planet(httpx_mock, SALADIN, 'saladin')
+
+        assert import_planet_plots(SALADIN) is True
+
+        stored = plots(SALADIN)
+        assert (stored['plots_total'], stored['plots_used'], stored['ghost_sites']) == (395, 63, 0)
+        assert stored['supports_ghost_sites'] is False
+
+    @pytest.mark.parametrize('status_code, body', [(204, b''), (200, b'[]')], ids=['204', 'empty'])
+    def test_a_planet_without_sites_has_none_used(self, httpx_mock: HTTPXMock, status_code: int, body: bytes) -> None:
+        baker.make(GamePlanet, planet_natural_id=SALADIN)
+        httpx_mock.add_response(url=f'{API}planet/{SALADIN}', content=fixture_bytes('fxt_fio_api_planet_saladin'))
+        httpx_mock.add_response(url=f'{API}planet/sites/{SALADIN}', status_code=status_code, content=body)
+        before = timezone.now()
+
+        assert import_planet_plots(SALADIN) is True
+
+        planet = GamePlanet.objects.get(planet_natural_id=SALADIN)
+        assert (planet.plots_total, planet.plots_used, planet.ghost_sites) == (395, 0, 0)
+        assert planet.plots_updated is not None and planet.plots_updated >= before
+
+    def test_unknown_planet_keeps_the_stored_values(
+        self, httpx_mock: HTTPXMock, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        baker.make(GamePlanet, planet_natural_id=MONTEM, plots_total=418, plots_used=400)
+        httpx_mock.add_response(url=f'{API}planet/{MONTEM}', status_code=204)
+
+        assert import_planet_plots(MONTEM) is False
+
+        assert (plots(MONTEM)['plots_total'], plots(MONTEM)['plots_used']) == (418, 400)
+        failed = [
+            r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'planet_plots_refresh_failed'
+        ]
+        assert [(m['planet_natural_id'], m['status_code']) for m in failed] == [(MONTEM, 204)]
+
+    def test_planet_missing_here(self, httpx_mock: HTTPXMock) -> None:
+        mock_planet(httpx_mock, MONTEM, 'montem')
+
+        assert import_planet_plots(MONTEM) is False
+
+
+class TestRefreshPlanetPlotsTask:
+    @pytest.mark.parametrize('status_code', [404, 500])
+    def test_failure_keeps_values_and_the_planet_refresh_status(self, httpx_mock: HTTPXMock, status_code: int) -> None:
+        baker.make(
+            GamePlanet,
+            planet_natural_id=MONTEM,
+            plots_total=418,
+            plots_used=400,
+            ghost_sites=3,
+            automation_refresh_status='success',
+            automation_error_count=0,
+        )
+        httpx_mock.add_response(url=f'{API}planet/{MONTEM}', content=fixture_bytes('fxt_fio_api_planet_montem'))
+        httpx_mock.add_response(url=f'{API}planet/sites/{MONTEM}', status_code=status_code)
+
+        assert gamedata_refresh_planet_plots(MONTEM) is False
+
+        planet = GamePlanet.objects.get(planet_natural_id=MONTEM)
+        assert (planet.plots_total, planet.plots_used, planet.ghost_sites) == (418, 400, 3)
+        assert (planet.automation_refresh_status, planet.automation_error_count) == ('success', 0)
+
+    def test_success(self, httpx_mock: HTTPXMock) -> None:
+        baker.make(GamePlanet, planet_natural_id=MONTEM)
+        mock_planet(httpx_mock, MONTEM, 'montem')
+
+        assert gamedata_refresh_planet_plots(MONTEM) is True
+
+
+class TestImportAllPlanetPlots:
+    def test_runs_every_planet_one_at_a_time(self, caplog: pytest.LogCaptureFixture) -> None:
+        for natural_id in ('AA-001a', 'AA-002a', 'AA-003a'):
+            baker.make(GamePlanet, planet_natural_id=natural_id)
+
+        with (
+            patch('gamedata.fio.importers.import_planet_plots', side_effect=[True, False, ValueError('bug')]) as run,
+            patch('gamedata.fio.importers.time.sleep') as sleep,
+        ):
+            assert import_all_planet_plots() == (1, 2)
+
+        assert [c.args for c in run.call_args_list] == [('AA-001a',), ('AA-002a',), ('AA-003a',)]
+        assert sleep.call_count == 3
+        failed = [
+            r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'planet_plots_refresh_failed'
+        ]
+        assert [m['planet_natural_id'] for m in failed] == ['AA-003a']

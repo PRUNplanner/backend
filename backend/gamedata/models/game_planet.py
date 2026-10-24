@@ -175,6 +175,15 @@ class GamePlanet(CeleryAutomationModel):
         max_length=10, blank=True, null=True, choices=GamePlanetCOGCStatusChoices.choices
     )
 
+    # plots from the FIO API (gamedata_refresh_planet_plots); null until the first refresh
+    plots_total = models.PositiveIntegerField(null=True, blank=True)
+    plots_used = models.PositiveIntegerField(null=True, blank=True)  # sites that aren't ghost sites
+    ghost_sites = models.PositiveIntegerField(null=True, blank=True)
+    supports_ghost_sites = models.BooleanField(null=True, blank=True)
+    plots_updated = models.DateTimeField(null=True, blank=True)  # the site list's timestamp
+
+    PLOT_FIELDS = ('plots_total', 'plots_used', 'ghost_sites', 'supports_ghost_sites', 'plots_updated')
+
     objects: models.Manager[GamePlanet] = models.Manager()
 
     if TYPE_CHECKING:  # pragma: no cover

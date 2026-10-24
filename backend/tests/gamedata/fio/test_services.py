@@ -10,6 +10,9 @@ class TestFIOURL:
 
         assert FIOURL.FIO_BASE_URL == 'https://rest.fnar.net/'
         assert FIOURL.get_url('allrecipes') == 'https://rest.fnar.net/recipes/allrecipes'
+        # plots alone come from the FIO API
+        assert FIOURL.get_url('api_planet') == 'https://api.fnar.net/planet/'
+        assert FIOURL.get_url('api_planet_sites') == 'https://api.fnar.net/planet/sites/'
 
     def test_get_timeout(self):
 

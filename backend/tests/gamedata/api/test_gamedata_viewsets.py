@@ -517,8 +517,11 @@ class TestGamePlanetSearchIndex:
             'cogc_program_status',
             'cogc_programs',
             'resources',
+            *GamePlanet.PLOT_FIELDS,
         }
         assert entry['cogc_program_status'] is None
+        # no plots refresh yet: unknown, not zero
+        assert all(entry[f] is None for f in GamePlanet.PLOT_FIELDS)
         assert entry['resources'] == [
             {
                 'material_ticker': 'FEO',
@@ -527,6 +530,30 @@ class TestGamePlanetSearchIndex:
                 'max_daily_extraction': entry['resources'][0]['max_daily_extraction'],
             }
         ]
+
+    @pytest.mark.parametrize('url', [URL, '/data/planet/AB-001c/'])
+    def test_returns_the_plots(
+        self, url: str, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet_factory(
+            planet_natural_id='AB-001c',
+            plots_total=418,
+            plots_used=418,
+            ghost_sites=96,
+            supports_ghost_sites=True,
+            plots_updated=datetime(2026, 10, 24, 17, 37, tzinfo=UTC),
+        )
+
+        data = api_client.get(url).json()
+        entry = data[0] if isinstance(data, list) else data
+
+        assert {f: entry[f] for f in GamePlanet.PLOT_FIELDS} == {
+            'plots_total': 418,
+            'plots_used': 418,
+            'ghost_sites': 96,
+            'supports_ghost_sites': True,
+            'plots_updated': '2026-10-24T17:37:00Z',
+        }
 
     def test_drops_programs_that_ended_before_build_time(
         self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]

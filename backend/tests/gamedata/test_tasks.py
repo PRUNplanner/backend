@@ -25,6 +25,7 @@ from gamedata.tasks import (
     gamedata_refresh_cxpc,
     gamedata_refresh_planet,
     gamedata_refresh_planet_infrastructure,
+    gamedata_refresh_planet_plots,
     gamedata_refresh_user_fiodata,
     gamedata_trigger_refresh_cxpc,
     refresh_exchange_analytics,
@@ -56,8 +57,12 @@ class TestGamedataTasks:
         with (
             patch('gamedata.fio.importers.import_planet', side_effect=Exception if scenario == 'error' else None),
             patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+            patch('gamedata.tasks.gamedata_refresh_planet_plots.delay') as plots,
         ):
             assert gamedata_refresh_planet() is (True if scenario == 'success' else False)
+
+        # every picked planet queues its plots refresh, whatever the planet refresh does
+        assert plots.call_args_list == ([] if scenario == 'none' else [(('M',),)])
 
     @pytest.mark.parametrize(
         'error, level',
@@ -75,6 +80,7 @@ class TestGamedataTasks:
         with (
             patch('gamedata.fio.importers.import_planet', side_effect=error),
             patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+            patch('gamedata.tasks.gamedata_refresh_planet_plots.delay'),
         ):
             assert gamedata_refresh_planet() is False
 
@@ -115,9 +121,15 @@ class TestGamedataTasks:
                 'cxpc_refresh_failed',
                 {'ticker': 'RAT', 'exchange_code': 'NC1'},
             ),
+            (
+                lambda: gamedata_refresh_planet_plots('M'),
+                'gamedata.fio.importers.get_fio_service',
+                'planet_plots_refresh_failed',
+                {'planet_natural_id': 'M'},
+            ),
             (refresh_exchanges, 'gamedata.fio.importers.get_fio_service', 'exchanges_refresh_failed', {}),
         ],
-        ids=['planet_infrastructure', 'cxpc', 'exchanges'],
+        ids=['planet_infrastructure', 'cxpc', 'planet_plots', 'exchanges'],
     )
     def test_fio_refreshes_log_their_failure(
         self,
@@ -723,6 +735,7 @@ class TestAdminTasks:
             ('buildings', 'import_all_buildings', (3, 4)),
             ('recipes', 'import_all_recipes', (1, 2, 3)),
             ('planets', 'import_all_planets', True),
+            ('planet_plots', 'import_all_planet_plots', (500, 2)),
             ('exchanges', 'import_all_exchanges', True),
         ],
     )
@@ -733,6 +746,12 @@ class TestAdminTasks:
             assert gamedata_admin_import(kind) == f'{kind}: {result}'
 
         run.assert_called_once_with()
+
+    def test_admin_import_is_acked_on_receipt(self) -> None:
+        from gamedata.tasks import gamedata_admin_import
+
+        # a full plots run outlasts the Redis visibility timeout; acked late, it would be delivered twice
+        assert gamedata_admin_import.acks_late is False
 
     def test_single_planet_refresh(self) -> None:
         from gamedata.tasks import gamedata_refresh_single_planet

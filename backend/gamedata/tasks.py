@@ -39,6 +39,18 @@ def gamedata_refresh_planet_infrastructure(planet_natural_id: str) -> bool:
         return False
 
 
+@shared_task(name='gamedata_refresh_planet_plots')
+def gamedata_refresh_planet_plots(planet_natural_id: str) -> bool:
+    from gamedata.fio.importers import import_planet_plots
+
+    # apart from the planet refresh: a failure here keeps the stored plots and never marks the planet failed
+    try:
+        return import_planet_plots(planet_natural_id)
+    except Exception as exc:
+        log_refresh_failure(logger, 'planet_plots_refresh_failed', exc, planet_natural_id=planet_natural_id)
+        return False
+
+
 @shared_task(name='gamedata_refresh_planet')
 def gamedata_refresh_planet() -> bool:
     from gamedata.fio.importers import import_planet
@@ -60,8 +72,9 @@ def gamedata_refresh_planet() -> bool:
     if not to_update:
         return False
 
-    # trigger infrastructure refresh
+    # trigger infrastructure and plots refresh
     gamedata_refresh_planet_infrastructure.delay(to_update.planet_natural_id)
+    gamedata_refresh_planet_plots.delay(to_update.planet_natural_id)
 
     to_update.automation_refresh_status = 'pending'
     to_update.automation_next_retry_at = now + GamePlanet.PENDING_LEASE
@@ -88,10 +101,12 @@ def gamedata_refresh_single_planet(planet_natural_id: str) -> bool:
     return import_planet(planet_natural_id)
 
 
-type AdminImportKind = Literal['materials', 'buildings', 'recipes', 'planets', 'exchanges']
+type AdminImportKind = Literal['materials', 'buildings', 'recipes', 'planets', 'planet_plots', 'exchanges']
 
 
-@shared_task(name='gamedata_admin_import')
+# acked on receipt: a full plots run takes over an hour, longer than the Redis visibility timeout, and with
+# acks_late a second worker would start it again; a lost manual import is simply queued again
+@shared_task(name='gamedata_admin_import', acks_late=False)
 def gamedata_admin_import(kind: AdminImportKind) -> str:
     from gamedata.fio import importers
 
@@ -100,6 +115,7 @@ def gamedata_admin_import(kind: AdminImportKind) -> str:
         'buildings': importers.import_all_buildings,
         'recipes': importers.import_all_recipes,
         'planets': importers.import_all_planets,
+        'planet_plots': importers.import_all_planet_plots,
         'exchanges': importers.import_all_exchanges,
     }
 

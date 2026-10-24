@@ -1,7 +1,10 @@
+import time
+
 import structlog
 from core.services.cache_manager import CacheManager
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from gamedata.fio.schemas import (
     FIOBuildingSchema,
@@ -358,6 +361,60 @@ def import_planet_infrastructure(planet_natural_id: str) -> bool:
     )
 
     return True
+
+
+def import_planet_plots(planet_natural_id: str) -> bool:
+    """Plots of one planet from the FIO API. False, with the stored values kept, when FIO doesn't know the planet."""
+    with get_fio_service() as fio:
+        plots = fio.get_planet_plots(planet_natural_id)
+        if plots is None:
+            logger.warning('planet_plots_refresh_failed', planet_natural_id=planet_natural_id, status_code=204)
+            return False
+        sites = fio.get_planet_sites(planet_natural_id)
+
+    planet = GamePlanet.objects.filter(planet_natural_id=planet_natural_id).first()
+    if planet is None:
+        logger.warning('planet_plots_refresh_failed', planet_natural_id=planet_natural_id, reason='planet_missing')
+        return False
+
+    # every site type takes a plot (bases, HQs, planetary projects); ghost sites take none
+    ghost_sites = sum(s.GhostPlot for s in sites)
+    planet.plots_total = plots.Plots
+    planet.supports_ghost_sites = plots.SupportsGhostSites
+    planet.plots_used = len(sites) - ghost_sites
+    planet.ghost_sites = ghost_sites
+    planet.plots_updated = max((s.Timestamp for s in sites), default=timezone.now())
+    # the planet's post_save receiver invalidates its cache; the search index refreshes on its own TTL
+    planet.save(update_fields=GamePlanet.PLOT_FIELDS)
+
+    logger.info(
+        'planet_plots_refresh_completed',
+        planet_natural_id=planet_natural_id,
+        plots_total=planet.plots_total,
+        plots_used=planet.plots_used,
+        ghost_sites=ghost_sites,
+    )
+    return True
+
+
+# ponytail: fixed pause between planets for the admin's full run; a Celery rate limit if it ever runs on a schedule
+PLANET_PLOTS_PAUSE_SECONDS = 0.5
+
+
+def import_all_planet_plots() -> tuple[int, int]:
+    """Every planet's plots, one planet at a time. Returns (refreshed, failed)."""
+    refreshed = failed = 0
+    for natural_id in GamePlanet.objects.order_by('planet_natural_id').values_list('planet_natural_id', flat=True):
+        try:
+            if import_planet_plots(natural_id):
+                refreshed += 1
+            else:
+                failed += 1
+        except Exception as exc:
+            log_refresh_failure(logger, 'planet_plots_refresh_failed', exc, planet_natural_id=natural_id)
+            failed += 1
+        time.sleep(PLANET_PLOTS_PAUSE_SECONDS)
+    return refreshed, failed
 
 
 def import_all_exchanges() -> bool:
