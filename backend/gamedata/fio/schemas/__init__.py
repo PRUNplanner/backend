@@ -9,7 +9,6 @@ from .fio_sites_warehouses import *
 from .fio_storage import *
 from .fio_planet_infrastructure import *
 from .fio_webhook import *
-from .fio_api_planet_plots import *
 
 __all__ = [
     "fio_building",
@@ -23,5 +22,4 @@ __all__ = [
     "fio_storage",
     "fio_planet_infrastructure",
     "fio_planet_infrastructure",
-    "fio_api_planet_plots",
 ]
