@@ -148,6 +148,7 @@ def deep_merge(base, overrides):
 
 LAYOUT_NAVIGATION_STYLES = ['full', 'collapsed']
 COLOR_PALETTES = ['default', 'colorblind']
+MARKET_CARD_TRIGGERS = ['hover', 'click']
 EMAIL_NUDGE_DISMISSALS = ['later', 'never']
 
 DEFAULT_PREFERENCES = {
@@ -162,6 +163,7 @@ DEFAULT_PREFERENCES = {
     'supply_cart_days': 20,
     'layout_navigation_style': 'full',
     'color_palette': 'default',
+    'market_card_trigger': 'hover',
     'plan_overrides': {},
     'plan_suggestions': True,
     'fio_repair_interval_days': 60,
@@ -219,6 +221,9 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
         source='layout_navigation_style', choices=LAYOUT_NAVIGATION_STYLES, required=False
     )
     colorPalette = serializers.ChoiceField(source='color_palette', choices=COLOR_PALETTES, required=False)
+    marketCardTrigger = serializers.ChoiceField(
+        source='market_card_trigger', choices=MARKET_CARD_TRIGGERS, required=False
+    )
     planSuggestions = serializers.BooleanField(source='plan_suggestions', required=False)
 
     planOverrides = serializers.DictField(
@@ -270,6 +275,8 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
             merged['email_nudge_dismissal'] = None
         if merged['color_palette'] not in COLOR_PALETTES:
             merged['color_palette'] = 'default'
+        if merged['market_card_trigger'] not in MARKET_CARD_TRIGGERS:
+            merged['market_card_trigger'] = 'hover'
         return super().to_representation(merged)
 
 
