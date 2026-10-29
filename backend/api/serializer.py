@@ -27,19 +27,27 @@ class PydanticJSONField(serializers.JSONField):
 class ClientErrorSerializer(serializers.Serializer):
     """An error report from the browser; every field bounded, since each becomes an Axiom column."""
 
-    kind = serializers.ChoiceField(choices=['validation', 'server', 'network', 'client'])
-    method = serializers.ChoiceField(choices=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])
-    path_template = serializers.RegexField(r'^/', max_length=200)
+    kind = serializers.ChoiceField(choices=['validation', 'server', 'network', 'client', 'query_loop'])
+    # required for every kind but query_loop (validate), which is about a query, not a call
+    method = serializers.ChoiceField(choices=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], required=False)
+    path_template = serializers.RegexField(r'^/', max_length=200, required=False)
     status = serializers.IntegerField(min_value=100, max_value=599, allow_null=True, required=False)
     failed_request_id = serializers.UUIDField(allow_null=True, required=False)
     issues = serializers.ListField(child=serializers.CharField(max_length=200), max_length=20, required=False)
     client_ms = serializers.IntegerField(min_value=0, allow_null=True, required=False)
     release = serializers.CharField(max_length=40)
     route_name = serializers.CharField(max_length=80, allow_null=True, required=False)
+    # query_loop: the looping query's definition name and its fetches in the budget window
+    query = serializers.CharField(max_length=80, required=False)
+    fetches = serializers.IntegerField(min_value=0, max_value=1000, required=False)
 
     def validate(self, attrs: dict[str, object]) -> dict[str, object]:
         # a plain Serializer ignores unknown keys; reject them so nothing unbounded reaches the log
         unknown = set(self.initial_data) - set(self.fields)
         if unknown:
             raise serializers.ValidationError({key: 'Unknown field.' for key in sorted(unknown)})
+        if attrs['kind'] != 'query_loop':
+            missing = [key for key in ('method', 'path_template') if key not in attrs]
+            if missing:
+                raise serializers.ValidationError({key: 'This field is required.' for key in missing})
         return attrs

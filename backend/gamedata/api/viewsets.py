@@ -364,6 +364,8 @@ class GameExchangeCSVViewSet(GameExchangeViewSet):
 class GameStorageViewSet(viewsets.GenericViewSet, mixins.RetrieveModelMixin):
     serializer_class = GameStorageSerializer
     permission_classes = [IsAuthenticated]
+    # shared by data/storage/, rows/ and csv/
+    throttle_scope = 'fio_storage'
 
     @staticmethod
     def load_storage(user: User) -> dict:
@@ -402,6 +404,8 @@ class GameStorageRowsViewSet(viewsets.GenericViewSet):
     """data/storage/ as one row per material and storage, for sheets and scripts."""
 
     permission_classes = [IsAuthenticated]
+    # shared by data/storage/, rows/ and csv/
+    throttle_scope = 'fio_storage'
 
     header = ['location', 'storage_type', 'storage_name', 'ticker', 'amount', 'updated_at']
     # the storages data/storage/ returns, and the id each is located by there (GameStorageSerializer)

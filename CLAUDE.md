@@ -142,6 +142,9 @@ shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
   `user_signup_rejected` (`fields`, sorted `codes` as `"<field>:<error code>"`,
   `planet_id` only with `planet_input:planet_mismatch`) per attempt, never the
   submitted values. Throttled attempts log neither (`request_finished` 429).
+- `rate_limited` (`scope`, `user_id`, `auth`, `path_template`, `rate`):
+  a throttle refused a request, logged once per throttle key and window
+  (`core/throttling.py`); the 429s themselves show in `request_finished`.
 - `fio_request_completed` / `fio_request_failed` fields (`endpoint`, `url`,
   `status_code`, `duration` in seconds, `bytes`) back Axiom dashboards;
   don't rename them.

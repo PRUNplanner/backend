@@ -10,6 +10,7 @@ from unittest.mock import patch
 import orjson
 import pytest
 from core.services.cache_manager import CacheManager
+from django.core.cache.backends.locmem import LocMemCache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -706,6 +707,25 @@ class TestPublicEndpointsSkipAuthentication:
 
         assert response.status_code == 200
         assert response['X-Cache-Hit'] == '1'
+
+
+class TestGameStorageThrottle:
+    def test_storage_routes_share_30_a_minute(
+        self, api_client: APIClient, user_factory: Callable[..., User], locmem_cache: LocMemCache
+    ) -> None:
+        client = api_client.as_user(user_factory())  # ty:ignore[unresolved-attribute]
+        urls = [reverse(f'data:storage-{name}') for name in ('retrieve', 'rows', 'csv')]
+        # no FIO data: 404, which still counts
+        for i in range(30):
+            assert client.get(urls[i % 3]).status_code == 404
+
+        for url in urls:
+            response = client.get(url)
+            assert response.status_code == 429
+            assert int(response['Retry-After']) > 0
+        other = APIClient()
+        other.force_authenticate(user_factory())
+        assert other.get(urls[0]).status_code == 404
 
 
 class TestGameStorageRowsViewSet:
