@@ -1,13 +1,17 @@
 from collections.abc import Callable, Mapping, Sequence
+from unittest.mock import patch
 
 import pytest
 from core.throttling import AuthenticatedUserRateThrottle
 from django.core.cache.backends.locmem import LocMemCache
 from django.urls import reverse
+from model_bakery import baker
 from rest_framework.test import APIClient
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework_simplejwt.tokens import AccessToken
 from structlog.testing import capture_logs
 from user.models import User, UserAPIKey
+from user.models.configs import GlobalConfigWebhook, WebhookSenderChoices
 
 pytestmark = pytest.mark.django_db
 
@@ -119,3 +123,19 @@ class TestLoggedScopedRateThrottle:
         (line,) = rate_limited(logs)
         assert line['scope'] == 'client_error'
         assert line['user_id'] is None
+
+    def test_webhook_takes_20_pushes_a_second(
+        self,
+        api_client: APIClient,
+        locmem_cache: LocMemCache,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # one instant: the posts never spread over two windows
+        monkeypatch.setattr(SimpleRateThrottle, 'timer', lambda self: 1_000_000.0)
+        config = baker.make(GlobalConfigWebhook, sender=WebhookSenderChoices.FIOAPI, is_active=True)
+        url = reverse('data:fio-webhook-ingest', kwargs={'token': config.path})
+
+        with patch('gamedata.api.viewsets.gamedata_process_fio_webhook.delay'):
+            statuses = [api_client.post(url, {'Data': []}, format='json').status_code for _ in range(21)]
+
+        assert statuses == [202] * 20 + [429]

@@ -26,7 +26,7 @@ DATABASES = {'default': _default_db}
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,  # noqa: F405
     'DEFAULT_THROTTLE_RATES': {
-        'webhook_inbound': '3/sec',
+        'webhook_inbound': '20/sec',
         'auth_login': '100000/hour',
         'auth_register': '5/min',
         'auth_verify_email': '5/min',

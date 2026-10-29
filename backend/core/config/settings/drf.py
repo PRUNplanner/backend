@@ -18,7 +18,7 @@ REST_FRAMEWORK = {
         'core.throttling.AuthenticatedUserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'webhook_inbound': '3/sec',
+        'webhook_inbound': '20/sec',
         'auth_login': '10/hour',
         'auth_register': '5/min',
         'auth_verify_email': '5/min',
