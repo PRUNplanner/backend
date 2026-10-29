@@ -32,6 +32,9 @@ REST_FRAMEWORK = {
         'auth_verify_email': '5/min',
         'auth_password_reset': '5/min',
         'profile_update': '10/min',
+        'client_error': '30/min',
+        'cxpc_ticker': '100000/min',
+        'cxpc_daily': '100000/min',
     },
 }
 

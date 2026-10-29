@@ -92,6 +92,9 @@ paths:
   /data/cxpc/{ticker}/:
     get:
       operationId: exchange_cxpc_all
+      description: One ticker's full history. For many tickers, use `/data/cxpc/daily/`
+        (every ticker's daily bars in one request). Limited to 120 requests per minute
+        per IP across both per-ticker routes.
       summary: Get ticker CXPC data (All Exchanges)
       parameters:
       - in: path
@@ -113,6 +116,9 @@ paths:
   /data/cxpc/{ticker}/{exchange_code}/:
     get:
       operationId: exchange_cxpc_specific
+      description: One ticker's full history. For many tickers, use `/data/cxpc/daily/`
+        (every ticker's daily bars in one request). Limited to 120 requests per minute
+        per IP across both per-ticker routes.
       summary: Get ticker CXPC data for specific Exchange
       parameters:
       - in: path
@@ -135,6 +141,131 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/GameExchangeCXPC'
+          description: ''
+  /data/cxpc/daily/:
+    get:
+      operationId: exchange_cxpc_daily
+      description: |-
+        Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either `days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with `exchange`, 7 days without. Limited to 30 requests per minute per IP, JSON and CSV together; one request per exchange is all a daily refresh needs.
+
+        Google Sheets: `=IMPORTDATA("https://api.prunplanner.org/data/cxpc/daily/csv/?days=7&exchange=AI1")`
+
+        curl: `curl "https://api.prunplanner.org/data/cxpc/daily/?since=2026-10-01&until=2026-10-07"`
+      summary: Get every ticker's daily CXPC data for a range of days
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
+          maximum: 31
+          minimum: 1
+        description: The last N days up to today (UTC). Either since or days.
+      - in: query
+        name: exchange
+        schema:
+          enum:
+          - AI1
+          - CI1
+          - IC1
+          - NC1
+          - UNIVERSE
+          type: string
+          x-spec-enum-id: 7826e655ee20e313
+          minLength: 1
+        description: |-
+          Default all exchanges
+
+          * `AI1` - AI1
+          * `CI1` - CI1
+          * `IC1` - IC1
+          * `NC1` - NC1
+          * `UNIVERSE` - UNIVERSE
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date
+        description: First day (UTC), inclusive. Either since or days.
+      - in: query
+        name: until
+        schema:
+          type: string
+          format: date
+        description: Last day (UTC), inclusive; with since, default today
+      tags:
+      - data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CXPCDaily'
+          description: ''
+  /data/cxpc/daily/csv/:
+    get:
+      operationId: exchange_cxpc_daily_csv
+      description: |-
+        Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either `days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with `exchange`, 7 days without. Limited to 30 requests per minute per IP, JSON and CSV together; one request per exchange is all a daily refresh needs.
+
+        Google Sheets: `=IMPORTDATA("https://api.prunplanner.org/data/cxpc/daily/csv/?days=7&exchange=AI1")`
+
+        curl: `curl "https://api.prunplanner.org/data/cxpc/daily/?since=2026-10-01&until=2026-10-07"`
+      summary: Get every ticker's daily CXPC data for a range of days (CSV)
+      parameters:
+      - in: query
+        name: days
+        schema:
+          type: integer
+          maximum: 31
+          minimum: 1
+        description: The last N days up to today (UTC). Either since or days.
+      - in: query
+        name: exchange
+        schema:
+          enum:
+          - AI1
+          - CI1
+          - IC1
+          - NC1
+          - UNIVERSE
+          type: string
+          x-spec-enum-id: 7826e655ee20e313
+          minLength: 1
+        description: |-
+          Default all exchanges
+
+          * `AI1` - AI1
+          * `CI1` - CI1
+          * `IC1` - IC1
+          * `NC1` - NC1
+          * `UNIVERSE` - UNIVERSE
+      - in: query
+        name: since
+        schema:
+          type: string
+          format: date
+        description: First day (UTC), inclusive. Either since or days.
+      - in: query
+        name: until
+        schema:
+          type: string
+          format: date
+        description: Last day (UTC), inclusive; with since, default today
+      tags:
+      - 'data : csv'
+      responses:
+        '200':
+          content:
+            text/csv:
+              schema:
+                type: string
+              examples:
+                CSVExample:
+                  value: |
+                    ticker,exchange_code,date_epoch,open_p,close_p,high_p,low_p,volume,traded
+                    DW,AI1,1793145600000,72.0,73.5,74.0,71.0,147000.0,2000.0
+                    RAT,AI1,1793145600000,58.0,58.0,59.0,57.5,290000.0,5000.0
+                  summary: CSV Example
           description: ''
   /data/cxpc/spark/{exchange_code}/:
     get:
@@ -1834,6 +1965,64 @@ components:
       - last_updated
       - planet_natural_id
       - status
+    CXPCDaily:
+      type: object
+      properties:
+        since:
+          type: string
+          format: date
+        until:
+          type: string
+          format: date
+        exchange:
+          type: string
+          nullable: true
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CXPCDailyRow'
+      required:
+      - exchange
+      - rows
+      - since
+      - until
+    CXPCDailyRow:
+      type: object
+      properties:
+        ticker:
+          type: string
+        exchange_code:
+          type: string
+        date_epoch:
+          type: integer
+        open_p:
+          type: number
+          format: double
+        close_p:
+          type: number
+          format: double
+        high_p:
+          type: number
+          format: double
+        low_p:
+          type: number
+          format: double
+        volume:
+          type: number
+          format: double
+        traded:
+          type: number
+          format: double
+      required:
+      - close_p
+      - date_epoch
+      - exchange_code
+      - high_p
+      - low_p
+      - open_p
+      - ticker
+      - traded
+      - volume
     CXPCSparklines:
       type: object
       properties:

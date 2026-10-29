@@ -62,6 +62,8 @@ class GameExchangeCXPC(models.Model):
             )
         ]
         # unique_ticker_exchange_date also serves lookups by ticker or (ticker, exchange_code)
+        # every ticker of a date range (data/cxpc/daily/)
+        indexes = [models.Index(fields=['exchange_code', 'date_epoch'], name='cxpc_exchange_date_idx')]
 
         db_table = 'prunplanner_game_exchanges_cxpc'
         verbose_name = 'Exchange CXPC'

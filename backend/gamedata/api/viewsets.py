@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from itertools import chain
 from typing import Any, cast
 
@@ -13,6 +13,8 @@ from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, inline_serializer
 from gamedata.api.serializer import (
+    CXPC_EXCHANGES,
+    CXPCDailyQuerySerializer,
     CXPCSparklinesQuerySerializer,
     CXPCSparklinesSerializer,
     GameBuildingSerializer,
@@ -58,7 +60,7 @@ from gamedata.models import (
     GameRecipe,
     queryset_gameplanet,
 )
-from gamedata.services.cxpc_sparklines import build_sparklines, utc_today_epoch
+from gamedata.services.cxpc_sparklines import DAY_MS, build_sparklines, utc_today_epoch
 from gamedata.services.market_summary import MARKET_SUMMARY_ENDPOINT, build_market_summary
 from gamedata.services.planet_search import GamePlanetSearchService
 from gamedata.tasks import gamedata_process_fio_webhook
@@ -486,12 +488,46 @@ class GameStorageRowsViewSet(viewsets.GenericViewSet):
         return self._respond(request, 'csv')
 
 
+CXPC_FIELDS = ['ticker', 'exchange_code', 'date_epoch', 'open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded']
+
+CXPC_TICKER_DESCRIPTION = (
+    "One ticker's full history. For many tickers, use `/data/cxpc/daily/` (every ticker's daily bars in one "
+    'request). Limited to 120 requests per minute per IP across both per-ticker routes.'
+)
+CXPC_DAILY_DESCRIPTION = (
+    "Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either "
+    '`days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with '
+    '`exchange`, 7 days without. Limited to 30 requests per minute per IP, JSON and CSV together; one request per '
+    'exchange is all a daily refresh needs.\n\n'
+    'Google Sheets: `=IMPORTDATA("https://api.prunplanner.org/data/cxpc/daily/csv/?days=7&exchange=AI1")`\n\n'
+    'curl: `curl "https://api.prunplanner.org/data/cxpc/daily/?since=2026-10-01&until=2026-10-07"`'
+)
+CXPC_ROW = inline_serializer(
+    name='CXPCDailyRow',
+    fields={
+        'ticker': serializers.CharField(),
+        'exchange_code': serializers.CharField(),
+        'date_epoch': serializers.IntegerField(),
+        **{field: serializers.FloatField() for field in CXPC_FIELDS[3:]},
+    },
+)
+
+
 class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
-    ALLOWED_EXCHANGES = ['AI1', 'CI1', 'IC1', 'NC1', 'UNIVERSE']
+    ALLOWED_EXCHANGES = CXPC_EXCHANGES
 
     queryset = GameExchangeCXPC.objects.all()
     permission_classes = [AllowAny]
     authentication_classes = []
+
+    @property
+    def throttle_scope(self) -> str | None:
+        # per IP (no authentication here): a script walking every ticker hits it, Market Exploration never does
+        if self.action in ('cxpc_ticker_data', 'cxpc_exchange_data'):
+            return 'cxpc_ticker'
+        if self.action in ('cxpc_daily', 'cxpc_daily_csv'):
+            return 'cxpc_daily'
+        return None
 
     def _get_cxpc_response(self, ticker, exchange_code=None):
         def fetch_data():
@@ -501,17 +537,14 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
             else:
                 qs = qs.filter(exchange_code__in=self.ALLOWED_EXCHANGES)
 
-            return list(
-                qs.order_by('-date_epoch').values(
-                    'ticker', 'exchange_code', 'date_epoch', 'open_p', 'close_p', 'high_p', 'low_p', 'volume', 'traded'
-                )
-            )
+            return list(qs.order_by('-date_epoch').values(*CXPC_FIELDS))
 
         return CacheManager.respond(self.request, CXPC, 'market-data', ticker, exchange_code, build=fetch_data)
 
     @extend_schema(
         auth=[],
         summary='Get ticker CXPC data (All Exchanges)',
+        description=CXPC_TICKER_DESCRIPTION,
         operation_id='exchange_cxpc_all',
         responses={200: GameExchangeCXPCSerializer(many=True)},
     )
@@ -522,6 +555,7 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
     @extend_schema(
         auth=[],
         summary='Get ticker CXPC data for specific Exchange',
+        description=CXPC_TICKER_DESCRIPTION,
         operation_id='exchange_cxpc_specific',
         responses={200: GameExchangeCXPCSerializer(many=True)},
     )
@@ -533,6 +567,87 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return self._get_cxpc_response(ticker, exchange_code)
+
+    def _daily_respond(self, request, fmt: str) -> HttpResponse:
+        query = CXPCDailyQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        since: date = query.validated_data['since']
+        until: date = query.validated_data['until']
+        exchange: str | None = query.validated_data['exchange']
+        since_epoch = CXPCDailyQuerySerializer.epoch(since)
+        until_epoch = CXPCDailyQuerySerializer.epoch(until)
+
+        def fetch_data() -> list[dict] | dict:
+            rows = list(
+                GameExchangeCXPC.objects.filter(
+                    exchange_code__in=[exchange] if exchange else self.ALLOWED_EXCHANGES,
+                    date_epoch__gte=since_epoch,
+                    date_epoch__lt=until_epoch + DAY_MS,
+                )
+                .order_by('date_epoch', 'exchange_code', 'ticker')
+                .values(*CXPC_FIELDS)
+            )
+            if fmt == 'csv':
+                return rows
+            return {'since': since.isoformat(), 'until': until.isoformat(), 'exchange': exchange, 'rows': rows}
+
+        # the key holds the day, so a range ending today starts a new entry tomorrow; CXPC refreshes invalidate it
+        return CacheManager.respond(
+            request,
+            CXPC,
+            'daily',
+            exchange,
+            since_epoch,
+            until_epoch,
+            utc_today_epoch(),
+            build=fetch_data,
+            fmt=fmt,
+            csv_header=CXPC_FIELDS if fmt == 'csv' else None,
+        )
+
+    @extend_schema(
+        auth=[],
+        summary="Get every ticker's daily CXPC data for a range of days",
+        description=CXPC_DAILY_DESCRIPTION,
+        operation_id='exchange_cxpc_daily',
+        parameters=[CXPCDailyQuerySerializer],
+        responses={
+            200: inline_serializer(
+                name='CXPCDaily',
+                fields={
+                    'since': serializers.DateField(),
+                    'until': serializers.DateField(),
+                    'exchange': serializers.CharField(allow_null=True),
+                    'rows': serializers.ListField(child=CXPC_ROW),
+                },
+            )
+        },
+    )
+    def cxpc_daily(self, request) -> HttpResponse:
+        return self._daily_respond(request, 'json')
+
+    @extend_schema(
+        auth=[],
+        tags=['data : csv'],
+        summary="Get every ticker's daily CXPC data for a range of days (CSV)",
+        description=CXPC_DAILY_DESCRIPTION,
+        operation_id='exchange_cxpc_daily_csv',
+        parameters=[CXPCDailyQuerySerializer],
+        responses={(200, 'text/csv'): OpenApiTypes.STR},
+        examples=[
+            OpenApiExample(
+                'CSV Example',
+                value=(
+                    'ticker,exchange_code,date_epoch,open_p,close_p,high_p,low_p,volume,traded\n'
+                    'DW,AI1,1793145600000,72.0,73.5,74.0,71.0,147000.0,2000.0\n'
+                    'RAT,AI1,1793145600000,58.0,58.0,59.0,57.5,290000.0,5000.0\n'
+                ),
+                media_type='text/csv',
+            )
+        ],
+    )
+    def cxpc_daily_csv(self, request) -> HttpResponse:
+        return self._daily_respond(request, 'csv')
 
     @extend_schema(
         auth=[],

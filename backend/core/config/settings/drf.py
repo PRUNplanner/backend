@@ -24,6 +24,9 @@ REST_FRAMEWORK = {
         'auth_password_reset': '5/min',
         'profile_update': '10/min',
         'client_error': '30/min',
+        # per IP, data/cxpc/<ticker>/ and data/cxpc/<ticker>/<exchange>/ together; daily JSON and CSV together
+        'cxpc_ticker': '120/min',
+        'cxpc_daily': '30/min',
     },
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',

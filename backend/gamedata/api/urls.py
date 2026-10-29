@@ -40,11 +40,17 @@ urlpatterns = [
         'planets/<str:search_term>/', GamePlanetViewSet.as_view({'get': 'search_single'}), name='planet-search-single'
     ),
     path('planets/', GamePlanetViewSet.as_view({'get': 'list'}), name='planet-list'),
-    # before cxpc/<ticker>/<exchange_code>/, which would capture it
+    # before cxpc/<ticker>/<exchange_code>/ and cxpc/<ticker>/, which would capture them
     path(
         'cxpc/spark/<str:exchange_code>/',
         ExchangeCXPCViewSet.as_view({'get': 'cxpc_sparklines'}),
         name='cxpc-sparklines',
+    ),
+    path('cxpc/daily/', ExchangeCXPCViewSet.as_view({'get': 'cxpc_daily'}), name='cxpc-daily'),
+    path(
+        'cxpc/daily/csv/',
+        ExchangeCXPCViewSet.as_view({'get': 'cxpc_daily_csv'}, renderer_classes=[CSVRenderer]),
+        name='cxpc-daily-csv',
     ),
     path('market/summary/', ExchangeCXPCViewSet.as_view({'get': 'market_summary'}), name='market-summary'),
     path(
