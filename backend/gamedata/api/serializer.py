@@ -1,4 +1,7 @@
+from datetime import UTC, date, datetime, time, timedelta
+
 from api.mixins import BlankAsNullMixin
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from gamedata.fio.schemas import drf_sites_schema
 from gamedata.models import (
@@ -19,6 +22,8 @@ from gamedata.models import (
     GameRecipeOutput,
 )
 from rest_framework import serializers
+
+CXPC_EXCHANGES = ['AI1', 'CI1', 'IC1', 'NC1', 'UNIVERSE']
 
 WORKFORCE_ORDER = ['PIONEER', 'SETTLER', 'TECHNICIAN', 'ENGINEER', 'SCIENTIST']
 WF_INDEX_MAP = {level: i for i, level in enumerate(WORKFORCE_ORDER)}
@@ -381,6 +386,53 @@ class CXPCSparklinesQuerySerializer(serializers.Serializer):
         if len(tickers) > self.MAX_TICKERS:
             raise serializers.ValidationError(f'At most {self.MAX_TICKERS} tickers.')
         return tickers
+
+
+class CXPCDailyQuerySerializer(serializers.Serializer):
+    """A range of whole UTC days, `since` to `until` or the last `days`, capped so one response stays ~10k rows."""
+
+    MAX_DAYS_ONE_EXCHANGE = 31
+    MAX_DAYS_ALL_EXCHANGES = 7
+
+    since = serializers.DateField(required=False, help_text='First day (UTC), inclusive. Either since or days.')
+    until = serializers.DateField(required=False, help_text='Last day (UTC), inclusive; with since, default today')
+    days = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=MAX_DAYS_ONE_EXCHANGE,
+        help_text='The last N days up to today (UTC). Either since or days.',
+    )
+    exchange = serializers.ChoiceField(choices=CXPC_EXCHANGES, required=False, help_text='Default all exchanges')
+
+    def validate(self, attrs: dict) -> dict:
+        today = timezone.now().astimezone(UTC).date()
+        days: int | None = attrs.get('days')
+        since: date | None = attrs.get('since')
+        if days is not None:
+            if since is not None:
+                raise serializers.ValidationError({'since': 'Give either since or days.'})
+            if 'until' in attrs:
+                raise serializers.ValidationError({'until': 'Only with since.'})
+            since = today - timedelta(days=days - 1)
+        elif since is None:
+            raise serializers.ValidationError({'since': 'Give either since or days.'})
+
+        until: date = attrs.get('until', today)
+        if until < since:
+            raise serializers.ValidationError({'until': 'Must not be before since.'})
+
+        exchange: str | None = attrs.get('exchange')
+        cap = self.MAX_DAYS_ONE_EXCHANGE if exchange else self.MAX_DAYS_ALL_EXCHANGES
+        if (until - since).days + 1 > cap:
+            field = 'days' if days is not None else 'until'
+            raise serializers.ValidationError({field: f'At most {cap} days{"" if exchange else " without exchange"}.'})
+
+        return {'since': since, 'until': until, 'exchange': exchange}
+
+    @staticmethod
+    def epoch(day: date) -> int:
+        """00:00 UTC of a day in epoch ms, as CXPC date_epoch."""
+        return int(datetime.combine(day, time(), tzinfo=UTC).timestamp() * 1000)
 
 
 class CXPCSparklinesSerializer(serializers.Serializer):

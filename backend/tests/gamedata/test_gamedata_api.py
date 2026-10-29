@@ -1,11 +1,13 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 from core.services.cache_manager import CacheManager
+from django.db import connection, transaction
 from django.urls import reverse
 from django.utils import timezone
 from gamedata.gamedata_cache_manager import CXPC
+from gamedata.models import GameExchangeCXPC
 from gamedata.tasks import gamedata_warm_market_summary, refresh_exchange_analytics
 from rest_framework import status
 from tests.fixtures.fxt_fio_ship_data import fio_ship_data
@@ -423,3 +425,190 @@ class TestMarketSummary:
         assert gamedata_warm_market_summary() is False
 
         assert api_client.get(self.URL)['X-Cache-Hit'] == '1'
+
+
+DAY_MS = 86_400_000
+
+
+def _today() -> int:
+    return int(timezone.now().timestamp() * 1000) // DAY_MS * DAY_MS
+
+
+def _day(epoch: int) -> str:
+    return datetime.fromtimestamp(epoch / 1000, tz=UTC).date().isoformat()
+
+
+class TestCXPCDaily:
+    URL = '/data/cxpc/daily/'
+    CSV_URL = '/data/cxpc/daily/csv/'
+
+    @pytest.fixture
+    def bars(self, exchange_cxpc_factory) -> None:
+        # 9 days of RAT and DW on AI1, RAT on IC1 and UNIVERSE: the last 7 days are in range, 2 older ones not
+        for offset in range(9):
+            epoch = _today() - offset * DAY_MS
+            for ticker in ['RAT', 'DW']:
+                exchange_cxpc_factory(ticker=ticker, exchange_code='AI1', date_epoch=epoch, open_p=10 + offset)
+            for exchange in ['IC1', 'UNIVERSE']:
+                exchange_cxpc_factory(ticker='RAT', exchange_code=exchange, date_epoch=epoch)
+
+    def test_urls(self):
+        assert reverse('data:cxpc-daily') == self.URL
+        assert reverse('data:cxpc-daily-csv') == self.CSV_URL
+
+    @pytest.mark.usefixtures('bars')
+    def test_rows_of_one_exchange_equal_the_per_ticker_rows_in_order(self, api_client):
+        since = _today() - 6 * DAY_MS
+        response = api_client.get(self.URL, {'since': _day(since), 'exchange': 'AI1'})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body['since'] == _day(since)
+        assert body['until'] == _day(_today())
+        assert body['exchange'] == 'AI1'
+        rows = body['rows']
+        assert len(rows) == 14
+        assert [(r['date_epoch'], r['ticker']) for r in rows[:2]] == [(since, 'DW'), (since, 'RAT')]
+        assert rows == sorted(rows, key=lambda r: (r['date_epoch'], r['exchange_code'], r['ticker']))
+
+        for ticker in ['RAT', 'DW']:
+            per_ticker = api_client.get(reverse('data:cxpc-market-data-full', args=[ticker, 'AI1'])).json()
+            in_range = sorted((r for r in per_ticker if r['date_epoch'] >= since), key=lambda r: r['date_epoch'])
+            assert [r for r in rows if r['ticker'] == ticker] == in_range
+
+        assert api_client.get(self.URL, {'days': 7, 'exchange': 'AI1'}).json() == body
+
+    @pytest.mark.usefixtures('bars')
+    def test_without_exchange_returns_every_exchange(self, api_client):
+        body = api_client.get(self.URL, {'days': 7}).json()
+
+        assert body['exchange'] is None
+        assert {r['exchange_code'] for r in body['rows']} == {'AI1', 'IC1', 'UNIVERSE'}
+        assert len(body['rows']) == 7 * 4
+
+    def test_until_bounds_the_range(self, api_client, exchange_cxpc_factory):
+        for offset in range(3):
+            exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_today() - offset * DAY_MS)
+        day = _day(_today() - DAY_MS)
+
+        rows = api_client.get(self.URL, {'since': day, 'until': day}).json()['rows']
+
+        assert [r['date_epoch'] for r in rows] == [_today() - DAY_MS]
+
+    @pytest.mark.parametrize(
+        ('query', 'field'),
+        [
+            ({'days': 8}, 'days'),
+            ({'days': 32, 'exchange': 'AI1'}, 'days'),
+            ({'since': 'TODAY-7'}, 'until'),
+            ({'since': 'TODAY-31', 'exchange': 'AI1'}, 'until'),
+            ({}, 'since'),
+            ({'since': 'TODAY-1', 'days': 2}, 'since'),
+            ({'days': 2, 'until': 'TODAY-1'}, 'until'),
+            ({'since': 'TODAY-1', 'until': 'TODAY-2'}, 'until'),
+            ({'since': '2026-13-01'}, 'since'),
+            ({'days': 0}, 'days'),
+            ({'days': 1_000_000}, 'days'),
+            ({'days': 1, 'exchange': 'XX1'}, 'exchange'),
+        ],
+    )
+    def test_invalid_query_is_a_400_naming_the_field(self, api_client, query, field):
+        query = {
+            k: _day(_today() - int(v.split('-')[1]) * DAY_MS) if str(v).startswith('TODAY-') else v
+            for k, v in query.items()
+        }
+
+        response = api_client.get(self.URL, query)
+
+        assert response.status_code == 400
+        assert set(response.json()) == {field}
+
+    def test_the_largest_ranges_pass(self, api_client):
+        assert api_client.get(self.URL, {'days': 7}).status_code == 200
+        assert api_client.get(self.URL, {'days': 31, 'exchange': 'AI1'}).status_code == 200
+
+    @pytest.mark.usefixtures('bars')
+    def test_csv_has_a_header_and_the_same_rows(self, api_client):
+        rows = api_client.get(self.URL, {'days': 7, 'exchange': 'AI1'}).json()['rows']
+
+        response = api_client.get(self.CSV_URL, {'days': 7, 'exchange': 'AI1'})
+
+        assert response.status_code == 200
+        assert response['Content-Type'].startswith('text/csv')
+        lines = response.content.decode().splitlines()
+        assert lines[0] == 'ticker,exchange_code,date_epoch,open_p,close_p,high_p,low_p,volume,traded'
+        assert len(lines) == len(rows) + 1
+        first = dict(zip(lines[0].split(','), lines[1].split(','), strict=True))
+        assert (first['ticker'], int(first['date_epoch']), float(first['open_p'])) == (
+            rows[0]['ticker'],
+            rows[0]['date_epoch'],
+            rows[0]['open_p'],
+        )
+
+    def test_csv_400_names_the_field(self, api_client):
+        response = api_client.get(self.CSV_URL, {'days': 8})
+
+        assert response.status_code == 400
+        assert 'days' in response.content.decode()
+
+    @pytest.mark.usefixtures('locmem_cache')
+    def test_second_request_hits_and_a_cxpc_refresh_invalidates(
+        self, api_client, exchange_cxpc_factory, django_assert_num_queries
+    ):
+        exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_today() - DAY_MS)
+        query = {'days': 7, 'exchange': 'AI1'}
+        first = api_client.get(self.URL, query)
+        assert first['X-Cache-Hit'] == '0'
+
+        with django_assert_num_queries(0):
+            assert api_client.get(self.URL, query)['X-Cache-Hit'] == '1'
+
+        exchange_cxpc_factory(ticker='RAT', exchange_code='AI1', date_epoch=_today())
+        CacheManager.invalidate(CXPC)  # what each CXPC refresh does
+        after = api_client.get(self.URL, query)
+        assert after['X-Cache-Hit'] == '0'
+        assert [r['date_epoch'] for r in after.json()['rows']] == [_today() - DAY_MS, _today()]
+
+    def test_the_query_uses_the_exchange_date_index(self):
+        qs = GameExchangeCXPC.objects.filter(
+            exchange_code__in=['AI1'], date_epoch__gte=_today() - 6 * DAY_MS, date_epoch__lt=_today() + DAY_MS
+        )
+        with transaction.atomic():
+            if connection.vendor == 'postgresql':
+                # an empty table is cheaper to scan; this only asks whether the index can serve the filter
+                with connection.cursor() as cursor:
+                    cursor.execute('SET LOCAL enable_seqscan = off')
+            plan = qs.explain()
+
+        assert 'cxpc_exchange_date_idx' in plan
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestCXPCThrottles:
+    """Per IP: the per-ticker routes share 120/min, daily JSON and CSV share 30/min, the rest is not limited."""
+
+    def test_per_ticker_routes_share_a_limit_that_leaves_the_rest_alone(self, api_client):
+        for i in range(120):
+            url = f'/data/cxpc/T{i}/' if i % 2 else f'/data/cxpc/T{i}/AI1/'
+            assert api_client.get(url).status_code == 200
+
+        limited = api_client.get('/data/cxpc/RAT/AI1/')
+        assert limited.status_code == 429
+        assert int(limited['Retry-After']) > 0
+        assert api_client.get('/data/cxpc/RAT/').status_code == 429
+
+        assert api_client.get('/data/cxpc/daily/', {'days': 1}).status_code == 200
+        assert api_client.get('/data/cxpc/spark/AI1/').status_code == 200
+        assert api_client.get('/data/market/summary/').status_code == 200
+
+    def test_daily_json_and_csv_share_a_limit_apart_from_the_per_ticker_one(self, api_client):
+        for i in range(30):
+            url = '/data/cxpc/daily/csv/' if i % 2 else '/data/cxpc/daily/'
+            assert api_client.get(url, {'days': 1}).status_code == 200
+
+        limited = api_client.get('/data/cxpc/daily/', {'days': 1})
+        assert limited.status_code == 429
+        assert int(limited['Retry-After']) > 0
+        assert api_client.get('/data/cxpc/daily/csv/', {'days': 1}).status_code == 429
+
+        assert api_client.get('/data/cxpc/RAT/AI1/').status_code == 200
