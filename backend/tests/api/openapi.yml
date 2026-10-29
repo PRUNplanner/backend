@@ -2055,13 +2055,15 @@ components:
           - server
           - network
           - client
+          - query_loop
           type: string
           description: |-
             * `validation` - validation
             * `server` - server
             * `network` - network
             * `client` - client
-          x-spec-enum-id: 6fdf1f1f7fae4a4d
+            * `query_loop` - query_loop
+          x-spec-enum-id: 0b38e4386fa5dbd3
         method:
           enum:
           - GET
@@ -2107,10 +2109,15 @@ components:
           type: string
           nullable: true
           maxLength: 80
+        query:
+          type: string
+          maxLength: 80
+        fetches:
+          type: integer
+          maximum: 1000
+          minimum: 0
       required:
       - kind
-      - method
-      - path_template
       - release
     CodeGenericResponse:
       type: object

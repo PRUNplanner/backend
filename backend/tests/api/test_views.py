@@ -46,6 +46,23 @@ class TestClientErrorView:
         assert api_client.post(URL, body, format='json').status_code == 204
         assert len(client_errors(caplog)) == 1
 
+    def test_query_loop_needs_no_call(self, api_client: APIClient, caplog: pytest.LogCaptureFixture) -> None:
+        body = {'kind': 'query_loop', 'query': 'GetFIOStorage', 'fetches': 5, 'release': '1.2.3'}
+
+        assert api_client.post(URL, body, format='json').status_code == 204
+        (line,) = client_errors(caplog)
+        assert {k: line[k] for k in body} == body
+
+    @pytest.mark.parametrize('field', ['method', 'path_template'])
+    def test_call_fields_required_for_other_kinds(self, field: str, api_client: APIClient) -> None:
+        body = report()
+        del body[field]
+
+        response = api_client.post(URL, body, format='json')
+
+        assert response.status_code == 400
+        assert field in response.json()
+
     def test_expired_token_is_ignored(self, api_client: APIClient) -> None:
         response = api_client.post(URL, report(), format='json', HTTP_AUTHORIZATION='Bearer expired.junk.token')
 
@@ -67,6 +84,10 @@ class TestClientErrorView:
             {'client_ms': -1},
             {'release': 'r' * 41},
             {'route_name': 'n' * 81},
+            {'query': 'q' * 81},
+            {'fetches': -1},
+            {'fetches': 1001},
+            {'kind': 'query_loop', 'query': None},
         ],
     )
     def test_invalid_report_is_rejected(

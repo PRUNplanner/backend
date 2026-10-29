@@ -35,6 +35,9 @@ REST_FRAMEWORK = {
         'client_error': '30/min',
         'cxpc_ticker': '100000/min',
         'cxpc_daily': '100000/min',
+        # the load test runs many requests per simulated user
+        'user': '100000/min',
+        'fio_storage': '100000/min',
     },
 }
 
