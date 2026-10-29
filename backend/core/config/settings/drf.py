@@ -14,7 +14,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.ScopedRateThrottle',
+        'core.throttling.LoggedScopedRateThrottle',
+        'core.throttling.AuthenticatedUserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'webhook_inbound': '3/sec',
@@ -24,6 +25,10 @@ REST_FRAMEWORK = {
         'auth_password_reset': '5/min',
         'profile_update': '10/min',
         'client_error': '30/min',
+        # every request of a logged-in user; ~4x the busiest normal minute (p99.99 65)
+        'user': '240/min',
+        # data/storage/ with rows/ and csv/; ~2x the busiest normal minute (p99.99 14)
+        'fio_storage': '30/min',
     },
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',
@@ -69,3 +74,5 @@ CORS_ALLOW_HEADERS = (
     'x-correlation-id',
 )
 CORS_PREFLIGHT_MAX_AGE = 86400
+# a cross-origin browser only reads safelisted headers; the frontend waits Retry-After after a 429
+CORS_EXPOSE_HEADERS = ['Retry-After']
