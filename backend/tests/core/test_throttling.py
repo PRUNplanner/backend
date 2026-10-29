@@ -54,7 +54,8 @@ class TestAuthenticatedUserRateThrottle:
         assert api_client.get(PROFILE, **api_key).status_code == 429
 
     def test_anonymous_requests_are_not_counted(self, api_client: APIClient, locmem_cache: LocMemCache) -> None:
-        url = reverse('data:cxpc-market-data-ticker', kwargs={'ticker': 'DW'})
+        # a public route without a throttle scope (the per-ticker CXPC routes have a per-IP one)
+        url = reverse('data:material-list')
 
         statuses = {api_client.get(url).status_code for _ in range(300)}
 
