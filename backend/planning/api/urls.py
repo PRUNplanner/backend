@@ -1,7 +1,8 @@
 from django.urls import path
 from rest_framework_csv.renderers import CSVRenderer
 
-from .viewsets import CXViewSet, EmpireViewSet, PlanDraftViewSet, PlanVersionViewSet, PlanViewSet, SharedViewSet
+from .viewsets import CXViewSet, EmpireViewSet, PlanViewSet, SharedViewSet
+from .viewsets.plan_version_viewset import PlanDraftViewSet, PlanVersionViewSet
 
 app_name = 'planning'
 urlpatterns = [
