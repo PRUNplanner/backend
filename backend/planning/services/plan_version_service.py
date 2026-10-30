@@ -75,8 +75,8 @@ def record_save(
 ) -> PlanningPlanVersion:
     """
     Call inside the save's transaction, holding the plan's row lock: a failure here rolls the save back.
-    keep_draft is for writes that aren't the user's: their unsaved edits stay, and the moved modified_at sends them
-    through the conflict dialog.
+    keep_draft is for writes that didn't include the draft (admin, a tab that hasn't seen it): those unsaved edits
+    stay, and the moved modified_at sends them through the conflict dialog.
     """
     if not PlanningPlanVersion.objects.filter(plan=plan).exists():
         _log_created(_insert(before, PlanVersionKind.BASELINE))
@@ -146,6 +146,15 @@ def save_draft(plan: PlanningPlan, fields: dict[str, object], base_modified_at: 
         },
     )
     return draft
+
+
+def newer_draft(plan: PlanningPlan, seen: datetime | None) -> datetime | None:
+    """
+    Call holding the plan's row lock. The stored draft's updated_at when it isn't the one the client last saw, else
+    None. With no stored draft there's nothing to lose, so that's None too.
+    """
+    stored = PlanningPlanVersion.drafts.filter(plan=plan).values_list('updated_at', flat=True).first()
+    return None if stored == seen else stored
 
 
 def delete_draft(plan: PlanningPlan) -> None:

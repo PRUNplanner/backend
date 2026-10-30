@@ -26,6 +26,27 @@ class PlanningSaveConflictSerializer(serializers.Serializer):
     modified_at = serializers.DateTimeField()
 
 
+class DraftConflict(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = 'Another draft was saved since this one was loaded.'
+    default_code = 'draft_conflict'
+
+    def __init__(self, updated_at: datetime) -> None:
+        super().__init__(
+            {
+                'detail': self.default_detail,
+                'code': self.default_code,
+                'updated_at': serializers.DateTimeField().to_representation(updated_at),
+            }
+        )
+
+
+class PlanningDraftConflictSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    code = serializers.CharField()
+    updated_at = serializers.DateTimeField()
+
+
 class SaveConflictMixin(serializers.Serializer):
     # rejects an update with 409 when base_modified_at (the version the client edited) is no longer the stored one
 
