@@ -132,6 +132,8 @@ def build_endpoints() -> list[Endpoint]:
         Endpoint('user.preferences', 'get', '/user/preferences/', auth=True),
         Endpoint('planning.plan_list', 'get', '/planning/plan/', auth=True),
         Endpoint('planning.plan_detail', 'get', f'/planning/plan/{plan.uuid}/', auth=True),
+        Endpoint('planning.plan_versions', 'get', f'/planning/plan/{plan.uuid}/versions/', auth=True),
+        Endpoint('planning.plan_draft', 'get', f'/planning/plan/{plan.uuid}/draft/', auth=True),
         Endpoint('planning.empire_list', 'get', '/planning/empire/', auth=True),
         Endpoint('planning.empire_detail', 'get', f'/planning/empire/{empire.uuid}/', auth=True),
         Endpoint('planning.empire_plans', 'get', f'/planning/empire/{empire.uuid}/plans/', auth=True),

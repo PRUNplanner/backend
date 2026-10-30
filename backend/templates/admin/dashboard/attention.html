@@ -5,7 +5,7 @@
     <div class="bg-base-900 border border-base-800 rounded-default p-4 flex items-center gap-2 text-sm">
       <span class="material-symbols-outlined" style="color: {{ 'good'|status_colour }}">check_circle</span>
       <span class="text-important">All checks normal</span>
-      <span class="text-subtle">· no periodic task overdue · no planet stuck in pending</span>
+      <span class="text-subtle">· no periodic task overdue · no planet stuck in pending · {{ chips.2.text }}</span>
     </div>
   {% else %}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">

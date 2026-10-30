@@ -1,6 +1,7 @@
 import json
 from collections.abc import Callable
 from datetime import timedelta
+from functools import partial
 from unittest.mock import patch
 
 import pytest
@@ -15,7 +16,7 @@ from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from gamedata.models import GamePlanet
 from model_bakery import baker
-from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan
+from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan, PlanningPlanVersion
 from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_EMPIRE
 from user.api.serializer import UserRegisterSerializer
 from user.models import User
@@ -107,10 +108,34 @@ class TestHealthChips:
     """AC18: every chip links to a page showing exactly the rows it counts."""
 
     def test_all_green_collapses_to_one_line(self, admin_client: Client) -> None:
-        response = admin_client.get(INDEX)
+        with patch.object(dashboard, '_fetch', return_value=[(2048,)]):
+            response = admin_client.get(INDEX)
 
         assert response.context['all_ok'] is True
         assert 'All checks normal' in response.content.decode()
+        assert 'Plan versions table 2.0' in response.content.decode()
+
+    def test_plan_versions_table_warns_above_1_gb(self, admin_client: Client) -> None:
+        with patch.object(dashboard, '_fetch', return_value=[(dashboard.PLAN_VERSIONS_WARN_BYTES + 1,)]):
+            response = admin_client.get(INDEX)
+
+        chip = response.context['chips'][2]
+        assert chip['ok'] is False
+        assert 'Plan versions table 1.0' in chip['text']
+        assert response.context['all_ok'] is False
+
+    def test_plan_version_tiles(self, admin_client: Client) -> None:
+        user = baker.make(User)
+        plan = baker.make(PlanningPlan, user=user, plan_permits_used=1)
+        make = partial(baker.make, PlanningPlanVersion, plan=plan, user=user, data_bytes=1, plan_permits_used=1)
+        make(kind='save', name='Early')
+        make(kind='save')
+        make(kind='restore')
+        make(kind='draft', base_modified_at=timezone.now())
+
+        tiles = admin_client.get(INDEX).context['plan_versions']
+
+        assert [tile['value'] for tile in tiles] == ['1', '1', '1']
 
     def test_stuck_planets_chip(self, admin_client: Client) -> None:
         now = timezone.now()

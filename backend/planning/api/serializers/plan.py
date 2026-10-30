@@ -6,8 +6,16 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from gamedata.models import GamePlanetCOGCProgram
 from gamedata.models.game_planet import GamePlanetCOGCProgramChoices
-from planning.models import PlanningCOGCChoices, PlanningEmpire, PlanningEmpirePlan, PlanningPlan, PlanningShared
+from planning.models import (
+    PlanningCOGCChoices,
+    PlanningEmpire,
+    PlanningEmpirePlan,
+    PlanningPlan,
+    PlanningPlanVersion,
+    PlanningShared,
+)
 from planning.schemas.latest_schemas import LATEST_SCHEMA
+from planning.services import plan_version_service
 from rest_framework import serializers
 
 from .conflict import SaveConflictMixin
@@ -39,6 +47,10 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
     # Input-only field for the junction
     empire_uuid = serializers.UUIDField(write_only=True, required=False)
 
+    # Input-only fields for the version this save creates
+    version_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=80)
+    restored_from = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+
     plan_data = PydanticJSONField(pydantic_model=LATEST_SCHEMA['PLANNING_DATA'])
 
     # COGC: must allow null, if so: populate from planets running cogc
@@ -57,6 +69,8 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
             'empires',
             'cx',
             'empire_uuid',
+            'version_name',
+            'restored_from',
             'modified_at',
             'base_modified_at',
         ]
@@ -104,9 +118,12 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
     def create(self, validated_data):
         user = self.context['request'].user
         empire_uuid = validated_data.pop('empire_uuid', None)
+        validated_data.pop('version_name', None)
+        validated_data.pop('restored_from', None)
 
         # create plan
         plan = PlanningPlan.objects.create(user=user, **validated_data)
+        plan_version_service.record_created(plan)
 
         # handle junction creation
         if empire_uuid:
@@ -118,9 +135,20 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
     def update(self, instance, validated_data):
         _user = self.context['request'].user
         _empire_uuid = validated_data.pop('empire_uuid', None)
+        version_name = validated_data.pop('version_name', '')
+        restored_from = validated_data.pop('restored_from', None)
+
+        # also without base_modified_at: saves must reach the versions in the order they reach the row
+        before = get_object_or_404(PlanningPlan.objects.select_for_update(), pk=instance.pk)
+
+        # under the lock: another save may prune the version
+        source = PlanningPlanVersion.objects.filter(pk=restored_from, plan=instance).first() if restored_from else None
+        if restored_from and source is None:
+            raise serializers.ValidationError({'restored_from': 'Not a version of this plan.'})
 
         # update plan fields
         instance = super().update(instance, validated_data)
+        plan_version_service.record_save(instance, before=before, name=version_name, restored_from=source)
 
         # no junction update on update, only on create
 

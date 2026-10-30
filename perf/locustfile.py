@@ -132,6 +132,19 @@ class Planner(HttpUser):
         body = {field: plan[field] for field in EDITABLE_PLAN_FIELDS}
         self.client.put(f'/planning/plan/{plan_id}/', json=body, name='/planning/plan/[id]/ PUT')
 
+    @task(2)
+    def save_draft(self) -> None:
+        """The editor's autosave: never touches the plan row or the caches."""
+        if not self.plan_ids:
+            return
+        plan_id = random.choice(self.plan_ids)
+        response = self.client.get(f'/planning/plan/{plan_id}/', name='/planning/plan/[id]/')
+        if not response.ok:
+            return
+        plan = response.json()
+        body = {field: plan[field] for field in EDITABLE_PLAN_FIELDS} | {'base_modified_at': plan['modified_at']}
+        self.client.put(f'/planning/plan/{plan_id}/draft/', json=body, name='/planning/plan/[id]/draft/ PUT')
+
     @task(1)
     def create_and_delete_plan(self) -> None:
         body = {

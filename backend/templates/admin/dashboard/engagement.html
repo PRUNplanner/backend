@@ -8,4 +8,11 @@
   {% else %}
     {% include "admin/dashboard/unavailable.html" with title="Engagement" %}
   {% endif %}
+  {% if plan_versions %}
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+      {% for tile in plan_versions %}
+        {% include "admin/summary/tile.html" %}
+      {% endfor %}
+    </div>
+  {% endif %}
 </section>

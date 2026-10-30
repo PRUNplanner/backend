@@ -37,7 +37,14 @@ class TestPerfBench:
         )
 
         endpoints = orjson.loads(out.read_bytes())['endpoints']
-        assert set(endpoints) == {'planning.plan_list', 'planning.plan_detail', 'user.profile', 'user.preferences'}
+        assert set(endpoints) == {
+            'planning.plan_list',
+            'planning.plan_detail',
+            'planning.plan_versions',
+            'planning.plan_draft',
+            'user.profile',
+            'user.preferences',
+        }
         plan_list = endpoints['planning.plan_list']
         assert plan_list['status'] == 200
         assert plan_list['error'] is None

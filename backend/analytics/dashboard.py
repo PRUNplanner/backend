@@ -22,12 +22,21 @@ from django.db import connection
 from django.db.models import Count, Exists, F, IntegerField, Min, OuterRef, Q, QuerySet, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.http import HttpRequest
+from django.template.defaultfilters import filesizeformat
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.timesince import timesince
 from django_celery_beat.models import PeriodicTask
 from gamedata.models import GameFIOPlayerData, GamePlanet
-from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan, PlanningShared
+from planning.models import (
+    PlanningCX,
+    PlanningEmpire,
+    PlanningEmpirePlan,
+    PlanningPlan,
+    PlanningPlanVersion,
+    PlanningShared,
+    PlanVersionKind,
+)
 from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_EMPIRE
 from redis import Redis
 from user.models import GlobalConfigWebhook, User, UserAPIKey
@@ -45,6 +54,7 @@ TOP_LIST_SIZE = 10
 # rows created this long after their owner's signup were created by the user, not seeded by signup
 SIGNUP_SEED_WINDOW = timedelta(seconds=60)
 API_KEY_ACTIVE_DAYS = 30
+PLAN_VERSIONS_WARN_BYTES = 1024**3
 # plans per user histogram: (label, lowest count, highest count or None)
 PLAN_BUCKETS = (('0', 0, 0), ('1', 1, 1), ('2–5', 2, 5), ('6–20', 6, 20), ('21+', 21, None))
 
@@ -106,6 +116,19 @@ def stuck_planets_chip() -> Chip:
         'colour': STATUS['critical'],
         'text': f'Planets stuck in pending · {stuck["n"]:,} · oldest refreshed {_age(stuck["oldest"])} ago',
         'href': href,
+    }
+
+
+def plan_versions_chip() -> Chip:
+    size = cast(int, _fetch('SELECT pg_total_relation_size(%s::regclass)', [PlanningPlanVersion._meta.db_table])[0][0])
+    rows = PlanningPlanVersion.all_objects.count()
+    ok = size <= PLAN_VERSIONS_WARN_BYTES
+    return {
+        'ok': ok,
+        'icon': 'check_circle' if ok else 'database',
+        'colour': STATUS['good'] if ok else STATUS['serious'],
+        'text': f'Plan versions table {filesizeformat(size)} · {rows:,} rows',
+        'href': changelist_url(PlanningPlanVersion),
     }
 
 
@@ -275,6 +298,22 @@ def engagement(days: int) -> list[Tile]:
         if moved := change(current, before):
             tile['change'] = moved
     return tiles
+
+
+def plan_versions() -> list[Tile]:
+    recent = PlanningPlanVersion.objects.filter(created_at__gte=timezone.now() - timedelta(days=30)).aggregate(
+        named=Count('pk', filter=~Q(name='')), restores=Count('pk', filter=Q(kind=PlanVersionKind.RESTORE))
+    )
+    href = changelist_url(PlanningPlanVersion)
+    return [
+        {'label': 'Named versions, 30 d', 'value': f'{recent["named"]:,}', 'href': href},
+        {'label': 'Restores, 30 d', 'value': f'{recent["restores"]:,}', 'sub': 'unpruned versions', 'href': href},
+        {
+            'label': 'Open drafts',
+            'value': f'{PlanningPlanVersion.drafts.count():,}',
+            'href': changelist_url(PlanningPlanVersion, 'kind__exact=draft'),
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -624,7 +663,7 @@ def table_sizes() -> list[tuple[str, str, str]]:
 
 def build_dashboard(days: int) -> dict[str, object]:
     heading = safe(lambda: headline(days))
-    chips = [safe(overdue_tasks_chip), safe(stuck_planets_chip)]
+    chips = [safe(overdue_tasks_chip), safe(stuck_planets_chip), safe(plan_versions_chip)]
     return {
         'built_at': time.time(),
         'chips': chips,
@@ -635,6 +674,7 @@ def build_dashboard(days: int) -> dict[str, object]:
         'plans_per_user': safe(plans_per_user),
         'feature_adoption': safe(feature_adoption),
         'engagement': safe(lambda: engagement(days)),
+        'plan_versions': safe(plan_versions),
         'onboarding': safe(lambda: onboarding_funnel(days)),
         'webhooks': safe(webhooks),
         'top_planets': safe(top_planets),

@@ -1,11 +1,22 @@
 from datetime import timedelta
 
-from core.admin import ChangeHeaderMixin, SummaryStripMixin, changelist_url, daily_counts, is_changelist, percent
+from core.admin import (
+    ChangeHeaderMixin,
+    ReadOnlyAdminMixin,
+    SummaryStripMixin,
+    changelist_url,
+    confirm_action,
+    daily_counts,
+    is_changelist,
+    log_admin_action,
+    percent,
+)
 from core.admin_charts import Chart, Fact, Summary, bar, fold_other
 from core.env import settings
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db.models import Count, JSONField, Prefetch, Q, QuerySet, Sum
-from django.http import HttpRequest
+from django.forms import Form
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
@@ -13,9 +24,19 @@ from django_json_widget.widgets import JSONEditorWidget
 from gamedata.models import GamePlanet
 from unfold.admin import ModelAdmin, TabularInline
 from unfold.contrib.filters.admin import ChoicesDropdownFilter, RangeDateTimeFilter
+from unfold.decorators import action
 from unfold.sections import TableSection
 
-from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan, PlanningShared
+from planning.models import (
+    PlanningCX,
+    PlanningEmpire,
+    PlanningEmpirePlan,
+    PlanningPlan,
+    PlanningPlanVersion,
+    PlanningShared,
+    PlanVersionKind,
+)
+from planning.services import plan_version_service
 
 NEW_PLANS_CHART_DAYS = 90
 JSON_WIDGETS = {JSONField: {'widget': JSONEditorWidget}}
@@ -72,6 +93,31 @@ class PlanningEmpireInline(TabularInline):
         return super().get_queryset(request).select_related('user').defer('empire_state')
 
 
+class PlanningPlanVersionInline(TabularInline):
+    model = PlanningPlanVersion
+    fields = ['created_at', 'kind', 'name', 'data_bytes', 'restore']
+    readonly_fields = fields
+    extra = 0
+    tab = True
+    can_delete = False
+
+    def has_add_permission(self, request: HttpRequest, obj: PlanningPlan | None = None) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: PlanningPlan | None = None) -> bool:
+        return False
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[PlanningPlanVersion]:
+        return super().get_queryset(request).defer('plan_data').order_by('-created_at')
+
+    @admin.display(description='Restore')
+    def restore(self, obj: PlanningPlanVersion) -> str:
+        if obj.kind == PlanVersionKind.DRAFT:
+            return '—'
+        url = reverse('admin:planning_planningplanversion_action_restore', args=[obj.pk])
+        return format_html('<a href="{}">Restore this version</a>', url)
+
+
 class EmpirePlansSection(TableSection):
     verbose_name = 'Linked plans'
     related_name = 'plans'
@@ -93,10 +139,23 @@ class PlanningPlanAdmin(SummaryStripMixin, ChangeHeaderMixin[PlanningPlan], Mode
     readonly_fields = ['uuid', 'created_at', 'modified_at']
     autocomplete_fields = ['user']
 
+    inlines = [PlanningPlanVersionInline]
+
     formfield_overrides = JSON_WIDGETS
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[PlanningPlan]:
         return super().get_queryset(request).defer('plan_data')
+
+    def save_model(  # ty: ignore[invalid-method-override]
+        self, request: HttpRequest, obj: PlanningPlan, form: Form, change: bool
+    ) -> None:
+        if not change:
+            super().save_model(request, obj, form, change)
+            plan_version_service.record_created(obj)
+            return
+        before = PlanningPlan.objects.select_for_update().get(pk=obj.pk)
+        super().save_model(request, obj, form, change)
+        plan_version_service.record_save(obj, before=before, kind=PlanVersionKind.ADMIN, keep_draft=True)
 
     def get_summary(self, request: HttpRequest) -> Summary:
         total = PlanningPlan.objects.count()
@@ -162,6 +221,57 @@ class PlanningPlanAdmin(SummaryStripMixin, ChangeHeaderMixin[PlanningPlan], Mode
                 }
             )
         return facts
+
+
+@admin.register(PlanningPlanVersion)
+class PlanningPlanVersionAdmin(ReadOnlyAdminMixin, ModelAdmin):
+    # single deletes stay: without the permission Django refuses to delete a plan or user from the admin
+    list_display = ['uuid', 'plan', 'user', 'kind', 'name', 'data_bytes', 'created_at']
+    list_select_related = ['plan', 'user']
+    search_fields = ['uuid', 'plan__uuid', 'plan__plan_name', 'name', 'user__username']
+    ordering = ['-created_at']
+    list_filter = [('kind', ChoicesDropdownFilter), ('created_at', RangeDateTimeFilter)]
+    list_filter_submit = True
+    date_hierarchy = 'created_at'
+    actions = None
+    actions_row = ['action_restore']
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[PlanningPlanVersion]:
+        return super().get_queryset(request).defer('plan_data', 'plan__plan_data')
+
+    def has_restore_permission(self, request: HttpRequest, object_id: str | None = None) -> bool:
+        # a method, not a dotted name: Unfold's system check queries those, and checks run before migrate
+        return request.user.has_perm('planning.change_planningplan')  # ty: ignore[unresolved-attribute]
+
+    @action(
+        description='Restore this version',
+        url_path='restore',
+        icon='history',
+        permissions=['restore'],
+    )
+    def action_restore(self, request: HttpRequest, object_id: str) -> HttpResponse:
+        """GET shows the confirmation; the restore runs on POST."""
+        version = PlanningPlanVersion.objects.filter(pk=object_id).select_related('plan').first()
+        if version is None:
+            messages.error(request, 'Version not found.')
+            return HttpResponseRedirect(changelist_url(PlanningPlanVersion))
+        plan_url = reverse('admin:planning_planningplan_change', args=[version.plan.pk])
+        if request.method != 'POST':
+            return confirm_action(
+                request,
+                title='Restore this version',
+                message=(
+                    f'Replaces "{version.plan.plan_name}" with this version from '
+                    f'{version.created_at:%Y-%m-%d %H:%M}. The current state stays in the history, and so does '
+                    "the user's draft. Anyone editing the plan gets the conflict dialog on their next save."
+                ),
+                submit_label='Restore this version',
+                cancel_url=plan_url,
+            )
+        plan_version_service.restore_version(version)
+        log_admin_action(request, version.plan, f'Restored version {version.pk}')
+        messages.success(request, f'Restored {version.plan.plan_name}.')
+        return HttpResponseRedirect(plan_url)
 
 
 @admin.register(PlanningEmpire)

@@ -8,6 +8,7 @@ from planning.api.serializers import (
     PlanningSharedSerializer,
 )
 from planning.models import PlanningPlan, PlanningShared
+from planning.services import plan_version_service
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -101,5 +102,6 @@ class SharedViewSet(
                 plan_data=original_plan.plan_data,
                 schema_version=original_plan.schema_version,
             )
+            plan_version_service.record_created(cloned_plan)
 
         return Response(PlanningPlanDetailSerializer(cloned_plan).data, status=status.HTTP_201_CREATED)

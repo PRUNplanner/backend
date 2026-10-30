@@ -1,6 +1,7 @@
 from typing import Any
 
 from core.services.cache_manager import CacheManager
+from django.db import transaction
 from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
@@ -10,6 +11,7 @@ from planning.api.serializers import (
 from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.models import PlanningEmpire, PlanningPlan
 from planning.planning_cache_manager import PLANNING
+from planning.services import plan_version_service
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -82,7 +84,9 @@ class PlanViewSet(
         new_plan.uuid = None
 
         new_plan.plan_name = f'{original_plan.plan_name} (Clone)'
-        new_plan.save()
+        with transaction.atomic():
+            new_plan.save()
+            plan_version_service.record_created(new_plan)
 
         serializer = self.get_serializer(new_plan)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
