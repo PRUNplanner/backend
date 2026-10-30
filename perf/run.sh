@@ -55,7 +55,7 @@ cd "$(dirname "$0")/.."  # backend repo root
 ENV_FILE=perf/env.perf
 COMPOSE="docker compose -f perf/docker-compose.perf.yml"
 [[ "$PROD_LIKE" == 1 ]] && COMPOSE="$COMPOSE -f perf/docker-compose.prod-like.yml"
-PORT=8765
+PORT="${PERF_PORT:-8765}"  # kanban.py serve also defaults to 8765
 RUN_DIR=".perf/$(date +%Y%m%d-%H%M%S)-${SCALE}-${MODE}"
 SERVER_PID=''
 

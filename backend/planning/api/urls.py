@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_csv.renderers import CSVRenderer
 
-from .viewsets import CXViewSet, EmpireViewSet, PlanViewSet, SharedViewSet
+from .viewsets import CXViewSet, EmpireViewSet, PlanDraftViewSet, PlanVersionViewSet, PlanViewSet, SharedViewSet
 
 app_name = 'planning'
 urlpatterns = [
@@ -15,6 +15,22 @@ urlpatterns = [
         'plan/<uuid:pk>/clone/',
         PlanViewSet.as_view({'post': 'clone'}),
         name='plan-clone',
+    ),
+    path('plan/<uuid:plan_pk>/versions/', PlanVersionViewSet.as_view({'get': 'list'}), name='plan-versions'),
+    path(
+        'plan/<uuid:plan_pk>/versions/<uuid:pk>/',
+        PlanVersionViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update'}),
+        name='plan-version-detail',
+    ),
+    path(
+        'plan/<uuid:plan_pk>/versions/<uuid:pk>/clone/',
+        PlanVersionViewSet.as_view({'post': 'clone'}),
+        name='plan-version-clone',
+    ),
+    path(
+        'plan/<uuid:plan_pk>/draft/',
+        PlanDraftViewSet.as_view({'get': 'retrieve', 'put': 'update', 'delete': 'destroy'}),
+        name='plan-draft',
     ),
     path('empire/', EmpireViewSet.as_view({'get': 'list', 'post': 'create'}), name='empire'),
     path('empire/junctions/', EmpireViewSet.as_view({'post': 'sync_junctions'}), name='empire-junctions'),

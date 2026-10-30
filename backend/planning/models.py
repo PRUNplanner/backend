@@ -156,3 +156,74 @@ class PlanningShared(UUIDModel, ChangeTrackedModel):
         verbose_name = 'Shared Plan'
         verbose_name_plural = 'Shared Plans'
         constraints = [models.UniqueConstraint(fields=['user', 'plan'], name='unique_user_plan_share')]
+
+
+class PlanVersionKind(models.TextChoices):
+    SAVE = 'save'
+    RESTORE = 'restore'
+    BASELINE = 'baseline'
+    ADMIN = 'admin'
+    DRAFT = 'draft'
+
+
+class SavedVersionManager(models.Manager['PlanningPlanVersion']):
+    def get_queryset(self) -> models.QuerySet['PlanningPlanVersion']:
+        return super().get_queryset().exclude(kind=PlanVersionKind.DRAFT)
+
+
+class DraftVersionManager(models.Manager['PlanningPlanVersion']):
+    def get_queryset(self) -> models.QuerySet['PlanningPlanVersion']:
+        return super().get_queryset().filter(kind=PlanVersionKind.DRAFT)
+
+
+class PlanningPlanVersion(UUIDModel):
+    """A snapshot of a plan: one row per save, plus at most one autosave draft. Written by plan_version_service only."""
+
+    plan = models.ForeignKey(PlanningPlan, on_delete=models.CASCADE, related_name='versions')
+    user = models.ForeignKey('user.User', on_delete=models.CASCADE, related_name='plan_versions')
+
+    kind = models.CharField(max_length=10, choices=PlanVersionKind.choices)
+    name = models.CharField(max_length=80, blank=True)
+    source_version = models.ForeignKey('self', on_delete=models.SET_NULL, related_name='+', null=True, blank=True)
+    # drafts only: the plan's modified_at the edits started from
+    base_modified_at = models.DateTimeField(null=True, blank=True)
+    data_bytes = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # the snapshot
+    plan_name = models.CharField(max_length=200)
+    planet_natural_id = models.CharField(max_length=7, validators=[MinLengthValidator(7)])
+    plan_permits_used = models.PositiveIntegerField(validators=[MaxValueValidator(3)])
+    plan_cogc = models.CharField(max_length=20, choices=PlanningCOGCChoices.choices)
+    plan_corphq = models.BooleanField(default=False)
+    plan_data = models.JSONField(default=dict)
+    schema_version = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)])
+
+    # first, so it's the default manager: the admin's inline formset validates its rows against that one, drafts too
+    all_objects = models.Manager()
+    objects = SavedVersionManager()
+    drafts = DraftVersionManager()
+
+    def __str__(self) -> str:
+        return f'{self.plan_name} @ {self.created_at:%Y-%m-%d %H:%M} ({self.kind})'
+
+    class Meta:
+        db_table = 'prunplanner_planning_plan_versions'
+        verbose_name = 'Plan Version'
+        verbose_name_plural = 'Plan Versions'
+        indexes = [models.Index(fields=['plan', '-created_at'], name='plan_version_newest_idx')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['plan'], condition=models.Q(kind=PlanVersionKind.DRAFT), name='unique_plan_draft'
+            ),
+            models.CheckConstraint(
+                condition=models.Q(kind=PlanVersionKind.DRAFT, base_modified_at__isnull=False)
+                | (~models.Q(kind=PlanVersionKind.DRAFT) & models.Q(base_modified_at__isnull=True)),
+                name='plan_version_base_only_on_draft',
+            ),
+            models.CheckConstraint(
+                condition=~models.Q(kind=PlanVersionKind.DRAFT) | models.Q(name=''),
+                name='plan_version_draft_unnamed',
+            ),
+        ]

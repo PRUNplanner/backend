@@ -38,6 +38,7 @@ REST_FRAMEWORK = {
         # the load test runs many requests per simulated user
         'user': '100000/min',
         'fio_storage': '100000/min',
+        'plan_draft': '100000/min',
     },
 }
 

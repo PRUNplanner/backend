@@ -1376,6 +1376,217 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlanningPlanDetail'
           description: ''
+  /planning/plan/{plan_pk}/draft/:
+    get:
+      operationId: planning_plan_draft_retrieve
+      summary: Get the plan's autosave draft
+      parameters:
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDraftResponse'
+          description: ''
+    put:
+      operationId: planning_plan_draft_update
+      summary: Create or replace the plan's autosave draft
+      parameters:
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDraft'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDraft'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanDraft'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDraftSaved'
+          description: ''
+    delete:
+      operationId: planning_plan_draft_destroy
+      summary: Delete the plan's autosave draft
+      parameters:
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+  /planning/plan/{plan_pk}/versions/:
+    get:
+      operationId: planning_plan_versions_list
+      summary: List the saved versions of a plan
+      parameters:
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PlanningPlanVersion'
+          description: ''
+  /planning/plan/{plan_pk}/versions/{id}/:
+    get:
+      operationId: planning_plan_versions_retrieve
+      summary: Get a version with its plan data
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanVersionDetail'
+          description: ''
+    patch:
+      operationId: planning_plan_versions_partial_update
+      summary: Name or unname a version
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanningPlanVersionRename'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanningPlanVersionRename'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPlanningPlanVersionRename'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanVersion'
+          description: ''
+  /planning/plan/{plan_pk}/versions/{id}/clone/:
+    post:
+      operationId: planning_plan_versions_clone_create
+      summary: Open a version as a new plan
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDetail'
+          description: ''
   /planning/shared/:
     get:
       operationId: planning_shared_list
@@ -3292,6 +3503,12 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/SinglePlanDetail'
+    PatchedPlanningPlanVersionRename:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 80
     PatchedUserPreference:
       type: object
       description: Mixin to convert complex Python objects into JSON-primitive types.
@@ -4243,6 +4460,15 @@ components:
           type: string
           format: uuid
           writeOnly: true
+        version_name:
+          type: string
+          writeOnly: true
+          maxLength: 80
+        restored_from:
+          type: string
+          format: uuid
+          writeOnly: true
+          nullable: true
         modified_at:
           type: string
           format: date-time
@@ -4261,6 +4487,159 @@ components:
       - plan_permits_used
       - planet_natural_id
       - uuid
+    PlanningPlanDraft:
+      type: object
+      properties:
+        plan_name:
+          type: string
+          maxLength: 200
+        planet_natural_id:
+          type: string
+          maxLength: 7
+          minLength: 7
+        plan_permits_used:
+          type: integer
+          maximum: 3
+          minimum: 0
+        plan_cogc:
+          enum:
+          - '---'
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - FUEL_REFINING
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - PIONEERS
+          - SETTLERS
+          - TECHNICIANS
+          - ENGINEERS
+          - SCIENTISTS
+          - null
+          type: string
+          description: |-
+            * `---` - None
+            * `AGRICULTURE` - Agriculture
+            * `CHEMISTRY` - Chemistry
+            * `CONSTRUCTION` - Construction
+            * `ELECTRONICS` - Electronics
+            * `FOOD_INDUSTRIES` - Food Industries
+            * `FUEL_REFINING` - Fuel Refining
+            * `MANUFACTURING` - Manufacturing
+            * `METALLURGY` - Metallurgy
+            * `RESOURCE_EXTRACTION` - Resource Extraction
+            * `PIONEERS` - Pioneers
+            * `SETTLERS` - Settlers
+            * `TECHNICIANS` - Technicians
+            * `ENGINEERS` - Engineers
+            * `SCIENTISTS` - Scientists
+          x-spec-enum-id: f82f62b19a38f13a
+          nullable: true
+        plan_corphq:
+          type: boolean
+        plan_data: {}
+        base_modified_at:
+          type: string
+          format: date-time
+          writeOnly: true
+      required:
+      - base_modified_at
+      - plan_data
+      - plan_name
+      - plan_permits_used
+      - planet_natural_id
+    PlanningPlanDraftDetail:
+      type: object
+      properties:
+        plan_name:
+          type: string
+          readOnly: true
+        planet_natural_id:
+          type: string
+          readOnly: true
+        plan_permits_used:
+          type: integer
+          readOnly: true
+        plan_cogc:
+          enum:
+          - '---'
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - FUEL_REFINING
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - PIONEERS
+          - SETTLERS
+          - TECHNICIANS
+          - ENGINEERS
+          - SCIENTISTS
+          type: string
+          description: |-
+            * `---` - None
+            * `AGRICULTURE` - Agriculture
+            * `CHEMISTRY` - Chemistry
+            * `CONSTRUCTION` - Construction
+            * `ELECTRONICS` - Electronics
+            * `FOOD_INDUSTRIES` - Food Industries
+            * `FUEL_REFINING` - Fuel Refining
+            * `MANUFACTURING` - Manufacturing
+            * `METALLURGY` - Metallurgy
+            * `RESOURCE_EXTRACTION` - Resource Extraction
+            * `PIONEERS` - Pioneers
+            * `SETTLERS` - Settlers
+            * `TECHNICIANS` - Technicians
+            * `ENGINEERS` - Engineers
+            * `SCIENTISTS` - Scientists
+          x-spec-enum-id: f82f62b19a38f13a
+          readOnly: true
+        plan_corphq:
+          type: boolean
+          readOnly: true
+        plan_data:
+          readOnly: true
+        base_modified_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - base_modified_at
+      - plan_cogc
+      - plan_corphq
+      - plan_data
+      - plan_name
+      - plan_permits_used
+      - planet_natural_id
+      - updated_at
+    PlanningPlanDraftResponse:
+      type: object
+      properties:
+        draft:
+          allOf:
+          - $ref: '#/components/schemas/PlanningPlanDraftDetail'
+          nullable: true
+      required:
+      - draft
+    PlanningPlanDraftSaved:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - updated_at
     PlanningPlanMinimal:
       type: object
       properties:
@@ -4278,6 +4657,156 @@ components:
       required:
       - plan_name
       - planet_natural_id
+      - uuid
+    PlanningPlanVersion:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          enum:
+          - save
+          - restore
+          - baseline
+          - admin
+          type: string
+          description: |-
+            * `save` - Save
+            * `restore` - Restore
+            * `baseline` - Baseline
+            * `admin` - Admin
+          x-spec-enum-id: e57cf193fdf73a53
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        source_version:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        is_active:
+          type: boolean
+          readOnly: true
+        data_bytes:
+          type: integer
+          readOnly: true
+      required:
+      - created_at
+      - data_bytes
+      - is_active
+      - kind
+      - name
+      - source_version
+      - uuid
+    PlanningPlanVersionDetail:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          enum:
+          - save
+          - restore
+          - baseline
+          - admin
+          type: string
+          description: |-
+            * `save` - Save
+            * `restore` - Restore
+            * `baseline` - Baseline
+            * `admin` - Admin
+          x-spec-enum-id: e57cf193fdf73a53
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        source_version:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        is_active:
+          type: boolean
+          readOnly: true
+        data_bytes:
+          type: integer
+          readOnly: true
+        plan_name:
+          type: string
+          readOnly: true
+        planet_natural_id:
+          type: string
+          readOnly: true
+        plan_permits_used:
+          type: integer
+          readOnly: true
+        plan_cogc:
+          enum:
+          - '---'
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - FUEL_REFINING
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - PIONEERS
+          - SETTLERS
+          - TECHNICIANS
+          - ENGINEERS
+          - SCIENTISTS
+          type: string
+          description: |-
+            * `---` - None
+            * `AGRICULTURE` - Agriculture
+            * `CHEMISTRY` - Chemistry
+            * `CONSTRUCTION` - Construction
+            * `ELECTRONICS` - Electronics
+            * `FOOD_INDUSTRIES` - Food Industries
+            * `FUEL_REFINING` - Fuel Refining
+            * `MANUFACTURING` - Manufacturing
+            * `METALLURGY` - Metallurgy
+            * `RESOURCE_EXTRACTION` - Resource Extraction
+            * `PIONEERS` - Pioneers
+            * `SETTLERS` - Settlers
+            * `TECHNICIANS` - Technicians
+            * `ENGINEERS` - Engineers
+            * `SCIENTISTS` - Scientists
+          x-spec-enum-id: f82f62b19a38f13a
+          readOnly: true
+        plan_corphq:
+          type: boolean
+          readOnly: true
+        plan_data:
+          readOnly: true
+      required:
+      - created_at
+      - data_bytes
+      - is_active
+      - kind
+      - name
+      - plan_cogc
+      - plan_corphq
+      - plan_data
+      - plan_name
+      - plan_permits_used
+      - planet_natural_id
+      - source_version
       - uuid
     PlanningSaveConflict:
       type: object
