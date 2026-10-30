@@ -255,6 +255,37 @@ class TestPlanVersions:
         assert plan.plan_name == 'Edited'
         assert PlanningPlanVersion.drafts.filter(plan=plan).exists()
 
+    @pytest.mark.parametrize('gone', [['draft'], ['version'], ['draft', 'version']])
+    def test_save_after_a_listed_row_is_gone(self, admin_client: Client, plan: PlanningPlan, gone: list[str]) -> None:
+        rows = {'version': plan_version_service.record_created(plan), 'draft': self._draft(plan)}
+        data = self._form_data(plan, [rows['draft'], rows['version']])
+        PlanningPlanVersion.all_objects.filter(pk__in=[rows[row].pk for row in gone]).delete()
+
+        response = admin_client.post(url(PlanningPlan, 'change', plan.pk), data)
+
+        assert response.status_code == 302
+        plan.refresh_from_db()
+        assert plan.plan_name == 'Edited'
+        newest = PlanningPlanVersion.objects.filter(plan=plan).order_by('-created_at').first()
+        assert newest is not None
+        assert newest.kind == 'admin'
+
+    def test_versions_follow_a_plan_to_its_new_owner(self, admin_client: Client, plan: PlanningPlan) -> None:
+        version = plan_version_service.record_created(plan)
+        draft = self._draft(plan)
+        new_owner = baker.make(User)
+        data = self._form_data(plan, [draft, version])
+        data['user'] = new_owner.pk
+
+        assert admin_client.post(url(PlanningPlan, 'change', plan.pk), data).status_code == 302
+
+        old_owner = plan.user
+        plan.refresh_from_db()
+        assert plan.user == new_owner
+        old_owner.delete()
+        assert PlanningPlanVersion.all_objects.filter(plan=plan).count() == 3
+        assert version.pk in PlanningPlanVersion.objects.filter(plan=plan).values_list('pk', flat=True)
+
     def test_add_records_a_save_version(self, admin_client: Client, plan: PlanningPlan) -> None:
         response = admin_client.post(url(PlanningPlan, 'add'), self._form_data(plan, []))
 

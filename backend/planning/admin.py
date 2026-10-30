@@ -156,6 +156,8 @@ class PlanningPlanAdmin(SummaryStripMixin, ChangeHeaderMixin[PlanningPlan], Mode
         before = PlanningPlan.objects.select_for_update().get(pk=obj.pk)
         super().save_model(request, obj, form, change)
         plan_version_service.record_save(obj, before=before, kind=PlanVersionKind.ADMIN, keep_draft=True)
+        if 'user' in form.changed_data:
+            plan_version_service.move_versions(obj)
 
     def get_summary(self, request: HttpRequest) -> Summary:
         total = PlanningPlan.objects.count()
