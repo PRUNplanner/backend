@@ -74,8 +74,10 @@ class Planner(HttpUser):
 
     plan_ids: list[str]
     empire_ids: list[str]
+    draft_seen: dict[str, str]
 
     def on_start(self) -> None:
+        self.draft_seen = {}
         self.plan_ids = []
         self.empire_ids = []
         self.login()
@@ -142,8 +144,16 @@ class Planner(HttpUser):
         if not response.ok:
             return
         plan = response.json()
-        body = {field: plan[field] for field in EDITABLE_PLAN_FIELDS} | {'base_modified_at': plan['modified_at']}
-        self.client.put(f'/planning/plan/{plan_id}/draft/', json=body, name='/planning/plan/[id]/draft/ PUT')
+        body = {field: plan[field] for field in EDITABLE_PLAN_FIELDS} | {
+            'base_modified_at': plan['modified_at'],
+            'draft_updated_at': self.draft_seen.get(plan_id),
+        }
+        with self.client.put(
+            f'/planning/plan/{plan_id}/draft/', json=body, name='/planning/plan/[id]/draft/ PUT', catch_response=True
+        ) as saved:
+            if saved.status_code in (200, 409):  # 409: another simulated tab of this user saved one first
+                self.draft_seen[plan_id] = saved.json()['updated_at']
+                saved.success()
 
     @task(1)
     def create_and_delete_plan(self) -> None:

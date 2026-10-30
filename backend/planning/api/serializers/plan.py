@@ -50,6 +50,7 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
     # Input-only fields for the version this save creates
     version_name = serializers.CharField(write_only=True, required=False, allow_blank=True, max_length=80)
     restored_from = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    draft_updated_at = serializers.DateTimeField(write_only=True, required=False, allow_null=True)
 
     plan_data = PydanticJSONField(pydantic_model=LATEST_SCHEMA['PLANNING_DATA'])
 
@@ -71,6 +72,7 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
             'empire_uuid',
             'version_name',
             'restored_from',
+            'draft_updated_at',
             'modified_at',
             'base_modified_at',
         ]
@@ -120,6 +122,7 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
         empire_uuid = validated_data.pop('empire_uuid', None)
         validated_data.pop('version_name', None)
         validated_data.pop('restored_from', None)
+        validated_data.pop('draft_updated_at', None)
 
         # create plan
         plan = PlanningPlan.objects.create(user=user, **validated_data)
@@ -137,6 +140,7 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
         _empire_uuid = validated_data.pop('empire_uuid', None)
         version_name = validated_data.pop('version_name', '')
         restored_from = validated_data.pop('restored_from', None)
+        seen_draft = validated_data.pop('draft_updated_at', None)
 
         # also without base_modified_at: saves must reach the versions in the order they reach the row
         before = get_object_or_404(PlanningPlan.objects.select_for_update(), pk=instance.pk)
@@ -146,9 +150,14 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
         if restored_from and source is None:
             raise serializers.ValidationError({'restored_from': 'Not a version of this plan.'})
 
+        # a client that didn't see the stored draft can't be saving it, also one that doesn't send the field: it stays
+        keep_draft = plan_version_service.newer_draft(instance, seen_draft) is not None
+
         # update plan fields
         instance = super().update(instance, validated_data)
-        plan_version_service.record_save(instance, before=before, name=version_name, restored_from=source)
+        plan_version_service.record_save(
+            instance, before=before, name=version_name, restored_from=source, keep_draft=keep_draft
+        )
 
         # no junction update on update, only on create
 

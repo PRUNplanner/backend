@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from django.db import transaction
@@ -5,7 +6,9 @@ from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import PlanningPlanDetailSerializer
+from planning.api.serializers.conflict import DraftConflict, PlanningDraftConflictSerializer
 from planning.api.serializers.version import (
+    PlanningPlanDraftDeleteSerializer,
     PlanningPlanDraftResponseSerializer,
     PlanningPlanDraftSavedSerializer,
     PlanningPlanDraftSerializer,
@@ -27,6 +30,12 @@ def _owned_plan(request: Request, plan_pk: UUID, *, lock: bool = False) -> Plann
     if lock:
         plans = plans.select_for_update()
     return get_object_or_404(plans, pk=plan_pk, user=request.user)
+
+
+def _refuse_unseen_draft(plan: PlanningPlan, seen: datetime | None) -> None:
+    newer = plan_version_service.newer_draft(plan, seen)
+    if newer is not None:
+        raise DraftConflict(newer)
 
 
 def _saved_versions(plan: PlanningPlan) -> QuerySet[PlanningPlanVersion]:
@@ -98,7 +107,7 @@ class PlanDraftViewSet(viewsets.GenericViewSet):
     @extend_schema(
         summary="Create or replace the plan's autosave draft",
         request=PlanningPlanDraftSerializer,
-        responses={200: PlanningPlanDraftSavedSerializer},
+        responses={200: PlanningPlanDraftSavedSerializer, 409: PlanningDraftConflictSerializer},
     )
     @transaction.atomic
     def update(self, request: Request, plan_pk: UUID) -> Response:
@@ -108,10 +117,21 @@ class PlanDraftViewSet(viewsets.GenericViewSet):
 
         fields = dict(serializer.validated_data)
         base_modified_at = fields.pop('base_modified_at')
+        _refuse_unseen_draft(plan, fields.pop('draft_updated_at'))
         draft = plan_version_service.save_draft(plan, fields, base_modified_at)
         return Response(PlanningPlanDraftSavedSerializer(draft).data)
 
-    @extend_schema(summary="Delete the plan's autosave draft", responses={204: None})
+    @extend_schema(
+        summary="Delete the plan's autosave draft",
+        parameters=[PlanningPlanDraftDeleteSerializer],
+        responses={204: None, 409: PlanningDraftConflictSerializer},
+    )
+    @transaction.atomic
     def destroy(self, request: Request, plan_pk: UUID) -> Response:
-        plan_version_service.delete_draft(_owned_plan(request, plan_pk))
+        plan = _owned_plan(request, plan_pk, lock=True)
+        query = PlanningPlanDraftDeleteSerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+
+        _refuse_unseen_draft(plan, query.validated_data['draft_updated_at'])
+        plan_version_service.delete_draft(plan)
         return Response(status=status.HTTP_204_NO_CONTENT)

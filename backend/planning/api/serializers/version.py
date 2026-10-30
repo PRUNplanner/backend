@@ -46,6 +46,8 @@ class PlanningPlanVersionRenameSerializer(serializers.Serializer):
 class PlanningPlanDraftSerializer(PlanningPlanDetailSerializer):
     # the fields of a plan save, validated as one
     base_modified_at = serializers.DateTimeField(write_only=True)
+    # updated_at of the draft this tab last saw, null if none: required, so no client can overwrite one unseen
+    draft_updated_at = serializers.DateTimeField(write_only=True, allow_null=True)
 
     class Meta(PlanningPlanDetailSerializer.Meta):
         fields = [
@@ -56,7 +58,12 @@ class PlanningPlanDraftSerializer(PlanningPlanDetailSerializer):
             'plan_corphq',
             'plan_data',
             'base_modified_at',
+            'draft_updated_at',
         ]
+
+
+class PlanningPlanDraftDeleteSerializer(serializers.Serializer):
+    draft_updated_at = serializers.DateTimeField()
 
 
 class PlanningPlanDraftSavedSerializer(serializers.ModelSerializer):

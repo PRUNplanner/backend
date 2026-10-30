@@ -1437,10 +1437,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlanningPlanDraftSaved'
           description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningDraftConflict'
+          description: ''
     delete:
       operationId: planning_plan_draft_destroy
       summary: Delete the plan's autosave draft
       parameters:
+      - in: query
+        name: draft_updated_at
+        schema:
+          type: string
+          format: date-time
+        required: true
       - in: path
         name: plan_pk
         schema:
@@ -1457,6 +1469,12 @@ paths:
       responses:
         '204':
           description: No response body
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningDraftConflict'
+          description: ''
   /planning/plan/{plan_pk}/versions/:
     get:
       operationId: planning_plan_versions_list
@@ -4018,6 +4036,20 @@ components:
       required:
       - cx_name
       - uuid
+    PlanningDraftConflict:
+      type: object
+      properties:
+        detail:
+          type: string
+        code:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+      required:
+      - code
+      - detail
+      - updated_at
     PlanningEmpireDetail:
       type: object
       properties:
@@ -4469,6 +4501,11 @@ components:
           format: uuid
           writeOnly: true
           nullable: true
+        draft_updated_at:
+          type: string
+          format: date-time
+          writeOnly: true
+          nullable: true
         modified_at:
           type: string
           format: date-time
@@ -4545,8 +4582,14 @@ components:
           type: string
           format: date-time
           writeOnly: true
+        draft_updated_at:
+          type: string
+          format: date-time
+          writeOnly: true
+          nullable: true
       required:
       - base_modified_at
+      - draft_updated_at
       - plan_data
       - plan_name
       - plan_permits_used

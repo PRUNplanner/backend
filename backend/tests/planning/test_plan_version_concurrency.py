@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from urllib.parse import urlencode
 
 import pytest
 from django.db import connection
@@ -82,12 +83,19 @@ def put(plan: PlanningPlan, **overrides: object) -> Callable[[], Response]:
 
 
 def put_draft(plan: PlanningPlan, **overrides: object) -> Callable[[], Response]:
-    body = payload(base_modified_at=plan.modified_at.isoformat(), **overrides)
+    body = payload(**{'base_modified_at': plan.modified_at.isoformat(), 'draft_updated_at': None, **overrides})
     return lambda: client_for(plan.user).put(draft_url(plan), body, format='json')
 
 
-def delete_draft(plan: PlanningPlan) -> Callable[[], Response]:
-    return lambda: client_for(plan.user).delete(draft_url(plan))
+def stored_draft(plan: PlanningPlan) -> str:
+    """Saves a draft and returns what a tab holds after it."""
+    put_draft(plan)()
+    return PlanningPlanVersion.drafts.get(plan=plan).updated_at.isoformat()
+
+
+def delete_draft(plan: PlanningPlan, seen: str) -> Callable[[], Response]:
+    url = f'{draft_url(plan)}?{urlencode({"draft_updated_at": seen})}'
+    return lambda: client_for(plan.user).delete(url)
 
 
 def saved(plan: PlanningPlan) -> list[PlanningPlanVersion]:
@@ -137,29 +145,70 @@ def test_saves_from_one_base_let_one_through(plan: PlanningPlan, _round: int) ->
 
 
 @pytest.mark.parametrize('_round', ROUNDS)
-def test_drafts_end_in_one_draft_and_leave_the_plan_alone(plan: PlanningPlan, _round: int) -> None:
+def test_tabs_racing_for_the_first_draft_let_one_through(plan: PlanningPlan, _round: int) -> None:
     calls = [put_draft(plan, plan_name=f'Draft {index}') for index in range(WORKERS)]
 
-    assert together(*calls) == [200] * WORKERS
+    codes = together(*calls)
 
-    assert PlanningPlanVersion.drafts.filter(plan=plan).count() == 1
+    assert sorted(codes) == [200] + [409] * (WORKERS - 1)
+    assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == f'Draft {codes.index(200)}'
     row = PlanningPlan.objects.get(pk=plan.pk)
     assert (row.plan_name, row.modified_at) == ('Base', plan.modified_at)
 
 
 @pytest.mark.parametrize('_round', ROUNDS)
+def test_tabs_replacing_one_draft_let_one_through(plan: PlanningPlan, _round: int) -> None:
+    seen = stored_draft(plan)
+    calls = [put_draft(plan, plan_name=f'Draft {index}', draft_updated_at=seen) for index in range(WORKERS)]
+
+    codes = together(*calls)
+
+    assert sorted(codes) == [200] + [409] * (WORKERS - 1)
+    assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == f'Draft {codes.index(200)}'
+
+
+@pytest.mark.parametrize('_round', ROUNDS)
+def test_a_save_never_takes_the_autosave_that_races_it(plan: PlanningPlan, _round: int) -> None:
+    seen = stored_draft(plan)
+
+    codes = together(
+        put(plan, plan_name='Saved', draft_updated_at=seen),
+        put_draft(plan, plan_name='Later', draft_updated_at=seen),
+    )
+
+    assert codes == [200, 200]
+    assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == 'Later'
+    assert_row_is_newest_version(plan)
+
+
+@pytest.mark.parametrize('_round', range(10))
+def test_a_discard_never_takes_the_autosave_that_races_it(plan: PlanningPlan, _round: int) -> None:
+    seen = stored_draft(plan)
+
+    codes = together(put_draft(plan, plan_name='Later', draft_updated_at=seen), delete_draft(plan, seen))
+
+    assert codes[0] == 200
+    assert codes[1] in (204, 409)
+    assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == 'Later'
+
+
+@pytest.mark.parametrize('_round', ROUNDS)
 def test_saves_drafts_and_draft_deletes_mixed(plan: PlanningPlan, _round: int) -> None:
+    stale = '2020-01-01T00:00:00Z'
+
     codes = together(
         put(plan, plan_name='Save 0'),
         put_draft(plan, plan_name='Draft 0'),
-        delete_draft(plan),
+        delete_draft(plan, stale),
         put(plan, plan_name='Save 1'),
         put_draft(plan, plan_name='Draft 1'),
-        delete_draft(plan),
+        delete_draft(plan, stale),
         put(plan, plan_name='Save 2'),
     )
 
-    assert sorted(codes) == [200] * 5 + [204] * 2
+    assert [codes[0], codes[3], codes[6]] == [200] * 3
+    assert all(code in (200, 409) for code in (codes[1], codes[4]))
+    assert all(code in (204, 409) for code in (codes[2], codes[5]))
     assert PlanningPlanVersion.drafts.filter(plan=plan).count() <= 1
     assert len(saved(plan)) == 4
     assert_row_is_newest_version(plan)

@@ -13,6 +13,7 @@ from django.test import Client, RequestFactory, override_settings
 from django.urls import reverse
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 from model_bakery import baker
+from planning.models import PlanningPlanVersion, PlanVersionKind
 from unfold.utils import convert_color
 from user.models import User, UserAPIKey
 
@@ -49,6 +50,8 @@ def bake(model: type[Model], superuser: User) -> Model:
         return superuser
     if model is UserAPIKey:
         return baker.make(UserAPIKey, name='key', user=superuser)
+    if model is PlanningPlanVersion:
+        return baker.make(model, kind=PlanVersionKind.SAVE)  # a random draft fails its check constraints
     return baker.make(model)
 
 

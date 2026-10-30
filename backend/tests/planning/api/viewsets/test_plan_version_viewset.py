@@ -1,6 +1,8 @@
 import random
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import pytest
@@ -162,9 +164,9 @@ class TestPlanSave:
         assert PlanningPlanVersion.drafts.filter(plan=plan).exists()
 
     def test_save_deletes_the_draft(self, client: APIClient, plan: PlanningPlan) -> None:
-        plan_version_service.save_draft(plan, snapshot(plan), plan.modified_at)
+        draft = plan_version_service.save_draft(plan, snapshot(plan), plan.modified_at)
 
-        save(client, plan)
+        save(client, plan, draft_updated_at=draft.updated_at.isoformat())
 
         assert not PlanningPlanVersion.drafts.filter(plan=plan).exists()
 
@@ -336,7 +338,7 @@ class TestVersions:
 
 class TestDraft:
     def body(self, plan: PlanningPlan, **overrides: object) -> dict[str, object]:
-        return payload(base_modified_at=plan.modified_at.isoformat(), **overrides)
+        return payload(**{'base_modified_at': plan.modified_at.isoformat(), 'draft_updated_at': None, **overrides})
 
     def test_no_draft(self, client: APIClient, plan: PlanningPlan) -> None:
         response = client.get(draft_url(plan))
@@ -358,10 +360,14 @@ class TestDraft:
     def test_two_puts_keep_one_row_and_leave_the_plan_alone(self, client: APIClient, plan: PlanningPlan) -> None:
         modified_at = plan.modified_at
 
+        seen = None
         with patch.object(CacheManager, 'invalidate_on_commit') as invalidate:
             for name in ('First', 'Second'):
-                response = client.put(draft_url(plan), self.body(plan, plan_name=name), format='json')
+                body = self.body(plan, plan_name=name, draft_updated_at=seen)
+                response = client.put(draft_url(plan), body, format='json')
                 assert response.status_code == 200
+                assert response.data['updated_at'] != seen
+                seen = response.data['updated_at']
 
         invalidate.assert_not_called()
         assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == 'Second'
@@ -380,6 +386,32 @@ class TestDraft:
         assert response.status_code == 400
         assert 'base_modified_at' in response.data
 
+    def test_put_needs_what_the_tab_last_saw(self, client: APIClient, plan: PlanningPlan) -> None:
+        body = payload(base_modified_at=plan.modified_at.isoformat())
+
+        response = client.put(draft_url(plan), body, format='json')
+
+        assert response.status_code == 400
+        assert 'draft_updated_at' in response.data
+
+    def test_stale_tab_cannot_replace_the_draft(self, client: APIClient, plan: PlanningPlan) -> None:
+        laptop = client.put(draft_url(plan), self.body(plan, plan_name='Laptop'), format='json').data['updated_at']
+
+        for seen in (None, '2020-01-01T00:00:00Z'):
+            response = client.put(
+                draft_url(plan), self.body(plan, plan_name='Phone', draft_updated_at=seen), format='json'
+            )
+
+            assert response.status_code == 409
+            assert response.data['code'] == 'draft_conflict'
+            assert response.data['updated_at'] == laptop
+        assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == 'Laptop'
+
+    def test_a_draft_needs_no_seen_value_when_none_is_stored(self, client: APIClient, plan: PlanningPlan) -> None:
+        body = self.body(plan, draft_updated_at='2020-01-01T00:00:00Z')
+
+        assert client.put(draft_url(plan), body, format='json').status_code == 200
+
     def test_put_validates_plan_data(self, client: APIClient, plan: PlanningPlan) -> None:
         response = client.put(draft_url(plan), self.body(plan, plan_data={'planet': 'nope'}), format='json')
 
@@ -388,11 +420,87 @@ class TestDraft:
         assert not PlanningPlanVersion.drafts.filter(plan=plan).exists()
 
     def test_delete(self, client: APIClient, plan: PlanningPlan) -> None:
+        seen = {'draft_updated_at': client.put(draft_url(plan), self.body(plan), format='json').data['updated_at']}
+
+        assert client.delete(f'{draft_url(plan)}?{urlencode(seen)}').status_code == 204
+        assert client.get(draft_url(plan)).data == {'draft': None}
+        assert client.delete(f'{draft_url(plan)}?{urlencode(seen)}').status_code == 204
+
+    def test_delete_needs_what_the_tab_last_saw(self, client: APIClient, plan: PlanningPlan) -> None:
         client.put(draft_url(plan), self.body(plan), format='json')
 
-        assert client.delete(draft_url(plan)).status_code == 204
-        assert client.get(draft_url(plan)).data == {'draft': None}
-        assert client.delete(draft_url(plan)).status_code == 204
+        response = client.delete(draft_url(plan))
+
+        assert response.status_code == 400
+        assert 'draft_updated_at' in response.data
+        assert PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+    def test_stale_tab_cannot_delete_the_draft(self, client: APIClient, plan: PlanningPlan) -> None:
+        laptop = client.put(draft_url(plan), self.body(plan), format='json').data['updated_at']
+        stale = urlencode({'draft_updated_at': '2020-01-01T00:00:00Z'})
+
+        response = client.delete(f'{draft_url(plan)}?{stale}')
+
+        assert response.status_code == 409
+        assert response.data['updated_at'] == laptop
+        assert PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+    def test_save_keeps_a_draft_the_tab_never_saw(self, client: APIClient, plan: PlanningPlan) -> None:
+        client.put(draft_url(plan), self.body(plan, plan_name='Laptop'), format='json')
+
+        response = client.put(detail(plan), payload(plan_name='Phone', draft_updated_at=None), format='json')
+
+        assert response.status_code == 200
+        assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == 'Laptop'
+        assert saved(plan)[0].plan_name == 'Phone'
+
+    def test_save_keeps_a_draft_newer_than_the_one_the_tab_saw(self, client: APIClient, plan: PlanningPlan) -> None:
+        first = client.put(draft_url(plan), self.body(plan, plan_name='First'), format='json').data['updated_at']
+        body = self.body(plan, plan_name='Newer', draft_updated_at=first)
+        client.put(draft_url(plan), body, format='json')
+
+        assert client.put(detail(plan), payload(draft_updated_at=first), format='json').status_code == 200
+
+        assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == 'Newer'
+
+    def test_save_deletes_the_draft_the_tab_saw(self, client: APIClient, plan: PlanningPlan) -> None:
+        seen = client.put(draft_url(plan), self.body(plan), format='json').data['updated_at']
+
+        assert client.put(detail(plan), payload(draft_updated_at=seen), format='json').status_code == 200
+
+        assert not PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+    def test_save_without_the_field_keeps_the_draft(self, client: APIClient, plan: PlanningPlan) -> None:
+        client.put(draft_url(plan), self.body(plan), format='json')
+
+        assert client.put(detail(plan), payload(), format='json').status_code == 200
+
+        assert PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+    def test_seen_value_compares_as_an_instant(self, client: APIClient, plan: PlanningPlan) -> None:
+        seen = client.put(draft_url(plan), self.body(plan), format='json').data['updated_at']
+        offset = datetime.fromisoformat(seen).astimezone(timezone(timedelta(hours=2))).isoformat()
+
+        assert client.put(draft_url(plan), self.body(plan, draft_updated_at=offset), format='json').status_code == 200
+
+        seen = client.get(draft_url(plan)).data['draft']['updated_at']
+        offset = datetime.fromisoformat(seen).astimezone(timezone(timedelta(hours=2))).isoformat()
+        query = urlencode({'draft_updated_at': offset})
+        assert client.delete(f'{draft_url(plan)}?{query}').status_code == 204
+
+    def test_conflict_on_the_plan_leaves_the_draft(self, client: APIClient, plan: PlanningPlan) -> None:
+        seen = client.put(draft_url(plan), self.body(plan), format='json').data['updated_at']
+        stale = '2020-01-01T00:00:00Z'
+
+        body = payload(base_modified_at=stale, draft_updated_at=seen)
+
+        assert client.put(detail(plan), body, format='json').status_code == 409
+        assert PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+    def test_create_ignores_the_field(self, client: APIClient) -> None:
+        response = client.post(reverse('planning:plan'), payload(draft_updated_at=None), format='json')
+
+        assert response.status_code == 201
 
     def test_draft_is_not_in_the_versions_list(self, client: APIClient, plan: PlanningPlan) -> None:
         client.put(draft_url(plan), self.body(plan), format='json')
@@ -402,7 +510,7 @@ class TestDraft:
     def test_put_is_throttled_per_user(self, client: APIClient, plan: PlanningPlan, locmem_cache: LocMemCache) -> None:
         body = self.body(plan)
         for _ in range(60):
-            assert client.put(draft_url(plan), body, format='json').status_code == 200
+            assert client.put(draft_url(plan), body, format='json').status_code in (200, 409)
 
         assert client.put(draft_url(plan), body, format='json').status_code == 429
         assert client.get(draft_url(plan)).status_code == 200
