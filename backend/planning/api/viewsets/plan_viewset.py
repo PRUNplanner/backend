@@ -97,3 +97,8 @@ class PlanViewSet(
 
     def perform_update(self, serializer):
         serializer.save()
+
+    def perform_destroy(self, instance):
+        # holding the row first: a running save could otherwise add a version after the cascade collected them
+        with transaction.atomic():
+            get_object_or_404(PlanningPlan.objects.select_for_update(), pk=instance.pk).delete()

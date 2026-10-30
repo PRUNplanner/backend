@@ -311,3 +311,14 @@ class TestDraft:
 
         invalidate.assert_not_called()
         assert PlanningPlan.objects.get(pk=plan.pk).modified_at == modified_at
+
+
+def test_restoring_a_version_pruned_while_waiting_for_the_lock(plan: PlanningPlan) -> None:
+    version = plan_version_service.record_created(plan)
+    PlanningPlanVersion.objects.filter(pk=version.pk).delete()
+
+    plan_version_service.restore_version(version)
+
+    newest = PlanningPlanVersion.objects.filter(plan=plan).order_by('-created_at').first()
+    assert newest is not None
+    assert (newest.kind, newest.source_version_id) == (PlanVersionKind.RESTORE, None)  # ty: ignore[unresolved-attribute]

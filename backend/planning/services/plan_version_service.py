@@ -125,7 +125,9 @@ def restore_version(version: PlanningPlanVersion) -> PlanningPlan:
         setattr(plan, field, getattr(version, field))
     plan.save()
 
-    record_save(plan, before=before, restored_from=version, keep_draft=True)
+    # a save may have pruned it while this waited for the lock; its content is already in hand
+    source = PlanningPlanVersion.objects.filter(pk=version.pk).first()
+    record_save(plan, before=before, restored_from=source, kind=PlanVersionKind.RESTORE, keep_draft=True)
     logger.info('plan_version_restored_admin', plan_uuid=str(plan.pk), version_uuid=str(version.pk))
     return plan
 
@@ -148,3 +150,8 @@ def save_draft(plan: PlanningPlan, fields: dict[str, object], base_modified_at: 
 
 def delete_draft(plan: PlanningPlan) -> None:
     PlanningPlanVersion.drafts.filter(plan=plan).only('pk').delete()
+
+
+def move_versions(plan: PlanningPlan) -> None:
+    """After a plan changes owner: versions cascade from their user, so the old owner's deletion would take them."""
+    PlanningPlanVersion.all_objects.filter(plan=plan).update(user_id=plan.user_id)  # ty: ignore[unresolved-attribute]
