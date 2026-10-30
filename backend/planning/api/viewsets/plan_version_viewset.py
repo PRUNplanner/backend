@@ -4,8 +4,8 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
-from planning.api.serializers import (
-    PlanningPlanDetailSerializer,
+from planning.api.serializers import PlanningPlanDetailSerializer
+from planning.api.serializers.version import (
     PlanningPlanDraftResponseSerializer,
     PlanningPlanDraftSavedSerializer,
     PlanningPlanDraftSerializer,
