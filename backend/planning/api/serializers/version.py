@@ -66,6 +66,11 @@ class PlanningPlanDraftDeleteSerializer(serializers.Serializer):
     draft_updated_at = serializers.DateTimeField()
 
 
+class PlanningPlanVersionActivateSerializer(serializers.Serializer):
+    # required, as on the draft PUT: the draft this tab last saw (null: none), only that one is deleted
+    draft_updated_at = serializers.DateTimeField(allow_null=True)
+
+
 class PlanningPlanDraftSavedSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlanningPlanVersion

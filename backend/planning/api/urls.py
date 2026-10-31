@@ -20,13 +20,18 @@ urlpatterns = [
     path('plan/<uuid:plan_pk>/versions/', PlanVersionViewSet.as_view({'get': 'list'}), name='plan-versions'),
     path(
         'plan/<uuid:plan_pk>/versions/<uuid:pk>/',
-        PlanVersionViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update'}),
+        PlanVersionViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update', 'delete': 'destroy'}),
         name='plan-version-detail',
     ),
     path(
         'plan/<uuid:plan_pk>/versions/<uuid:pk>/clone/',
         PlanVersionViewSet.as_view({'post': 'clone'}),
         name='plan-version-clone',
+    ),
+    path(
+        'plan/<uuid:plan_pk>/versions/<uuid:pk>/activate/',
+        PlanVersionViewSet.as_view({'post': 'activate'}),
+        name='plan-version-activate',
     ),
     path(
         'plan/<uuid:plan_pk>/draft/',

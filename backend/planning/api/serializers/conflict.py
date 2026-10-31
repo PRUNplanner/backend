@@ -47,6 +47,20 @@ class PlanningDraftConflictSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField()
 
 
+class VersionActive(APIException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_detail = 'This version is the plan as saved.'
+    default_code = 'version_active'
+
+    def __init__(self) -> None:
+        super().__init__({'detail': self.default_detail, 'code': self.default_code})
+
+
+class PlanningVersionActiveSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+    code = serializers.CharField()
+
+
 class SaveConflictMixin(serializers.Serializer):
     # rejects an update with 409 when base_modified_at (the version the client edited) is no longer the stored one
 

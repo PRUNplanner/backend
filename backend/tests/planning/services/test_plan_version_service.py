@@ -289,6 +289,52 @@ class TestRestore:
         assert PlanningPlanVersion.drafts.get(plan=plan).pk == draft.pk
 
 
+class TestActivate:
+    def test_logs(self, plan: PlanningPlan) -> None:
+        source = save(plan, name='Early')
+        save(plan)
+
+        with capture_logs() as logs:
+            plan_version_service.activate_version(source, None)
+
+        assert versions(plan)[0].source_version == source
+        assert {
+            'event': 'plan_version_activated',
+            'plan_uuid': str(plan.pk),
+            'version_uuid': str(source.pk),
+            'named': True,
+            'log_level': 'info',
+        } in logs
+
+    def test_deletes_only_the_draft_it_was_told_about(self, plan: PlanningPlan) -> None:
+        source = save(plan)
+        draft = plan_version_service.save_draft(plan, snapshot(plan), NOW)
+
+        plan_version_service.activate_version(source, None)
+        assert PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+        plan_version_service.activate_version(source, draft.updated_at)
+        assert not PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+
+class TestDelete:
+    def test_logs(self, plan: PlanningPlan) -> None:
+        old = save(plan)
+        save(plan)
+
+        with capture_logs() as logs:
+            plan_version_service.delete_version(old)
+
+        assert old not in versions(plan)
+        assert {
+            'event': 'plan_version_deleted',
+            'plan_uuid': str(plan.pk),
+            'kind': 'save',
+            'named': False,
+            'log_level': 'info',
+        } in logs
+
+
 class TestDraft:
     def test_second_write_replaces_the_first(self, plan: PlanningPlan) -> None:
         first = plan_version_service.save_draft(plan, snapshot(plan), NOW)
