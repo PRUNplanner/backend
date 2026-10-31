@@ -6,12 +6,18 @@ from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import PlanningPlanDetailSerializer
-from planning.api.serializers.conflict import DraftConflict, PlanningDraftConflictSerializer
+from planning.api.serializers.conflict import (
+    DraftConflict,
+    PlanningDraftConflictSerializer,
+    PlanningVersionActiveSerializer,
+    VersionActive,
+)
 from planning.api.serializers.version import (
     PlanningPlanDraftDeleteSerializer,
     PlanningPlanDraftResponseSerializer,
     PlanningPlanDraftSavedSerializer,
     PlanningPlanDraftSerializer,
+    PlanningPlanVersionActivateSerializer,
     PlanningPlanVersionDetailSerializer,
     PlanningPlanVersionRenameSerializer,
     PlanningPlanVersionSerializer,
@@ -44,6 +50,17 @@ def _saved_versions(plan: PlanningPlan) -> QuerySet[PlanningPlanVersion]:
 
 def _active_uuid(plan: PlanningPlan) -> UUID | None:
     return _saved_versions(plan).values_list('pk', flat=True).first()
+
+
+def _inactive_version(request: Request, plan_pk: UUID, pk: UUID, *, data: bool = True) -> PlanningPlanVersion:
+    # call inside a transaction: the lock keeps a concurrent save from pruning it or making another one active;
+    # data=False leaves out plan_data
+    plan = _owned_plan(request, plan_pk, lock=True)
+    versions = _saved_versions(plan)
+    version = get_object_or_404(versions if data else versions.defer('plan_data'), pk=pk)
+    if version.pk == _active_uuid(plan):
+        raise VersionActive()
+    return version
 
 
 @extend_schema(tags=['planning : plans'])
@@ -88,6 +105,29 @@ class PlanVersionViewSet(viewsets.GenericViewSet):
         version = get_object_or_404(_saved_versions(_owned_plan(request, plan_pk)), pk=pk)
         plan = plan_version_service.clone_version(version, request.user)
         return Response(PlanningPlanDetailSerializer(plan).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary='Make a version the plan as saved, through a new restore version',
+        request=PlanningPlanVersionActivateSerializer,
+        responses={200: PlanningPlanDetailSerializer, 400: PlanningVersionActiveSerializer},
+    )
+    @transaction.atomic
+    def activate(self, request: Request, plan_pk: UUID, pk: UUID) -> Response:
+        version = _inactive_version(request, plan_pk, pk)
+        serializer = PlanningPlanVersionActivateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        plan = plan_version_service.activate_version(version, serializer.validated_data['draft_updated_at'])
+        return Response(PlanningPlanDetailSerializer(plan).data)
+
+    @extend_schema(
+        summary='Delete a version, not the active one',
+        responses={204: None, 400: PlanningVersionActiveSerializer},
+    )
+    @transaction.atomic
+    def destroy(self, request: Request, plan_pk: UUID, pk: UUID) -> Response:
+        plan_version_service.delete_version(_inactive_version(request, plan_pk, pk, data=False))
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(tags=['planning : plans'])

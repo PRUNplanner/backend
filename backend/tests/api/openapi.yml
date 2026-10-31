@@ -1574,6 +1574,87 @@ paths:
               schema:
                 $ref: '#/components/schemas/PlanningPlanVersion'
           description: ''
+    delete:
+      operationId: planning_plan_versions_destroy
+      summary: Delete a version, not the active one
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '204':
+          description: No response body
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningVersionActive'
+          description: ''
+  /planning/plan/{plan_pk}/versions/{id}/activate/:
+    post:
+      operationId: planning_plan_versions_activate_create
+      summary: Make a version the plan as saved, through a new restore version
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: plan_pk
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - 'planning : plans'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanVersionActivate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanVersionActivate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PlanningPlanVersionActivate'
+        required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
+      - basicAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningPlanDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanningVersionActive'
+          description: ''
   /planning/plan/{plan_pk}/versions/{id}/clone/:
     post:
       operationId: planning_plan_versions_clone_create
@@ -4748,6 +4829,15 @@ components:
       - name
       - source_version
       - uuid
+    PlanningPlanVersionActivate:
+      type: object
+      properties:
+        draft_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - draft_updated_at
     PlanningPlanVersionDetail:
       type: object
       properties:
@@ -4983,6 +5073,16 @@ components:
       - plan_permits_used
       - planet_natural_id
       - uuid
+    PlanningVersionActive:
+      type: object
+      properties:
+        detail:
+          type: string
+        code:
+          type: string
+      required:
+      - code
+      - detail
     SinglePlanDetail:
       type: object
       properties:

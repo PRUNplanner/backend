@@ -216,9 +216,20 @@ def test_plan_row_always_equals_the_newest_version(client: APIClient, plan: Plan
     def do_admin_restore() -> None:
         plan_version_service.restore_version(any_version())
 
+    def do_activate() -> None:
+        inactive = saved(plan)[1:]
+        if inactive:
+            response = client.post(activate_url(rng.choice(inactive)), {'draft_updated_at': None}, format='json')
+            assert response.status_code == 200
+
+    def do_delete() -> None:
+        inactive = saved(plan)[1:]
+        if inactive:
+            assert client.delete(version_url(rng.choice(inactive))).status_code == 204
+
     do_save()
     for _ in range(40):
-        rng.choice([do_save, do_named_save, do_restore, do_rename, do_admin_restore])()
+        rng.choice([do_save, do_named_save, do_restore, do_rename, do_admin_restore, do_activate, do_delete])()
 
         plan.refresh_from_db()
         assert snapshot(saved(plan)[0]) == snapshot(plan)
@@ -334,6 +345,140 @@ class TestVersions:
             client.patch(version_url(version), {'name': 'Early'}, format='json')
 
         invalidate.assert_not_called()
+
+
+def activate_url(version: PlanningPlanVersion) -> str:
+    return version_url(version, 'planning:plan-version-activate')
+
+
+def draft_body(plan: PlanningPlan, **overrides: object) -> dict[str, object]:
+    return payload(**{'base_modified_at': plan.modified_at.isoformat(), 'draft_updated_at': None, **overrides})
+
+
+class TestActivate:
+    def test_appends_an_active_restore_version(self, client: APIClient, plan: PlanningPlan) -> None:
+        early = save(client, plan, plan_name='Early', version_name='Early stage')
+        save(client, plan, plan_name='Late')
+        before = PlanningPlan.objects.get(pk=plan.pk).modified_at
+
+        with patch.object(CacheManager, 'invalidate_on_commit') as invalidate:
+            response = client.post(activate_url(early), {'draft_updated_at': None}, format='json')
+
+        assert response.status_code == 200
+        assert response.data['plan_name'] == 'Early'
+        plan.refresh_from_db()
+        assert plan.modified_at > before
+        assert response.data['modified_at'] == client.get(detail(plan)).data['modified_at']
+        newest = saved(plan)[0]
+        assert (newest.kind, newest.name, newest.source_version) == ('restore', '', early)
+        assert snapshot(newest) == snapshot(plan) == {**snapshot(early), 'plan_name': 'Early'}
+        early.refresh_from_db()
+        assert early.name == 'Early stage'
+        assert client.get(versions_url(plan)).data[0]['is_active'] is True
+        invalidate.assert_called()
+
+    def test_deletes_the_draft_the_tab_saw(self, client: APIClient, plan: PlanningPlan) -> None:
+        early = save(client, plan)
+        save(client, plan, plan_name='Late')
+        seen = client.put(draft_url(plan), draft_body(plan), format='json').data['updated_at']
+
+        assert client.post(activate_url(early), {'draft_updated_at': seen}, format='json').status_code == 200
+
+        assert not PlanningPlanVersion.drafts.filter(plan=plan).exists()
+
+    @pytest.mark.parametrize('seen', ['none', 'older'])
+    def test_keeps_a_draft_the_tab_did_not_see(self, client: APIClient, plan: PlanningPlan, seen: str) -> None:
+        early = save(client, plan)
+        save(client, plan, plan_name='Late')
+        first = client.put(draft_url(plan), draft_body(plan, plan_name='First'), format='json').data['updated_at']
+        client.put(draft_url(plan), draft_body(plan, plan_name='Laptop', draft_updated_at=first), format='json')
+
+        body = {'draft_updated_at': first if seen == 'older' else None}
+        assert client.post(activate_url(early), body, format='json').status_code == 200
+
+        assert PlanningPlanVersion.drafts.get(plan=plan).plan_name == 'Laptop'
+
+    @pytest.mark.parametrize('body', [{}, {'draft_updated_at': 'soon'}])
+    def test_needs_what_the_tab_last_saw(self, client: APIClient, plan: PlanningPlan, body: dict[str, object]) -> None:
+        early = save(client, plan)
+        save(client, plan)
+
+        response = client.post(activate_url(early), body, format='json')
+
+        assert response.status_code == 400
+        assert 'draft_updated_at' in response.data
+        assert len(saved(plan)) == 3
+
+    def test_the_active_version_is_refused(self, client: APIClient, plan: PlanningPlan) -> None:
+        active = save(client, plan)
+
+        response = client.post(activate_url(active), {'draft_updated_at': None}, format='json')
+
+        assert response.status_code == 400
+        assert response.data == {'detail': 'This version is the plan as saved.', 'code': 'version_active'}
+        assert len(saved(plan)) == 2
+
+    def test_drafts_other_plans_and_pruned_versions_are_not_found(self, client: APIClient, plan: PlanningPlan) -> None:
+        pruned = save(client, plan)
+        for _ in range(plan_version_service.KEEP_UNNAMED):
+            save(client, plan)
+        draft = plan_version_service.save_draft(plan, snapshot(plan), plan.modified_at)
+        other = plan_version_service.record_created(baker.make(PlanningPlan, user=plan.user, plan_data={}))
+
+        for version in (pruned, draft, other):
+            url = reverse('planning:plan-version-activate', kwargs={'plan_pk': plan.pk, 'pk': version.pk})
+            assert client.post(url, {'draft_updated_at': None}, format='json').status_code == 404
+
+
+class TestDelete:
+    @pytest.mark.parametrize('index', [1, 2, 3], ids=['unnamed', 'named', 'baseline'])
+    def test_deletes_any_but_the_active_version(self, client: APIClient, plan: PlanningPlan, index: int) -> None:
+        save(client, plan, version_name='Named')
+        save(client, plan)
+        save(client, plan)
+        versions = saved(plan)  # newest first: active, unnamed, named, baseline
+        target = versions[index]
+
+        with (
+            patch.object(CacheManager, 'invalidate_on_commit') as invalidate,
+            CaptureQueriesContext(connection) as queries,
+        ):
+            response = client.delete(version_url(target))
+
+        assert response.status_code == 204
+        assert saved(plan) == [v for v in versions if v != target]
+        invalidate.assert_not_called()
+        assert not any('"plan_data"' in q['sql'] and 'plan_versions' in q['sql'] for q in queries)
+
+    def test_the_active_version_is_refused(self, client: APIClient, plan: PlanningPlan) -> None:
+        active = save(client, plan)
+
+        response = client.delete(version_url(active))
+
+        assert response.status_code == 400
+        assert response.data['code'] == 'version_active'
+        assert active in saved(plan)
+
+    def test_restores_from_it_lose_their_source(self, client: APIClient, plan: PlanningPlan) -> None:
+        early = save(client, plan, version_name='Early')
+        restore = save(client, plan, restored_from=str(early.pk))
+        save(client, plan)
+
+        assert client.delete(version_url(early)).status_code == 204
+
+        restore.refresh_from_db()
+        assert restore.source_version is None
+        assert client.get(versions_url(plan)).data[1]['source_version'] is None
+
+    def test_drafts_and_other_plans_versions_are_not_found(self, client: APIClient, plan: PlanningPlan) -> None:
+        save(client, plan)
+        draft = plan_version_service.save_draft(plan, snapshot(plan), plan.modified_at)
+        other = plan_version_service.record_created(baker.make(PlanningPlan, user=plan.user, plan_data={}))
+
+        for version in (draft, other):
+            url = reverse('planning:plan-version-detail', kwargs={'plan_pk': plan.pk, 'pk': version.pk})
+            assert client.delete(url).status_code == 404
+        assert PlanningPlanVersion.all_objects.filter(pk__in=[draft.pk, other.pk]).count() == 2
 
 
 class TestDraft:
@@ -523,6 +668,8 @@ class TestDraft:
         (lambda plan, version: version_url(version), 'get'),
         (lambda plan, version: version_url(version), 'patch'),
         (lambda plan, version: version_url(version, 'planning:plan-version-clone'), 'post'),
+        (lambda plan, version: version_url(version, 'planning:plan-version-activate'), 'post'),
+        (lambda plan, version: version_url(version), 'delete'),
         (lambda plan, version: draft_url(plan), 'get'),
         (lambda plan, version: draft_url(plan), 'put'),
         (lambda plan, version: draft_url(plan), 'delete'),

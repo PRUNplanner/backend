@@ -116,9 +116,8 @@ def clone_version(version: PlanningPlanVersion, user: User) -> PlanningPlan:
     return plan
 
 
-@transaction.atomic
-def restore_version(version: PlanningPlanVersion) -> PlanningPlan:
-    """Admin only: writes the plan, so modified_at moves and open editors get the conflict dialog on their next save."""
+def _restore(version: PlanningPlanVersion, seen_draft: datetime | None = None, *, admin: bool = False) -> PlanningPlan:
+    # writes the plan, so modified_at moves and open editors get the conflict dialog on their next save
     before = PlanningPlan.objects.select_for_update().get(pk=version.plan_id)  # ty: ignore[unresolved-attribute]
     plan = PlanningPlan.objects.get(pk=before.pk)
     for field in SNAPSHOT_FIELDS:
@@ -127,9 +126,40 @@ def restore_version(version: PlanningPlanVersion) -> PlanningPlan:
 
     # a save may have pruned it while this waited for the lock; its content is already in hand
     source = PlanningPlanVersion.objects.filter(pk=version.pk).first()
-    record_save(plan, before=before, restored_from=source, kind=PlanVersionKind.RESTORE, keep_draft=True)
+    # the admin never saw the draft; a tab keeps one it didn't see, as a plan PUT does
+    keep_draft = admin or newer_draft(plan, seen_draft) is not None
+    record_save(plan, before=before, restored_from=source, kind=PlanVersionKind.RESTORE, keep_draft=keep_draft)
+    return plan
+
+
+@transaction.atomic
+def restore_version(version: PlanningPlanVersion) -> PlanningPlan:
+    """Admin only, keeps the user's draft."""
+    plan = _restore(version, admin=True)
     logger.info('plan_version_restored_admin', plan_uuid=str(plan.pk), version_uuid=str(version.pk))
     return plan
+
+
+@transaction.atomic
+def activate_version(version: PlanningPlanVersion, seen_draft: datetime | None) -> PlanningPlan:
+    """The owner's one-step restore: a new restore version on top becomes the plan. seen_draft as for a plan PUT."""
+    plan = _restore(version, seen_draft)
+    logger.info(
+        'plan_version_activated', plan_uuid=str(plan.pk), version_uuid=str(version.pk), named=bool(version.name)
+    )
+    return plan
+
+
+def delete_version(version: PlanningPlanVersion) -> None:
+    """Call holding the plan's row lock, never with the newest saved version: the plan row must equal it."""
+    # only(): as in _prune, the self FK loads the rows (restores from it get source_version NULL), without plan_data
+    PlanningPlanVersion.objects.filter(pk=version.pk).only('pk').delete()
+    logger.info(
+        'plan_version_deleted',
+        plan_uuid=str(version.plan_id),  # ty: ignore[unresolved-attribute]
+        kind=version.kind,
+        named=bool(version.name),
+    )
 
 
 def save_draft(plan: PlanningPlan, fields: dict[str, object], base_modified_at: datetime) -> PlanningPlanVersion:
