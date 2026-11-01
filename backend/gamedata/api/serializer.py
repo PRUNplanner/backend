@@ -496,6 +496,8 @@ class MarketSummarySerializer(serializers.Serializer):
 
 
 class GamePlanetInfrastructureReportSerializer(serializers.ModelSerializer):
+    planet_natural_id = serializers.CharField(source='planet.planet_natural_id', read_only=True)
+
     class Meta:
         model = GamePlanetInfrastructureReport
         exclude = ['id', 'planet', 'infrastructure_report_id']
