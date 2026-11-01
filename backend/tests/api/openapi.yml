@@ -509,6 +509,40 @@ paths:
                 items:
                   $ref: '#/components/schemas/GamePlanet'
           description: ''
+  /data/planets/popr/:
+    post:
+      operationId: data_planets_popr_create
+      summary: Fetch the latest population reports of multiple planets by their Planet
+        Natural Ids
+      tags:
+      - data
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+          application/x-www-form-urlencoded:
+            schema:
+              type: array
+              items:
+                type: string
+          multipart/form-data:
+            schema:
+              type: array
+              items:
+                type: string
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GamePlanetInfrastructureReport'
+          description: ''
   /data/planets/search/:
     post:
       operationId: data_planets_search_create
@@ -3075,6 +3109,9 @@ components:
     GamePlanetInfrastructureReport:
       type: object
       properties:
+        planet_natural_id:
+          type: string
+          readOnly: true
         explorers_grace_enabled:
           type: boolean
         simulation_period:
@@ -3232,6 +3269,7 @@ components:
       - open_jobs_scientist
       - open_jobs_settler
       - open_jobs_technician
+      - planet_natural_id
       - population_difference_engineer
       - population_difference_pioneer
       - population_difference_scientist

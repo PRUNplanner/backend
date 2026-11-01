@@ -5,7 +5,7 @@ from typing import Any, cast
 import structlog
 from core.services.cache_manager import CacheManager
 from django.db import connection
-from django.db.models import Case, CharField, F, Prefetch, Q, QuerySet, Value, When
+from django.db.models import Case, CharField, F, OuterRef, Prefetch, Q, QuerySet, Subquery, Value, When
 from django.db.models.functions import Concat
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -57,6 +57,7 @@ from gamedata.models import (
     GameMaterial,
     GamePlanet,
     GamePlanetCOGCProgram,
+    GamePlanetInfrastructureReport,
     GameRecipe,
     queryset_gameplanet,
 )
@@ -226,6 +227,30 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
             return GamePlanetInfrastructureReportSerializer(latest_report).data
 
         return CacheManager.respond(request, PLANET, 'popr', build=fetch_data, scope=planet_natural_id)
+
+    @extend_schema(
+        auth=[],
+        summary='Fetch the latest population reports of multiple planets by their Planet Natural Ids',
+        request=PlanetIdsSerializer,
+        responses=GamePlanetInfrastructureReportSerializer(many=True),
+    )
+    def multiple_popr(self, request: Request):
+        serializer = PlanetIdsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        def build_many(missing: list[str]) -> dict[str, object]:
+            latest = GamePlanetInfrastructureReport.objects.filter(planet=OuterRef('planet')).order_by(
+                '-simulation_period'
+            )
+            reports = GamePlanetInfrastructureReport.objects.filter(
+                planet__planet_natural_id__in=missing, pk=Subquery(latest.values('pk')[:1])
+            ).select_related('planet')
+            data = GamePlanetInfrastructureReportSerializer(reports, many=True).data
+            return {report['planet_natural_id']: report for report in data}
+
+        # the same entries as latest_popr, so a planet is cached once for both endpoints
+        planet_natural_ids = list(dict.fromkeys(serializer.validated_data))
+        return CacheManager.respond_many(request, PLANET, 'popr', planet_natural_ids, build_many)
 
 
 class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):

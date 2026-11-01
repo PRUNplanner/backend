@@ -27,6 +27,8 @@ urlpatterns = [
     path('recipes/', GameRecipeViewSet.as_view(actions={'get': 'list'}), name='recipe-list'),
     path('buildings/', GameBuildingViewSet.as_view(actions={'get': 'list'}), name='building-list'),
     path('planets/multiple/', GamePlanetViewSet.as_view({'post': 'multiple'}), name='planet-multiple'),
+    # before planets/<search_term>/, which would capture it
+    path('planets/popr/', GamePlanetViewSet.as_view({'post': 'multiple_popr'}), name='planet-multiple-popr'),
     path('planets/search/', GamePlanetViewSet.as_view({'post': 'search'}), name='planet-search'),
     # before planets/<search_term>/, which would capture it
     path('planets/search-index/', GamePlanetViewSet.as_view({'get': 'search_index'}), name='planet-search-index'),

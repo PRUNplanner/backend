@@ -304,6 +304,166 @@ class TestGamePlanetViewSetMultiple:
 
 
 @pytest.mark.usefixtures('locmem_cache')
+class TestGamePlanetViewSetMultiplePopr:
+    URL = '/data/planets/popr/'
+
+    @pytest.fixture()
+    def planets_with_reports(
+        self, planet_factory: Callable[..., GamePlanet], popr_factory: Callable[..., object]
+    ) -> Callable[..., list[str]]:
+        def make(*planet_ids: str) -> list[str]:
+            for planet_id in planet_ids:
+                popr_factory(planet=planet_factory(planet_natural_id=planet_id), simulation_period=1)
+            return list(planet_ids)
+
+        return make
+
+    def test_returns_the_latest_report_per_planet_in_request_order(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        popr_factory: Callable[..., object],
+    ) -> None:
+        first = planet_factory(planet_natural_id='OT-580b')
+        second = planet_factory(planet_natural_id='AB-001c')
+        # the newest report is not the newest row
+        popr_factory(planet=first, simulation_period=7)
+        popr_factory(planet=first, simulation_period=5)
+        popr_factory(planet=second, simulation_period=2)
+        popr_factory(planet=second, simulation_period=3)
+
+        response = api_client.post(self.URL, data=['AB-001c', 'OT-580b', 'AB-001c'], format='json')
+
+        assert response.status_code == 200
+        assert [(r['planet_natural_id'], r['simulation_period']) for r in orjson.loads(response.content)] == [
+            ('AB-001c', 3),
+            ('OT-580b', 7),
+        ]
+
+    def test_matches_the_single_endpoint_body(
+        self, api_client: APIClient, planets_with_reports: Callable[..., list[str]]
+    ) -> None:
+        planets_with_reports('AB-001c')
+        single = api_client.get(reverse('data:planet-infrastructure', kwargs={'planet_natural_id': 'AB-001c'}))
+
+        CacheManager.invalidate(PLANET, 'AB-001c')
+        bulk = api_client.post(self.URL, data=['AB-001c'], format='json')
+
+        assert orjson.loads(bulk.content) == [orjson.loads(single.content)]
+        assert orjson.loads(single.content)['planet_natural_id'] == 'AB-001c'
+
+    def test_omits_planets_without_a_report_and_unknown_ids(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        planets_with_reports: Callable[..., list[str]],
+    ) -> None:
+        planet_factory(planet_natural_id='NO-000a')
+        planets_with_reports('AB-001c')
+
+        response = api_client.post(self.URL, data=['NO-000a', 'XX-000x', 'AB-001c'], format='json')
+
+        assert response.status_code == 200
+        assert [r['planet_natural_id'] for r in orjson.loads(response.content)] == ['AB-001c']
+
+    def test_a_planet_without_a_report_appears_once_it_has_one(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        popr_factory: Callable[..., object],
+    ) -> None:
+        planet = planet_factory(planet_natural_id='AB-001c')
+        assert orjson.loads(api_client.post(self.URL, data=['AB-001c'], format='json').content) == []
+
+        popr_factory(planet=planet, simulation_period=1)
+
+        response = api_client.post(self.URL, data=['AB-001c'], format='json')
+        assert [r['simulation_period'] for r in orjson.loads(response.content)] == [1]
+
+    @pytest.mark.parametrize(('count', 'status'), [(200, 200), (201, 400)])
+    def test_accepts_at_most_200_ids(self, api_client: APIClient, count: int, status: int) -> None:
+        ids = [f'AB-{i:03d}c' for i in range(count)]
+        assert api_client.post(self.URL, data=ids, format='json').status_code == status
+
+    def test_query_count_does_not_grow_with_the_planets(
+        self, api_client: APIClient, planets_with_reports: Callable[..., list[str]]
+    ) -> None:
+        few = planets_with_reports('AA-001a')
+        many = planets_with_reports(*[f'BB-{i:03d}b' for i in range(20)])
+
+        with CaptureQueriesContext(connection) as few_queries:
+            assert len(orjson.loads(api_client.post(self.URL, data=few, format='json').content)) == 1
+        with CaptureQueriesContext(connection) as many_queries:
+            assert len(orjson.loads(api_client.post(self.URL, data=many, format='json').content)) == 20
+
+        assert len(few_queries) == len(many_queries) == 1
+
+    def test_repeat_is_a_cache_hit_without_queries(
+        self,
+        api_client: APIClient,
+        planets_with_reports: Callable[..., list[str]],
+        django_assert_num_queries,
+    ) -> None:
+        ids = planets_with_reports('OT-580b', 'AB-001c')
+        first = api_client.post(self.URL, data=ids, format='json')
+        assert first['X-Cache-Hit'] == '0'
+
+        with django_assert_num_queries(0):
+            response = api_client.post(self.URL, data=ids, format='json')
+
+        assert response['X-Cache-Hit'] == '1'
+        assert response.content == first.content
+
+    def test_single_endpoint_fills_the_bulk_entry(
+        self,
+        api_client: APIClient,
+        planets_with_reports: Callable[..., list[str]],
+        django_assert_num_queries,
+    ) -> None:
+        planets_with_reports('AB-001c')
+        api_client.get(reverse('data:planet-infrastructure', kwargs={'planet_natural_id': 'AB-001c'}))
+
+        with django_assert_num_queries(0):
+            response = api_client.post(self.URL, data=['AB-001c'], format='json')
+
+        assert response['X-Cache-Hit'] == '1'
+
+    def test_bulk_fills_the_single_endpoint_entry(
+        self,
+        api_client: APIClient,
+        planets_with_reports: Callable[..., list[str]],
+        django_assert_num_queries,
+    ) -> None:
+        planets_with_reports('AB-001c')
+        api_client.post(self.URL, data=['AB-001c'], format='json')
+
+        with django_assert_num_queries(0):
+            response = api_client.get(reverse('data:planet-infrastructure', kwargs={'planet_natural_id': 'AB-001c'}))
+
+        assert response['X-Cache-Hit'] == '1'
+
+    def test_invalidating_a_planet_refreshes_only_that_planet(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        popr_factory: Callable[..., object],
+    ) -> None:
+        planet = planet_factory(planet_natural_id='AB-001c')
+        other = planet_factory(planet_natural_id='OT-580b')
+        popr_factory(planet=planet, simulation_period=1)
+        popr_factory(planet=other, simulation_period=1)
+        ids = ['AB-001c', 'OT-580b']
+        api_client.post(self.URL, data=ids, format='json')
+
+        popr_factory(planet=planet, simulation_period=2)
+        popr_factory(planet=other, simulation_period=2)
+        CacheManager.invalidate(PLANET, 'AB-001c')
+        response = api_client.post(self.URL, data=ids, format='json')
+
+        assert [r['simulation_period'] for r in orjson.loads(response.content)] == [2, 1]
+
+
+@pytest.mark.usefixtures('locmem_cache')
 class TestGamedataCacheHits:
     def test_planet_list_cache_hit_runs_no_queries(
         self, api_client: APIClient, planet_factory: Callable[..., GamePlanet], django_assert_num_queries
@@ -622,6 +782,7 @@ PUBLIC_ROUTES: list[tuple[str, dict[str, str], object | None]] = [
     ('planet-infrastructure', {'planet_natural_id': PLANET_ID}, None),
     ('planet-search-single', {'search_term': PLANET_ID}, None),
     ('planet-multiple', {}, [PLANET_ID]),
+    ('planet-multiple-popr', {}, [PLANET_ID]),
     ('planet-search', {}, _search_payload()),
     ('cxpc-market-data-ticker', {'ticker': 'FUEL'}, None),
     ('cxpc-market-data-full', {'ticker': 'FUEL', 'exchange_code': 'AI1'}, None),
