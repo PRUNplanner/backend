@@ -1,164 +1,62 @@
-# CLAUDE.md - PRUNplanner Backend Guidelines
+# PRUNplanner backend
 
-## Project Summary
-This repository contains the backend engine for **PRUNplanner.org** (a Prosperous Universe empire and base planning tool). It provides a stateless REST API, market data sync (CXPC/FIO), dynamic game data mapping, and background scheduling.
+REST API for [PRUNplanner.org](https://prunplanner.org): Django + DRF, Python 3.12, `uv`, PostgreSQL,
+Redis (cache and broker), Celery + `django_celery_beat`. Setup and running: `README.md`; load tests:
+`perf/README.md`. When this file and the code disagree, the code is right; fix this file.
 
-## Tech Stack & Architecture
-- **Language**: Python 3.12
-- **Framework**: Django + Django REST Framework (DRF)
-- **Validation**: Pydantic / DRF Serializers
-- **Package Manager**: `uv`
-- **Task Queue & Scheduler**: Celery + Redis + `django_celery_beat`
-- **Database**: PostgreSQL
-- **Email**: Resend
+## Layout
 
----
+Django lives in `backend/` (`manage.py`, settings in `core/config/`). Domain apps: `planning`, `user`,
+`gamedata`, `analytics`; shared code in `core`, URL root and API helpers in `api`.
 
-## Development Workflow & Commands
+- `api/` per app: `urls.py`, `serializers/`, `viewsets/`. Viewsets stay thin; business logic goes in
+  `services/`, Celery tasks in `tasks.py`.
+- Versioned JSON stored in DB fields is a Pydantic model in `planning/schemas/` with a `_V1`, `_V2`, ... suffix,
+  registered in `latest_schemas.py`. Never change a shipped version in place.
+- Response cache: `core/services/cache_manager.py`. Each app declares its `CacheNamespace`s in one
+  `*_cache_manager.py`. Viewsets serve through `CacheManager.respond(...)`; private namespaces pass the user id
+  as `scope`. Invalidate only by version bump (`CacheManager.invalidate` / `invalidate_on_commit`, called from
+  `signals.py` receivers with an explicit `dispatch_uid`); never delete keys or scan patterns.
+- `migrations/` are generated with `makemigrations`, never hand-edited.
+- Tests mirror the code path for path under `backend/tests/<app>/` (`planning/api/viewsets/plan_viewset.py` →
+  `tests/planning/api/viewsets/test_plan_viewset.py`).
 
-### Package & Environment Management
-- Sync dependencies: `uv sync`
-- Run management commands: `uv run backend/manage.py <command>`
+## Rules
 
-### Running Locally
-- **Django Server**: `uv run backend/manage.py runserver`
-- **Celery Worker**: `uv run --env-file .env celery -A core --workdir=backend worker -l INFO`
-- **Celery Beat**: `uv run --env-file .env celery -A core --workdir=backend beat -l INFO --scheduler core.beat:QueueDepthScheduler`
-- **Via Overmind**: `overmind start` (uses root `Procfile`)
-
-### Code Quality & Testing
-- **Linting & Formatting**: `uv run ruff check`
-- **Type Checking**: `uv run ty check --exclude "**/migrations/*.py"`
-- **Unit Tests**: `uv run pytest`
-- **Coverage**: `uv run pytest --cov=. --cov-report=html` (lines and branches; CI fails below `fail_under` in `.coveragerc`)
-- **Tests on Postgres**: CI runs the suite on Postgres (`TEST_DB=postgres` + `DATABASE_*`); locally it runs on SQLite unless you set those. Tests of Postgres-only SQL skip on SQLite; the `exchange_analytics_view` fixture swaps in the real materialized view.
-- **Performance / load**: `perf/run.sh` (needs Docker; see `perf/README.md`)
-
-## Testing Standards
-- Write unit and integration tests using `pytest` and `pytest-django`.
-- Mock external network calls (FIO API, Resend), but execute real DB operations in tests.
-- Always test happy paths, validation errors, edge cases, and correct HTTP status codes.
-- Use explicit type annotations in test helpers; avoid `typing.Any`.
-- Use `model_bakery` (`baker.make`) and factory fixtures from `conftest.py` instead of manual `Model.objects.create()` calls.
-
----
-
-## Architectural & Code Quality Principles
-
-### 1. Architectural Impact & Maintainability
-- Favor long-lasting, properly architected solutions over quick hacks.
-- Keep domain logic, tasks (Celery), and API interfaces cleanly decoupled.
-- Avoid single-use abstractions; enforce **Simplicity First** — write the minimum code required to solve the problem cleanly.
-
-### 2. Strict Type Safety & Validation
-- Fully typed signatures on functions and methods. **Do not use `typing.Any`**.
-- Validate external payloads (FIO API responses, market sync, incoming endpoints) strictly using **Pydantic** models or DRF serializers.
-- Exclude Django database `migrations/` from type checks.
-
-### 3. Performance & Memory Considerations
-- Minimize response payload sizes for public/high-frequency REST endpoints.
-- Optimize database queries with `select_related` and `prefetch_related` to avoid N+1 query overhead.
-- Ensure Celery tasks are idempotent and lean, offloading heavy sync operations safely without locking the database.
-
----
-
-## Django & DRF Rules
-- Django `manage.py` and application code reside inside the `backend/` directory; `core` serves as the base Django configuration directory.
-- Always run database migrations via `uv run backend/manage.py makemigrations` and `uv run backend/manage.py migrate`.
-- Maintain strict type hints for custom manager/queryset methods and DRF serializer fields.
-
-
----
-
-## Repository & Code Layout Conventions
-
-Every domain app (`planning`, `user`, `gamedata`, `analytics`) follows the
-same internal shape; match it for any new app or module:
-
-- `models.py`, `admin.py`, `apps.py`, `signals.py` at the app root.
-- `api/` — `urls.py`, `serializers/`, `viewsets/`. Serializers validate and
-  shape data; business logic belongs in `services/`, not the viewset.
-- `schemas/` — Pydantic models for versioned JSON payloads stored in DB
-  fields (e.g. `planning/schemas/planning_plan_data.py`). Version with a
-  `_V1`, `_V2`, ... suffix and register the current one in that app's
-  `latest_schemas.py` (`LATEST_SCHEMA` dict) — never mutate a shipped schema
-  in place.
-- `services/` — business logic decoupled from the API/task layer.
-- `<app>_cache_manager.py` — only the app's `CacheNamespace` constants
-  (name, TTL, `private`). Viewsets cache with
-  `CacheManager.respond(request, NS, '<endpoint>', *parts, build=..., scope=...)`;
-  private namespaces pass the user id as `scope`. Keys hash the parts, so
-  request input never lands in a key. Invalidate only with
-  `CacheManager.invalidate(NS, scope)` (a version bump); never delete keys or
-  scan patterns. Every cache entry has a TTL; version counters must not.
-- `signals.py` — `post_save`/`post_delete` receivers that call
-  `CacheManager.invalidate_on_commit(NS, scope)`, each with an explicit
-  `dispatch_uid`.
-- `migrations/` — generated only, via `makemigrations`; never hand-edited.
-
-Tests mirror this exactly under `backend/tests/<app>/`, path-for-path
-(`planning/api/viewsets/plan_viewset.py` →
-`tests/planning/api/viewsets/test_plan_viewset.py`), with an app-local
-`conftest.py` for fixtures that don't belong in the root one.
+- Full type hints, no `typing.Any`. Validate external payloads (FIO, webhooks, request bodies) with Pydantic or
+  DRF serializers.
+- No N+1 queries: `select_related` / `prefetch_related` on list and detail endpoints. Keep public payloads small.
+- Celery tasks are idempotent.
+- Tests: `pytest` + `pytest-django`, real DB, mocked network (FIO, Resend). Build objects with `model_bakery`
+  and the `conftest.py` fixtures. Cover happy path, validation errors, edge cases and status codes.
+- Tests run on SQLite locally and on Postgres in CI (`TEST_DB=postgres` + `DATABASE_*`); Postgres-only SQL
+  tests skip on SQLite.
+- The API's consumer is [PRUNplanner/frontend](https://github.com/PRUNplanner/frontend), which validates every
+  response against Zod schemas (`src/features/api/schemas/`). Renaming, removing, retyping or nulling a field
+  breaks it; adding fields does not. Decimals are JSON numbers.
 
 ## Logging
 
-Logs are JSON lines on stdout (structlog, `core/config/settings/logging.py`),
-shipped by Vector (`vector.toml`) to Axiom, where they feed dashboards.
+structlog JSON lines on stdout (`core/config/settings/logging.py`), shipped by Vector to Axiom dashboards.
+Event and field names are what those dashboards query: don't rename them casually, and note any rename in the PR.
 
-- `logger = structlog.get_logger(__name__)`; log an event name, not a
-  sentence: snake_case `<noun>_<past verb>` (`fio_refresh_failed`,
-  `planet_search_completed`), details as keyword fields.
-- Standard keys: `user_id`, `duration_ms`, `ticker`, `exchange_code`,
-  `planet_natural_id`. Requests already carry `request_id`, `user_id`, `ip`,
-  `route`, `duration_ms`; tasks carry `task`, `task_id` and the queuing
-  request's `request_id`. Don't bind these again.
-- Added for you, don't log them yourself: `db_queries` / `db_ms` (query count
-  and total query time, `core/services/db_stats.py`) on `request_finished`,
-  `task_succeeded` and `task_failed`; `queue_ms` (publish to start, including
-  time held back by a rate limit or eta) on every line of a task, so read it
-  from `task_started`. A task queued without the publish-time header has no
-  `queue_ms`. `request_finished` also gets `auth` (`jwt` | `api_key` |
-  `basic` | `none`), and for keys `api_key_prefix` / `api_key_via`
-  (`header` | `query`) or `auth_error` (`api_key_invalid` |
-  `api_key_revoked`), set by the classes in `user/auth_apikey.py`.
-- `celery_queue_depth` (`depth`, `depth_high` / `depth_normal` / `depth_low`
-  for priority 0-3 / 4-6 / 7-10) is logged about once a minute by the beat
-  scheduler (`core/beat.py`), `celery_queue_depth_failed` once per Redis
-  outage. Beat has to run with `--scheduler core.beat:QueueDepthScheduler`.
-- Refresh failures: `fio_refresh_failed`, `planet_refresh_failed`,
-  `planet_infrastructure_refresh_failed`, `planet_plots_refresh_failed`, `cxpc_refresh_failed`,
-  `exchanges_refresh_failed`. A FIO error status (with `status_code`) or
-  transport error (timeout, dropped connection) is a warning, anything else
-  `logger.exception`.
-- Levels: `info` for a business event, `warning` for an expected failure
-  (bad user FIO key, invalid webhook payload), `logger.exception` inside
-  `except` for what needs a look. Log a failure once, where it's handled.
-- No start/finish pairs: one line when done, with `duration_ms`.
-- No secrets, emails, API keys or tokens (the webhook path token and
-  `api_key` query values in `request` / `url` are redacted by
-  `redact_secrets`). No unbounded dicts: every key becomes an Axiom column.
-- Signups: one `user_signup_completed` (`user_id`, `has_email`) or
-  `user_signup_rejected` (`fields`, sorted `codes` as `"<field>:<error code>"`,
-  `planet_id` only with `planet_input:planet_mismatch`) per attempt, never the
-  submitted values. Throttled attempts log neither (`request_finished` 429).
-- `rate_limited` (`scope`, `user_id`, `auth`, `path_template`, `rate`):
-  a throttle refused a request, logged once per throttle key and window
-  (`core/throttling.py`); the 429s themselves show in `request_finished`.
-- `fio_request_completed` / `fio_request_failed` fields (`endpoint`, `url`,
-  `status_code`, `duration` in seconds, `bytes`) back Axiom dashboards;
-  don't rename them.
-- The Axiom dashboards are built in the workspace repo
-  (`../axiom/build_dashboards.py`). Renaming an event or field it queries
-  breaks a panel; update the builder in the same change.
+- `logger = structlog.get_logger(__name__)`; the event is snake_case `<noun>_<past verb>`
+  (`fio_refresh_failed`), details as keyword fields. Reuse keys: `user_id`, `duration_ms`, `ticker`,
+  `exchange_code`, `planet_natural_id`.
+- Already bound, don't log them yourself: request context (`request_id`, `user_id`, `ip`, `route`,
+  `duration_ms`, `auth`), task context (`task`, `task_id`, `queue_ms`), and `db_queries` / `db_ms`
+  (`core/services/db_stats.py`).
+- `info` for business events, `warning` for expected failures (bad user FIO key, FIO error status or timeout),
+  `logger.exception` in `except` for what needs a look. Log a failure once, where it's handled.
+- One line when done (with `duration_ms`), no start/finish pairs.
+- Never log secrets, emails, API keys, tokens or submitted form values. No unbounded dicts: every key becomes
+  an Axiom column.
 
 ## Definition of Done
 
-Before considering a change complete:
-
 - `uv run ruff check` and `uv run ruff format --check` pass.
 - `uv run ty check --exclude "**/migrations/*.py"` passes.
-- `uv run pytest` passes, with new tests for new behavior
-- No hand-edited files under any `migrations/` directory.
-- No `typing.Any` introduced; no N+1 queries in list/detail endpoints.
-- An intended API change refreshes the schema snapshot (`UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend/tests/api/test_openapi_schema.py`); the frontend side is checked with `/sync-api`.
+- `uv run pytest` passes, with tests for new behavior; coverage stays above `fail_under` in `.coveragerc`.
+- Model changes come with a generated migration.
+- An intended API change refreshes the schema snapshot:
+  `UPDATE_OPENAPI_SNAPSHOT=1 uv run pytest backend/tests/api/test_openapi_schema.py`.

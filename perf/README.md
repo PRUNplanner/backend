@@ -27,8 +27,6 @@ perf/run.sh --no-snapshot                  # fake game data instead of the FIO s
 perf/run.sh --prod-like                    # server shaped like production (see below)
 ```
 
-In Claude Code, `/perf` in the workspace runs this and interprets the result.
-
 ### Production-like runs
 
 By default everything gets the whole dev machine, and gunicorn runs natively.
