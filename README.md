@@ -31,11 +31,17 @@ While the [Frontend](https://github.com/PRUNplanner/frontend) handles all your p
 
 # 🛠 Developer Setup
 
+All setups read their configuration from a `.env` file in the repository root. Start from the example:
+
+```shell
+cp env.example .env
+```
+
 ## Docker
 
-You can run the backend locally with Docker / Docker Compose with the `entrypoint.sh` ensuring migrations did run.
-This will start a PostgreSQL database, Redis, the Django backend as well as a Celery worker. There won't be any
-game data, but the admin interface allows to import it easily.
+`docker compose up` starts PostgreSQL, Redis, the Django backend on http://localhost:8000 (API docs at `/docs/`),
+a Celery worker and Celery beat; Vector only ships logs when `VECTOR_ACTIVE=true`. The `entrypoint.sh` runs the
+migrations. There won't be any game data, but the admin's "Import from FIO" actions load it.
 
 To create yourself a local superuser for Django, run the following command:
 
@@ -75,8 +81,7 @@ services:
 PRUNplanner uses [`uv`](https://docs.astral.sh/uv/) for Python 3.12 package and virtual environment management.
 See [uv installation documentation](https://docs.astral.sh/uv/getting-started/installation/) on how to get started.
 
-Run in terminal if you have PostgreSQL database and Redis instance available and configured in the `.env` file or
-start them separately and point the Django towards it.
+Run in terminal with a PostgreSQL database and Redis instance available and configured in the `.env` file.
 
 ```shell
 # Install packages
@@ -92,15 +97,8 @@ uv run --env-file .env celery -A core --workdir=backend beat -l INFO  --schedule
 
 ## Via [`overmind`](https://github.com/DarthSim/overmind) and `Procfile`
 
-Packages must be installed and available as `overmind` executes multiple `uv run` command in separate processes.
-Create yourself a `Procfile` and use the following commands. Database and Redis must be available and defined in your
-`.env` file.
-
-```shell
-web: uv run backend/manage.py runserver
-worker: uv run --env-file .env celery -A core --workdir=backend worker -l INFO
-beat: uv run --env-file .env celery -A core --workdir=backend beat -l INFO  --scheduler core.beat:QueueDepthScheduler
-```
+Runs the three processes of the repository's `Procfile` (the console commands above). Packages must be installed
+(`uv sync`), and the database and Redis available and defined in your `.env` file.
 
 ```shell
 # start all
@@ -117,11 +115,14 @@ overmind restart
 
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/d1e84c37ed4048bca3c72de0253055c8)](https://app.codacy.com/gh/PRUNplanner/backend/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade) [![Codacy Badge](https://app.codacy.com/project/badge/Coverage/d1e84c37ed4048bca3c72de0253055c8)](https://app.codacy.com/gh/PRUNplanner/backend/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_coverage)
 
-Lint & format, type checks and tests are handled as Github action. You can also execute them individually during development.
+Lint & format, type checks and tests run as a GitHub Action on every pull request. Tests use SQLite locally
+and PostgreSQL in CI (`TEST_DB=postgres` plus the `DATABASE_*` variables), and CI fails when coverage drops below
+`fail_under` in `.coveragerc`.
 
 ```shell
-# linting
+# linting and formatting
 uv run ruff check
+uv run ruff format --check
 
 # type checks (excluding migration files)
 uv run ty check --exclude "**/migrations/*.py"
@@ -132,3 +133,5 @@ uv run pytest
 # coverage (output to html)
 uv run pytest --cov=. --cov-report=html
 ```
+
+Benchmarks and load tests: see [`perf/README.md`](perf/README.md).
