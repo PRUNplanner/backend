@@ -29,6 +29,7 @@ class TestUserPreSaveCost:
 
         with (
             patch('user.tasks.send_email_verification_code.apply_async') as mock_send,
+            patch('user.tasks.send_email_changed_notice.apply_async') as notice,
             django_capture_on_commit_callbacks(execute=True),
         ):
             user.email = 'new@example.com'
@@ -37,6 +38,7 @@ class TestUserPreSaveCost:
         user.refresh_from_db()
         assert user.is_email_verified is False
         mock_send.assert_called_once()
+        notice.assert_called_once()
 
 
 def _with_email(email: str, verified: bool) -> User:
@@ -69,11 +71,13 @@ class TestEmailSignals:
 
         with (
             patch('user.tasks.send_email_verification_code.apply_async') as send,
+            patch('user.tasks.send_email_changed_notice.apply_async') as notice,
             django_capture_on_commit_callbacks(execute=True),
         ):
             user.email = 'new@example.com'
             user.save()
 
+        notice.assert_called_once()
         user.refresh_from_db()
         assert user.is_email_verified is False
         assert not VerificationCode.objects.filter(pk__in=[c.pk for c in old]).exists()
