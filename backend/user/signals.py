@@ -7,6 +7,7 @@ from gamedata.gamedata_cache_manager import GamedataCacheManager
 from structlog import get_logger
 
 from user.services.verification_service import VerificationService
+from user.tasks import send_email_changed_notice
 
 from .models import User, VerificationCode, VerificationeCodeChoices
 
@@ -24,7 +25,7 @@ def check_user_changes(sender, instance, **kwargs):
 
     # previous row, read once for the email and fio checks below
     old_instance = (
-        sender.objects.only('email', 'prun_username', 'fio_apikey').filter(pk=instance.pk).first()
+        sender.objects.only('email', 'is_email_verified', 'prun_username', 'fio_apikey').filter(pk=instance.pk).first()
         if instance.pk  # pk only available on update
         else None
     )
@@ -33,6 +34,9 @@ def check_user_changes(sender, instance, **kwargs):
         if instance.email != old_instance.email and instance.email:
             instance._email_changed = True
             instance.is_email_verified = False
+            # only a confirmed address hears about the change, see handle_email_verification_trigger
+            if old_instance.email and old_instance.is_email_verified:
+                instance._old_email = old_instance.email
         elif old_instance.email and not instance.email:
             instance._email_cleared = True
             instance.is_email_verified = False
@@ -113,6 +117,13 @@ def handle_email_verification_trigger(sender, instance, created, **kwargs):
         VerificationService.create_and_send_code(instance, VerificationeCodeChoices.EMAIL_VERIFICATION)
 
         logger.info('email_verification_requested', user_id=instance.id, reason='signup' if created else 'email_change')
+
+        old_email = getattr(instance, '_old_email', None)
+        if old_email:
+            del instance._old_email
+            # the old owner learns of a takeover even when the attacker controls the new address
+            args = [instance.id, instance.username, old_email]
+            transaction.on_commit(lambda: send_email_changed_notice.apply_async(args=args))
 
         if hasattr(instance, '_email_changed'):
             del instance._email_changed

@@ -3714,7 +3714,7 @@ components:
           readOnly: true
         username:
           type: string
-          maxLength: 150
+          readOnly: true
         email:
           type: string
           format: email
@@ -3730,6 +3730,7 @@ components:
           maxLength: 255
         is_email_verified:
           type: boolean
+          readOnly: true
         fio_status:
           enum:
           - none
@@ -3753,6 +3754,9 @@ components:
           format: date-time
           nullable: true
           readOnly: true
+        current_password:
+          type: string
+          writeOnly: true
     PlanOverride:
       type: object
       properties:
@@ -5322,7 +5326,7 @@ components:
           readOnly: true
         username:
           type: string
-          maxLength: 150
+          readOnly: true
         email:
           type: string
           format: email
@@ -5338,6 +5342,7 @@ components:
           maxLength: 255
         is_email_verified:
           type: boolean
+          readOnly: true
         fio_status:
           enum:
           - none
@@ -5361,10 +5366,14 @@ components:
           format: date-time
           nullable: true
           readOnly: true
+        current_password:
+          type: string
+          writeOnly: true
       required:
       - fio_last_refreshed_at
       - fio_status
       - id
+      - is_email_verified
       - username
     UserRegister:
       type: object

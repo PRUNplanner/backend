@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from structlog.testing import capture_logs
 from user.api.serializer import UserChangePasswordSerializer, UserProfileSerializer, UserRegisterSerializer
-from user.api.viewsets import UserProfileViewSet
+from user.api.viewsets import RESET_RESEND_WINDOW, UserProfileViewSet
 from user.models import User, UserAPIKey, UserPreference
 from user.models.verification_codes import EXPIRY_TIME, VerificationCode, VerificationeCodeChoices
 
@@ -27,6 +27,7 @@ LOCMEM_CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMe
 
 # plan uuids as planOverrides keys
 P1, P2, P3 = (f'00000000-0000-4000-8000-00000000000{i}' for i in (1, 2, 3))
+PASSWORD = 'CorrectHorse1!'
 LONG_PASSWORD = ('Xk7!qzR9pLm2' * 9)[:100]  # over bcrypt's 72-byte limit
 
 
@@ -873,6 +874,42 @@ class TestUserPasswordResetViewSet:
             is sends
         )
 
+    def test_a_second_request_within_the_window_keeps_the_pending_code(
+        self, api_client, user_factory, django_capture_on_commit_callbacks
+    ):
+        user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
+        url = reverse('user:user_request_password_reset')
+
+        with (
+            patch('user.tasks.send_password_reset_code.apply_async') as send,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            api_client.post(url, data={'email': 'pilot@example.com'}, format='json')
+            first = VerificationCode.objects.get(user=user)
+            response = api_client.post(url, data={'email': 'pilot@example.com'}, format='json')
+
+        assert response.data == RESET_REQUESTED
+        assert send.call_count == 1
+        assert list(VerificationCode.objects.filter(user=user)) == [first]
+
+    def test_a_request_after_the_window_replaces_the_code(
+        self, api_client, user_factory, django_capture_on_commit_callbacks
+    ):
+        user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
+        old = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+        _backdate(old, RESET_RESEND_WINDOW + timedelta(seconds=1))
+
+        with (
+            patch('user.tasks.send_password_reset_code.apply_async') as send,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            api_client.post(
+                reverse('user:user_request_password_reset'), data={'email': 'pilot@example.com'}, format='json'
+            )
+
+        send.assert_called_once()
+        assert not VerificationCode.objects.filter(pk=old.pk).exists()
+
     def test_password_reset_with_valid_code(self, api_client, user_factory):
         user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
         code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
@@ -1127,12 +1164,16 @@ class TestUpdateProfileFioCheck:
         assert any(isinstance(r.msg, dict) and r.msg['event'] == 'fio_verify_unavailable' for r in caplog.records)
 
     def test_email_only_does_not_call_fio(self, api_client, user_factory, httpx_mock):
-        user = user_factory(id=1, prun_username='Pilot', fio_apikey='key')
+        user = user_factory(id=1, prun_username='Pilot', fio_apikey='key', password=make_password(PASSWORD))
+        payload: dict[str, str | None] = {
+            'prun_username': 'Pilot',
+            'fio_apikey': 'key',
+            'email': 'p@example.com',
+            'current_password': PASSWORD,
+        }
 
         with patch('user.tasks.send_email_verification_code.apply_async'):
-            response, refresh = self._patch(
-                api_client, user, {'prun_username': 'Pilot', 'fio_apikey': 'key', 'email': 'p@example.com'}
-            )
+            response, refresh = self._patch(api_client, user, payload)
 
         assert response.status_code == 200
         assert httpx_mock.get_requests() == []
@@ -1246,16 +1287,28 @@ class TestFIORepairPreferences:
 
 class TestProfileEmail:
     @staticmethod
-    def _patch(api_client, user: User, email: str | None):
-        return api_client.as_user(user).patch(reverse('user:user_profile'), data={'email': email}, format='json')
+    def _user(**kwargs) -> User:
+        # update(): no signal, so the user starts without codes
+        user: User = baker.make('user.User', password=make_password(PASSWORD))
+        User.objects.filter(pk=user.pk).update(**kwargs)
+        user.refresh_from_db()
+        return user
+
+    @staticmethod
+    def _patch(api_client, user: User, email: str | None, password: str | None = PASSWORD, **extra):
+        data = {'email': email, **extra}
+        if password is not None:
+            data['current_password'] = password
+        return api_client.as_user(user).patch(reverse('user:user_profile'), data=data, format='json')
 
     def test_adding_an_email_stores_it_normalised_and_sends_one_code(
-        self, api_client, user_factory, django_capture_on_commit_callbacks
+        self, api_client, django_capture_on_commit_callbacks
     ):
-        user = user_factory(id=1)
+        user = self._user()
 
         with (
             patch('user.tasks.send_email_verification_code.apply_async') as send,
+            patch('user.tasks.send_email_changed_notice.apply_async') as notice,
             django_capture_on_commit_callbacks(execute=True),
         ):
             response = self._patch(api_client, user, ' Pilot@EXAMPLE.com ')
@@ -1263,16 +1316,55 @@ class TestProfileEmail:
         assert response.status_code == 200
         assert response.data['email'] == 'Pilot@example.com'
         assert response.data['is_email_verified'] is False
+        assert 'current_password' not in response.data
         assert (
             VerificationCode.objects.filter(user=user, purpose=VerificationeCodeChoices.EMAIL_VERIFICATION).count() == 1
         )
         send.assert_called_once()
+        notice.assert_not_called()  # no previous address
+
+    @pytest.mark.parametrize(
+        ('password', 'error'), [(None, 'password_required'), ('', 'password_required'), ('wrong', 'password_invalid')]
+    )
+    def test_an_email_change_needs_the_current_password(
+        self, api_client, django_capture_on_commit_callbacks, password: str | None, error: str
+    ):
+        user = self._user(email='old@example.com', is_email_verified=True)
+
+        with (
+            patch('user.tasks.send_email_verification_code.apply_async') as send,
+            patch('user.tasks.send_email_changed_notice.apply_async') as notice,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            response = self._patch(api_client, user, 'new@example.com', password)
+
+        assert response.status_code == 400
+        assert response.data == {'current_password': [error]}
+        user.refresh_from_db()
+        assert (user.email, user.is_email_verified) == ('old@example.com', True)
+        send.assert_not_called()
+        notice.assert_not_called()
+
+    def test_an_email_change_with_the_password_sends_the_code_and_notifies_the_old_address(
+        self, api_client, django_capture_on_commit_callbacks
+    ):
+        user = self._user(email='old@example.com', is_email_verified=True)
+
+        with (
+            patch('user.tasks.send_email_verification_code.apply_async') as send,
+            patch('user.tasks.send_email_changed_notice.apply_async') as notice,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            response = self._patch(api_client, user, 'new@example.com')
+
+        assert response.status_code == 200
+        assert (response.data['email'], response.data['is_email_verified']) == ('new@example.com', False)
+        assert send.call_args.kwargs['args'][2] == 'new@example.com'
+        notice.assert_called_once_with(args=[user.pk, user.username, 'old@example.com'])
 
     @pytest.mark.parametrize('cleared', ['', None])
-    def test_clearing_the_email(
-        self, api_client, user_factory, django_capture_on_commit_callbacks, cleared: str | None
-    ):
-        user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
+    def test_clearing_the_email(self, api_client, django_capture_on_commit_callbacks, cleared: str | None):
+        user = self._user(email='pilot@example.com', is_email_verified=True)
         _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
 
         with (
@@ -1287,28 +1379,77 @@ class TestProfileEmail:
         assert not VerificationCode.objects.filter(user=user).exists()
         send.assert_not_called()
 
-    def test_an_address_of_another_account_in_any_case_is_taken(self, api_client, user_factory):
-        user_factory(id=1, email='foo@x.com', is_email_verified=True)
-        other = user_factory(id=2)
+    def test_clearing_the_email_needs_the_password(self, api_client):
+        user = self._user(email='pilot@example.com', is_email_verified=True)
 
-        response = self._patch(api_client, other, 'Foo@X.com')
+        response = self._patch(api_client, user, None, password=None)
 
-        assert response.status_code == 400
-        assert response.data == {'email': ['email_taken']}
-        other.refresh_from_db()
-        assert other.email is None
+        assert response.data == {'current_password': ['password_required']}
+        user.refresh_from_db()
+        assert user.email == 'pilot@example.com'
 
-    def test_own_address_is_not_taken(self, api_client, user_factory):
-        user = user_factory(id=1, email='foo@x.com', is_email_verified=True)
+    def test_a_taken_address_answers_as_a_free_one_and_changes_nothing(
+        self, api_client, user_factory, django_capture_on_commit_callbacks
+    ):
+        user_factory(email='foo@x.com', is_email_verified=True)
+        user = self._user(email='old@example.com', is_email_verified=True)
+        free = self._user(email='other@example.com', is_email_verified=True)
 
-        response = self._patch(api_client, user, 'foo@x.com')
+        with (
+            patch('user.tasks.send_email_verification_code.apply_async') as send,
+            patch('user.tasks.send_email_changed_notice.apply_async') as notice,
+            django_capture_on_commit_callbacks(execute=True),
+            capture_logs() as logs,
+        ):
+            taken = self._patch(api_client, user, 'Foo@X.com', prun_username='')
+            send.assert_not_called()
+            notice.assert_not_called()
+            changed = self._patch(api_client, free, 'Foo2@X.com', prun_username='')
+
+        assert taken.status_code == changed.status_code == 200
+        assert taken.data.keys() == changed.data.keys()
+        assert (taken.data['email'], taken.data['is_email_verified']) == ('Foo@x.com', False)
+        user.refresh_from_db()
+        assert (user.email, user.is_email_verified) == ('old@example.com', True)
+        assert not VerificationCode.objects.filter(user=user).exists()
+        ignored = [entry for entry in logs if entry['event'] == 'email_change_ignored']
+        assert ignored == [
+            {'event': 'email_change_ignored', 'user_id': user.pk, 'reason': 'taken', 'log_level': 'info'}
+        ]
+
+    def test_a_taken_address_still_saves_the_other_fields(self, api_client, user_factory):
+        user_factory(email='foo@x.com', is_email_verified=True)
+        user = self._user(email='old@example.com', is_email_verified=True, prun_username='Old', fio_apikey='')
+
+        response = self._patch(api_client, user, 'foo@x.com', prun_username='')
+
+        assert response.status_code == 200
+        user.refresh_from_db()
+        assert (user.email, user.prun_username) == ('old@example.com', '')
+
+    def test_own_address_needs_no_password(self, api_client):
+        user = self._user(email='foo@x.com', is_email_verified=True)
+
+        response = self._patch(api_client, user, 'foo@x.com', password=None)
 
         assert response.status_code == 200
         user.refresh_from_db()
         assert user.is_email_verified is True
 
-    def test_an_invalid_address_is_a_field_error(self, api_client, user_factory):
-        response = self._patch(api_client, user_factory(id=1), 'not-an-address')
+    def test_username_and_verification_are_read_only(self, api_client):
+        user = self._user(username='pilot', email='foo@x.com', is_email_verified=False)
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_profile'), data={'username': 'x', 'is_email_verified': True}, format='json'
+        )
+
+        assert response.status_code == 200
+        assert (response.data['username'], response.data['is_email_verified']) == ('pilot', False)
+        user.refresh_from_db()
+        assert (user.username, user.is_email_verified) == ('pilot', False)
+
+    def test_an_invalid_address_is_a_field_error(self, api_client):
+        response = self._patch(api_client, self._user(), 'not-an-address')
 
         assert response.status_code == 400
         assert 'email' in response.data
@@ -1397,7 +1538,7 @@ class TestEmailFlowLogs:
         self, api_client, user_factory, django_capture_on_commit_callbacks
     ):
         email, code = 'pilot@example.com', 'SECRET12'
-        user = user_factory(id=1, username='pilot')
+        user = user_factory(id=1, username='pilot', password=make_password(PASSWORD))
         client = api_client.as_user(user)
 
         def post(name: str, data: dict[str, str] | None = None):
@@ -1410,14 +1551,20 @@ class TestEmailFlowLogs:
             patch('user.tasks.send_password_reset_code.apply_async'),
             django_capture_on_commit_callbacks(execute=True),
         ):
-            client.patch(reverse('user:user_profile'), data={'email': email}, format='json')
+            client.patch(
+                reverse('user:user_profile'), data={'email': email, 'current_password': PASSWORD}, format='json'
+            )
             post('user:user_request_email_verification')
             post('user:user_verify_email', {'code': 'WRONG123'})
             post('user:user_verify_email', {'code': code})
             post('user:user_request_password_reset', {'email': email.upper()})
             post('user:user_password_reset', {'email': email, 'code': 'WRONG123', 'new_password': 'Xk7!qzR9pLm2'})
             post('user:user_password_reset', {'email': email, 'code': code, 'new_password': 'Xk7!qzR9pLm2'})
-            client.patch(reverse('user:user_profile'), data={'email': ''}, format='json')
+            # the reset above changed the password; the client authenticates with this instance
+            user.refresh_from_db()
+            client.patch(
+                reverse('user:user_profile'), data={'email': '', 'current_password': 'Xk7!qzR9pLm2'}, format='json'
+            )
 
         events = [
             (e['event'], e.get('reason'), e.get('matched'))

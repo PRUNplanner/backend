@@ -1,6 +1,7 @@
 import copy
 import re
 from datetime import datetime
+from typing import cast
 
 import structlog
 from api.mixins import JSONSafeSerializerMixin
@@ -319,6 +320,10 @@ FIO_FIELDS = ('fio_apikey', 'prun_username')
 class UserProfileSerializer(serializers.ModelSerializer):
     fio_status = serializers.SerializerMethodField()
     fio_last_refreshed_at = serializers.SerializerMethodField()
+    # required to change the email, see validate
+    current_password = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, style={'input_type': 'password'}
+    )
 
     class Meta:
         model = User
@@ -331,16 +336,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_email_verified',
             'fio_status',
             'fio_last_refreshed_at',
+            'current_password',
         ]
-        # the model's exact-match UniqueValidator would let case variants through; validate_email checks instead
+        # username is admin-only, is_email_verified only set by a confirmed code
+        read_only_fields = ['username', 'is_email_verified']
+        # a taken address is handled in update (no enumeration), so the model's UniqueValidator must not answer first
         extra_kwargs = {'email': {'validators': []}}
 
     def validate_email(self, value: str | None) -> str | None:
-        """Errors carry a code as their message."""
-        value = normalize_email(value)
-        if value and User.objects.filter(email__iexact=value).exclude(pk=getattr(self.instance, 'pk', None)).exists():
-            raise serializers.ValidationError('email_taken', code='email_taken')
-        return value
+        return normalize_email(value)
 
     def to_representation(self, instance: User) -> dict[str, object]:
         # one query for both fields
@@ -356,7 +360,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return self._fio[1]
 
     def validate(self, attrs: dict[str, object]) -> dict[str, object]:
-        """Changed FIO credentials must come as a pair that FIO confirms. Errors carry a code as their message."""
+        """A changed email needs the current password; changed FIO credentials must come as a pair that FIO confirms.
+        Errors carry a code as their message."""
+        password = cast(str, attrs.pop('current_password', ''))
+        user = cast(User, self.instance)  # only ever used to update request.user
+        if 'email' in attrs and attrs['email'] != user.email:
+            # the email receives the reset codes: moving it without the password would take the account over
+            if not password:
+                raise serializers.ValidationError({'current_password': 'password_required'})  # nosec B105: an error code
+            if not user.check_password(password):
+                raise serializers.ValidationError({'current_password': 'password_invalid'})  # nosec B105: an error code
+
         new = {f: str(attrs.get(f, getattr(self.instance, f)) or '').strip() for f in FIO_FIELDS}
         if all(new[f] == (getattr(self.instance, f) or '').strip() for f in FIO_FIELDS):
             return attrs
@@ -380,12 +394,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
+        email = validated_data.get('email')
+        taken = bool(email) and User.objects.filter(email__iexact=email).exclude(pk=instance.pk).exists()
+        if taken:
+            # no enumeration: keep the account's address, send nothing, answer as for a free address below
+            del validated_data['email']
+            logger.info('email_change_ignored', user_id=instance.pk, reason='taken')
+
         # update fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.save()
 
+        if taken:
+            # ponytail: in memory only, a later GET still shows the old address; a pending-email field closes that
+            instance.email, instance.is_email_verified = email, False
         return instance
 
 
