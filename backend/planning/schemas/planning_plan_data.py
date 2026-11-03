@@ -14,6 +14,11 @@ PLANNING_EXPERT_TYPES = Literal[
     'Resource_Extraction',
 ]
 
+# V1 bounds, far above anything the game allows: they keep overflowing values out of storage and analytics
+MAX_AMOUNT = 100_000
+MAX_EXPERTS = 100
+MAX_LIST = 500
+
 PLANNING_WORKFORCE_TYPES = Literal['pioneer', 'settler', 'technician', 'engineer', 'scientist']
 
 # hardcoded in the frontend too (InfrastructureTypeSchema), a new hab/storage type needs a lockstep change
@@ -105,7 +110,7 @@ class PlanningPlanData_Legacy(BaseModel):
 class PlanningPlanData_V1(BaseModel):
     class PlanningPlanData_V1_Experts(BaseModel):
         type: PLANNING_EXPERT_TYPES = Field(...)
-        amount: int = Field(..., ge=0)
+        amount: int = Field(..., ge=0, le=MAX_EXPERTS)
 
     class PlanningPlanData_V1_Workforce(BaseModel):
         type: PLANNING_WORKFORCE_TYPES = Field(...)
@@ -114,18 +119,18 @@ class PlanningPlanData_V1(BaseModel):
 
     class PlanningPlanData_V1_Infrastructure(BaseModel):
         building: PLANNING_INFRASTRUCTURE_TYPES = Field(...)
-        amount: int = Field(..., ge=0)
+        amount: int = Field(..., ge=0, le=MAX_AMOUNT)
 
     class PlanningPlanData_V1_Building(BaseModel):
         class PlanningPlanData_V1_Building_Recipe(BaseModel):
             recipeid: str = Field(...)
-            amount: int = Field(..., ge=0)
+            amount: int = Field(..., ge=0, le=MAX_AMOUNT)
 
         name: str = Field(..., min_length=2, max_length=3)
-        amount: int = Field(..., ge=0)
-        active_recipes: list[PlanningPlanData_V1_Building_Recipe]
+        amount: int = Field(..., ge=0, le=MAX_AMOUNT)
+        active_recipes: list[PlanningPlanData_V1_Building_Recipe] = Field(..., max_length=MAX_LIST)
 
-    experts: list[PlanningPlanData_V1_Experts]
-    workforce: list[PlanningPlanData_V1_Workforce]
-    infrastructure: list[PlanningPlanData_V1_Infrastructure]
-    buildings: list[PlanningPlanData_V1_Building]
+    experts: list[PlanningPlanData_V1_Experts] = Field(..., max_length=MAX_LIST)
+    workforce: list[PlanningPlanData_V1_Workforce] = Field(..., max_length=MAX_LIST)
+    infrastructure: list[PlanningPlanData_V1_Infrastructure] = Field(..., max_length=MAX_LIST)
+    buildings: list[PlanningPlanData_V1_Building] = Field(..., max_length=MAX_LIST)

@@ -33,3 +33,32 @@ def test_rejects_short_building_name(name: str) -> None:
 
 def test_accepts_two_char_building_name() -> None:
     PlanningPlanData_V1.model_validate(_plan_data(buildings=[{'name': 'FP', 'amount': 1, 'active_recipes': []}]))
+
+
+@pytest.mark.parametrize(
+    'overrides',
+    [
+        pytest.param({'buildings': [{'name': 'FP', 'amount': 100_001, 'active_recipes': []}]}, id='building'),
+        pytest.param({'buildings': [{'name': 'FP', 'amount': 10**20, 'active_recipes': []}]}, id='building-1e20'),
+        pytest.param(
+            {'buildings': [{'name': 'FP', 'amount': 1, 'active_recipes': [{'recipeid': 'FP#x', 'amount': 100_001}]}]},
+            id='recipe',
+        ),
+        pytest.param({'infrastructure': [{'building': 'HB1', 'amount': 100_001}]}, id='infrastructure'),
+        pytest.param({'experts': [{'type': 'Agriculture', 'amount': 101}]}, id='experts'),
+        pytest.param({'buildings': [{'name': 'FP', 'amount': 1, 'active_recipes': []}] * 501}, id='list'),
+    ],
+)
+def test_rejects_out_of_bounds(overrides: dict) -> None:
+    with pytest.raises(ValidationError):
+        PlanningPlanData_V1.model_validate(_plan_data(**overrides))
+
+
+def test_accepts_amounts_at_the_caps() -> None:
+    PlanningPlanData_V1.model_validate(
+        _plan_data(
+            buildings=[{'name': 'FP', 'amount': 100_000, 'active_recipes': [{'recipeid': 'FP#x', 'amount': 100_000}]}],
+            infrastructure=[{'building': 'HB1', 'amount': 100_000}],
+            experts=[{'type': 'Agriculture', 'amount': 100}],
+        )
+    )

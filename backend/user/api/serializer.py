@@ -9,7 +9,7 @@ from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
 from gamedata.fio.services import get_fio_service
 from gamedata.services.fio_refresh import FIO_STATUSES, FioStatus, fio_connection
-from planning.models import PlanningCX, PlanningEmpire
+from planning.models import PlanningCX, PlanningEmpire, PlanningPlan
 from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_CX_NAME, SIGNUP_EMPIRE
 from rest_framework import serializers
 from user.models import User, UserAPIKey
@@ -190,12 +190,18 @@ BUILDING_TICKER = re.compile(r'[A-Z0-9]{1,3}')
 MAX_CONSTRUCTION_BUILT = 100
 FIO_SITE_ID = re.compile(r'[0-9a-f]{32}')
 MAX_FIO_REPAIR_PLAN_LINKS = 200
+PLAN_UUID = re.compile(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}')
+MAX_PLAN_OVERRIDES = 500
+MAX_VISITATION_EXCLUSIONS = 500
 
 
 class PlanOverrideSerializer(serializers.Serializer):
     includeCM = serializers.BooleanField(source='include_cm', default=False)
     visitationMaterialExclusions = serializers.ListField(
-        source='visitation_material_exclusions', child=serializers.CharField(), default=list
+        source='visitation_material_exclusions',
+        child=serializers.CharField(max_length=3),
+        max_length=MAX_VISITATION_EXCLUSIONS,
+        default=list,
     )
     autoOptimizeHabs = serializers.BooleanField(source='auto_optimize_habs', default=True)
     constructionBuilt = serializers.DictField(
@@ -219,14 +225,14 @@ class FIORepairPlanLinkSerializer(serializers.Serializer):
 class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     # Frontend JSON: camelCase, variable name
     # Backend JSON: snake_case, source
-    locale = serializers.CharField(allow_null=True, required=False)
+    locale = serializers.CharField(allow_null=True, required=False, max_length=16)
     defaultEmpireUuid = serializers.UUIDField(source='default_empire_uuid', allow_null=True, required=False)
     defaultCXUuid = serializers.UUIDField(source='default_cx_uuid', allow_null=True, required=False)
     defaultBuyItemsFromCX = serializers.BooleanField(source='default_buy_items_from_cx', required=False)
     burnDaysRed = serializers.IntegerField(source='burn_days_red', min_value=0, default=5, required=False)
     burnDaysYellow = serializers.IntegerField(source='burn_days_yellow', min_value=0, default=10, required=False)
     burnResupplyDays = serializers.IntegerField(source='burn_resupply_days', min_value=0, default=18, required=False)
-    burnOrigin = serializers.CharField(source='burn_origin', required=False)
+    burnOrigin = serializers.CharField(source='burn_origin', required=False, max_length=100)
     supplyCartDays = serializers.FloatField(source='supply_cart_days', min_value=0, default=20, required=False)
     layoutNavigationStyle = serializers.ChoiceField(
         source='layout_navigation_style', choices=LAYOUT_NAVIGATION_STYLES, required=False
@@ -272,6 +278,22 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
         if any(link is not None and 'plan_uuid' not in link for link in value.values()):
             raise serializers.ValidationError('planUuid is required.')
         return value
+
+    def validate_planOverrides(self, value: dict[str, dict | None]) -> dict[str, dict | None]:
+        if len(value) > MAX_PLAN_OVERRIDES:
+            raise serializers.ValidationError(f'At most {MAX_PLAN_OVERRIDES} plans.')
+        bad = [key for key in value if not PLAN_UUID.fullmatch(key)]
+        if bad:
+            raise serializers.ValidationError(f'Invalid plan uuids: {", ".join(bad[:20])}')
+        # overrides for plans the user doesn't own (a shared plan, one just deleted) are dropped, not rejected:
+        # the frontend resends a rejected key with every later PATCH, which would block all preference saves
+        owned = {
+            str(uuid)
+            for uuid in PlanningPlan.objects.filter(user=self.context['request'].user, uuid__in=value).values_list(
+                'uuid', flat=True
+            )
+        }
+        return {key: override for key, override in value.items() if override is None or key in owned}
 
     def to_representation(self, instance):
         data_from_db = instance if isinstance(instance, dict) else {}

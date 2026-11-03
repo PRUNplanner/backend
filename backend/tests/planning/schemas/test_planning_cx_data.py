@@ -14,3 +14,11 @@ def test_accepts_ticker() -> None:
     )
 
     assert data.ticker_empire[0].ticker == 'DW'
+
+
+@pytest.mark.parametrize('value', ['nan', 'inf', '-Infinity', float('nan')])
+def test_rejects_non_finite_value(value: object) -> None:
+    with pytest.raises(ValidationError):
+        CXExchangeTickerPreferences_V1.model_validate(
+            {'ticker_empire': [{'ticker': 'DW', 'type': 'BUY', 'value': value}]}
+        )

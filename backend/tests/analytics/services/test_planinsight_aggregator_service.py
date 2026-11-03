@@ -1,5 +1,6 @@
 from collections import Counter, defaultdict
 
+import orjson
 import pytest
 from analytics.models import AnalyticsPlanAggregate
 from analytics.services.planinsight_aggregator_service import PlanInsightAggregatorService, _BuildingUsage
@@ -229,3 +230,22 @@ V1_SNAPSHOT = {
         'RIG': [{'recipe_id': 'RIG#water', 'percentage': 100.0}],
     },
 }
+
+
+class TestOutOfBoundsPlans:
+    @pytest.mark.parametrize('amount', [10**400, 2**64, 100_001])
+    def test_plans_stored_out_of_bounds_are_skipped(self, gamedata: None, amount: int) -> None:
+        """Stored before the schema caps: 10**400 overflowed the median, 2**64 broke orjson on the public endpoint."""
+        users = [_user() for _ in range(10)]
+        for i in range(15):
+            _plan(users[i % 10], [('FRM', 1, {'FRM#GRN': 1})], {'Chemistry': 2})
+        for i in range(6):
+            _plan(users[i], [('FRM', 1, {'FRM#GRN': 1})], {'Chemistry': amount})
+        _plan(users[0], [('FRM', amount, {'FRM#GRN': 1})])
+        _plan(users[0], [('FRM', 1, {'FRM#GRN': amount})])
+
+        data = _aggregate()
+
+        assert AnalyticsPlanAggregate.objects.get(planet_natural_id=PLANET).total_plans_analyzed == 15
+        assert data['experts'] == [{'type': 'Chemistry', 'plans_percentage': 100.0, 'median_amount': 2}]
+        orjson.dumps(data)
