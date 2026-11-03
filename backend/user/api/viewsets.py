@@ -301,7 +301,10 @@ class UserProfileViewSet(viewsets.GenericViewSet):
     def throttle_scope(self) -> str | None:
         # saving FIO credentials calls FIO, so it must not become a key tester
         # and change_password hashes the old password, so it must not become a password tester
-        return {'update_profile': 'profile_update', 'change_password': 'auth_change_password'}.get(self.action)
+        return {
+            'update_profile': 'profile_update',
+            'change_password': 'auth_change_password',  # nosec B105: a throttle scope, not a password
+        }.get(self.action)
 
     def get_serializer_class(self):
         if self.action == 'change_password':
