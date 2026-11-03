@@ -66,6 +66,16 @@ class TestCXViewSetCrud:
         assert response.status_code == 200
         assert response.data['cx_name'] == 'Updated Name'
 
+    def test_update_rejects_nan_ticker_value(self, api_client, user_factory, cx_factory):
+        user = user_factory(id=1)
+        cx = cx_factory(user=user, cx_name='CX', cx_data={})
+        cx_data = {'ticker_empire': [{'ticker': 'DW', 'type': 'BUY', 'value': 'nan'}]}
+
+        url = reverse('planning:cx-detail', kwargs={'pk': str(cx.uuid)})
+        response = api_client.as_user(user).put(url, data={'cx_name': 'CX', 'cx_data': cx_data}, format='json')
+
+        assert response.status_code == 400
+
     def test_destroy(self, api_client, user_factory, cx_factory):
         user = user_factory(id=1)
         cx = cx_factory(user=user, cx_name='To Delete')

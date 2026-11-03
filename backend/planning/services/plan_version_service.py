@@ -10,7 +10,15 @@ logger = structlog.get_logger(__name__)
 
 # unnamed saved versions per plan; named ones stay until unnamed
 KEEP_UNNAMED = 10
+# named versions per plan; naming one more is rejected, nothing is dropped
+MAX_NAMED = 20
+NAMED_FULL = f'At most {MAX_NAMED} named versions per plan, unname or delete one first.'
 PLAN_NAME_MAX_LENGTH = 200
+
+
+def named_full(plan: PlanningPlan) -> bool:
+    return PlanningPlanVersion.objects.filter(plan=plan).exclude(name='').count() >= MAX_NAMED
+
 
 SNAPSHOT_FIELDS = (
     'plan_name',

@@ -1,5 +1,5 @@
+from api.renderers import SafeCSVRenderer
 from django.urls import path
-from rest_framework_csv.renderers import CSVRenderer
 
 from .viewsets import CXViewSet, EmpireViewSet, PlanViewSet, SharedViewSet
 from .viewsets.plan_version_viewset import PlanDraftViewSet, PlanVersionViewSet
@@ -52,7 +52,7 @@ urlpatterns = [
     ),
     path(
         'empire/<uuid:pk>/plans/csv/',
-        EmpireViewSet.as_view({'get': 'retrieve_plans_csv'}, renderer_classes=[CSVRenderer]),
+        EmpireViewSet.as_view({'get': 'retrieve_plans_csv'}, renderer_classes=[SafeCSVRenderer]),
         name='empire-plan-list-csv',
     ),
     path(
@@ -62,7 +62,7 @@ urlpatterns = [
     ),
     path(
         'empire/<uuid:pk>/plans/material_io/csv/',
-        EmpireViewSet.as_view({'get': 'plans_material_io_csv'}, renderer_classes=[CSVRenderer]),
+        EmpireViewSet.as_view({'get': 'plans_material_io_csv'}, renderer_classes=[SafeCSVRenderer]),
         name='empire-plans-material-io-csv',
     ),
     path(
@@ -72,7 +72,7 @@ urlpatterns = [
     ),
     path(
         'empire/<uuid:pk>/material_io/csv/',
-        EmpireViewSet.as_view({'get': 'material_io_csv'}, renderer_classes=[CSVRenderer]),
+        EmpireViewSet.as_view({'get': 'material_io_csv'}, renderer_classes=[SafeCSVRenderer]),
         name='empire-material-io-csv',
     ),
     path(

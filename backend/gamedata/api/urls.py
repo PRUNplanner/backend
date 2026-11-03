@@ -1,3 +1,4 @@
+from api.renderers import SafeCSVRenderer
 from django.urls import path
 from gamedata.api.sse import sse_stream_view
 from gamedata.api.viewsets import (
@@ -12,7 +13,6 @@ from gamedata.api.viewsets import (
     GameStorageRowsViewSet,
     GameStorageViewSet,
 )
-from rest_framework_csv.renderers import CSVRenderer
 
 app_name = 'data'
 
@@ -51,7 +51,7 @@ urlpatterns = [
     path('cxpc/daily/', ExchangeCXPCViewSet.as_view({'get': 'cxpc_daily'}), name='cxpc-daily'),
     path(
         'cxpc/daily/csv/',
-        ExchangeCXPCViewSet.as_view({'get': 'cxpc_daily_csv'}, renderer_classes=[CSVRenderer]),
+        ExchangeCXPCViewSet.as_view({'get': 'cxpc_daily_csv'}, renderer_classes=[SafeCSVRenderer]),
         name='cxpc-daily-csv',
     ),
     path('market/summary/', ExchangeCXPCViewSet.as_view({'get': 'market_summary'}), name='market-summary'),
@@ -68,7 +68,7 @@ urlpatterns = [
     path('storage/rows/', GameStorageRowsViewSet.as_view({'get': 'rows'}), name='storage-rows'),
     path(
         'storage/csv/',
-        GameStorageRowsViewSet.as_view({'get': 'csv'}, renderer_classes=[CSVRenderer]),
+        GameStorageRowsViewSet.as_view({'get': 'csv'}, renderer_classes=[SafeCSVRenderer]),
         name='storage-csv',
     ),
     path('storage/', GameStorageViewSet.as_view(actions={'get': 'retrieve'}), name='storage-retrieve'),
