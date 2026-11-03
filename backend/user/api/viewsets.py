@@ -1,8 +1,11 @@
+from datetime import timedelta
+
 import structlog
 from django.contrib.auth import password_validation
 from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -24,7 +27,7 @@ from user.api.serializer import (
     UserRegisterSerializer,
     VerifyCodeSerializer,
 )
-from user.models import User, UserAPIKey, UserPreference
+from user.models import User, UserAPIKey, UserPreference, VerificationCode
 from user.services import VerificationeCodeChoices, VerificationService
 from user.services.verification_service import CODE_DETAILS
 from user.tasks import user_handle_post_refresh
@@ -33,6 +36,10 @@ logger = structlog.get_logger(__name__)
 
 # a client can refresh its token in bursts; last_login and the FIO check need it once per interval
 POST_REFRESH_INTERVAL_SECONDS = 15 * 60
+
+# a reset request within this window keeps the pending code and sends nothing, so nobody can flood an inbox or
+# keep replacing the owner's code
+RESET_RESEND_WINDOW = timedelta(minutes=5)
 
 # planOverrides by plan uuid, fioRepairPlanLinks by FIO SiteId
 KEYED_PREFERENCES = ('plan_overrides', 'fio_repair_plan_links')
@@ -257,7 +264,15 @@ class UserPasswordResetViewSet(viewsets.ViewSet):
             .order_by('pk')
             .first()
         )
-        if user:
+        if (
+            user
+            and not VerificationCode.objects.filter(
+                user=user,
+                purpose=VerificationeCodeChoices.PASSWORD_RESET,
+                is_used=False,
+                created_at__gt=timezone.now() - RESET_RESEND_WINDOW,
+            ).exists()
+        ):
             VerificationService.create_and_send_code(user, VerificationeCodeChoices.PASSWORD_RESET)
         logger.info('password_reset_requested', matched=user is not None, user_id=user.pk if user else None)
 

@@ -1,0 +1,11 @@
+{% extends "emails/email_base.html" %}
+
+{% block content %}
+<h2 style="color: #ffffff; margin-top: 0; margin-bottom: 15px; font-size: 22px;">Email Address Changed</h2>
+  <p style="margin-bottom: 25px;">Hello <span style="color: #c0e219;">{{username}}</span>,</p>
+  <p>The email address of your <span style="color: #c0e219;">PRUNplanner</span> account was changed. This address no longer receives password reset codes.</p>
+  <p style="margin-bottom: 25px;">If you did not make this change, someone else knows your password. Please get in touch right away.</p>
+  <p style="font-size: 12px; color: #8b949e; word-break: break-all;">
+      PRUNplanner username: {{ username }}
+  </p>
+{% endblock %}

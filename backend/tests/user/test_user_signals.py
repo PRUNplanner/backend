@@ -81,6 +81,29 @@ class TestEmailSignals:
         assert new.purpose == VerificationeCodeChoices.EMAIL_VERIFICATION
         send.assert_called_once()
 
+    @pytest.mark.parametrize(('verified', 'notified'), [(True, True), (False, False)])
+    def test_changing_the_email_notifies_only_a_confirmed_old_address_after_commit(
+        self, django_capture_on_commit_callbacks, verified: bool, notified: bool
+    ) -> None:
+        user = _with_email('old@example.com', verified=verified)
+
+        with (
+            patch('user.tasks.send_email_verification_code.apply_async'),
+            patch('user.tasks.send_email_changed_notice.apply_async') as notice,
+        ):
+            with django_capture_on_commit_callbacks() as callbacks:
+                user.email = 'new@example.com'
+                user.save()
+            notice.assert_not_called()
+            for callback in callbacks:
+                callback()
+
+        if notified:
+            notice.assert_called_once_with(args=[user.pk, user.username, 'old@example.com'])
+        else:
+            notice.assert_not_called()
+        assert not hasattr(user, '_old_email')
+
     @pytest.mark.parametrize('cleared', [None, ''])
     def test_clearing_the_email_unconfirms_and_drops_codes(
         self, django_capture_on_commit_callbacks, cleared: str | None

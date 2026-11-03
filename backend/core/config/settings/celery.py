@@ -49,6 +49,7 @@ CELERY_TASK_ANNOTATIONS = {
         'priority': 1,
     },
     'user_send_password_reset_code': {'priority': 1},
+    'user_send_email_changed_notice': {'priority': 1},
     # game data
     'gamedata_refresh_planet': {
         'priority': 5,
