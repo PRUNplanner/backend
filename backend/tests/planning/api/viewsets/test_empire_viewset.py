@@ -290,6 +290,42 @@ class TestEmpireViewSetQueries:
 
         assert not any('empire_state' in q['sql'] for q in ctx.captured_queries)
 
+    @pytest.mark.parametrize('endpoint', ['list', 'detail', 'state'])
+    def test_plans_prefetch_skips_plan_data(self, endpoint, api_client, user_factory, empire_factory, plan_factory):
+        """PERF-04: the nested plans are uuid, name and planet; plan_data stays in the database."""
+        baker.make('gamedata.GameMaterial', ticker='H2O')
+        user = user_factory(id=1)
+        empire = empire_factory(user=user)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis, plan_name='Vallis', planet_natural_id='OT-580b')
+        empire.plans.add(plan, through_defaults={'user': user})
+        client = api_client.as_user(user)
+
+        with CaptureQueriesContext(connection) as ctx:
+            if endpoint == 'list':
+                response = client.get(reverse('planning:empire'))
+                body = response.data[0]
+            elif endpoint == 'detail':
+                response = client.get(reverse('planning:empire-detail', kwargs={'pk': str(empire.uuid)}))
+                body = response.data
+            else:
+                url = reverse('planning:empire-sync-state', kwargs={'pk': str(empire.uuid)})
+                response = client.patch(url, data=_state_payload(str(plan.uuid)), format='json')
+                body = response.data
+
+        assert response.status_code == 200
+        assert body['plans'] == [{'uuid': str(plan.uuid), 'plan_name': 'Vallis', 'planet_natural_id': 'OT-580b'}]
+        assert not any('plan_data' in q['sql'] for q in ctx.captured_queries)
+
+    def test_plans_prefetch_is_the_owners(self, api_client, user_factory, empire_factory, plan_factory):
+        """SEC-16: a link to another user's plan never puts that plan in the empire's payloads."""
+        user, other = user_factory(id=1), user_factory(id=2)
+        empire = empire_factory(user=user)
+        empire.plans.add(plan_factory(user=other, plan_data=plan_data_vallis), through_defaults={'user': user})
+        client = api_client.as_user(user)
+
+        assert client.get(reverse('planning:empire-detail', kwargs={'pk': str(empire.uuid)})).data['plans'] == []
+        assert client.get(reverse('planning:empire-plan-list', kwargs={'pk': str(empire.uuid)})).data == []
+
 
 def _state_payload(plan_uuid: str) -> dict[str, object]:
     return {

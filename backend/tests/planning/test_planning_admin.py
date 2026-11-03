@@ -286,6 +286,31 @@ class TestPlanVersions:
         assert PlanningPlanVersion.all_objects.filter(plan=plan).count() == 3
         assert version.pk in PlanningPlanVersion.objects.filter(plan=plan).values_list('pk', flat=True)
 
+    @pytest.mark.usefixtures('locmem_cache')
+    def test_owner_change_drops_the_old_owners_links_and_share(
+        self, admin_client: Client, api_client, seeded: Seeded, plan: PlanningPlan, django_capture_on_commit_callbacks
+    ) -> None:
+        """SEC-16: the old owner can't read the plan through an empire, the new owner can share it, both caches move."""
+        old_owner = seeded.user
+        new_owner = baker.make(User)
+        empire_plans = reverse('planning:empire-plan-list', kwargs={'pk': seeded.empire.pk})
+        plan_list = reverse('planning:plan')
+        # warm both users' caches
+        assert str(plan.pk) in {p['uuid'] for p in api_client.as_user(old_owner).get(empire_plans).data}
+        assert api_client.as_user(new_owner).get(plan_list).data == []
+        data = self._form_data(plan, [])
+        data['user'] = new_owner.pk
+
+        with django_capture_on_commit_callbacks(execute=True):
+            assert admin_client.post(url(PlanningPlan, 'change', plan.pk), data).status_code == 302
+
+        assert str(plan.pk) not in {p['uuid'] for p in api_client.as_user(old_owner).get(empire_plans).data}
+        assert [p['uuid'] for p in api_client.as_user(new_owner).get(plan_list).data] == [str(plan.pk)]
+        assert not PlanningEmpirePlan.objects.filter(plan=plan).exists()
+        assert not PlanningShared.objects.filter(plan=plan).exists()
+        share = api_client.as_user(new_owner).post(reverse('planning:shared'), {'plan': plan.pk}, format='json')
+        assert share.status_code == 201
+
     def test_add_records_a_save_version(self, admin_client: Client, plan: PlanningPlan) -> None:
         response = admin_client.post(url(PlanningPlan, 'add'), self._form_data(plan, []))
 

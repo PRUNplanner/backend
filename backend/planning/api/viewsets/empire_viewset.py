@@ -4,6 +4,7 @@ from uuid import UUID
 
 from core.services.cache_manager import CacheManager
 from django.db import transaction
+from django.db.models import Prefetch
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -20,6 +21,7 @@ from planning.api.serializers.empire import (
     PlanningEmpirePlanMaterialIOExportSerializer,
     PlanningEmpireStateUpdateSerializer,
 )
+from planning.api.serializers.minimal import MINIMAL_PLAN_FIELDS
 from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
 from planning.planning_cache_manager import PLANNING
 from planning.services.empire_export_service import (
@@ -78,10 +80,13 @@ class EmpireViewSet(
     serializer_class = PlanningEmpireDetailSerializer
 
     def get_queryset(self):
+        plans = PlanningPlan.objects.filter(user=self.request.user)
+        if self.action not in ('retrieve_plans', 'retrieve_plans_csv'):
+            plans = plans.only(*MINIMAL_PLAN_FIELDS)
         return (
             PlanningEmpire.objects.filter(user=self.request.user)
             .defer('empire_state')
-            .prefetch_related('plans', 'cx')
+            .prefetch_related(Prefetch('plans', queryset=plans), 'cx')
             .order_by('empire_name')
         )
 
