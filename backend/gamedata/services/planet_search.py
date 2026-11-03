@@ -2,7 +2,7 @@ import time
 from typing import TypedDict, cast
 
 import structlog
-from django.db.models import Count, Q
+from django.db.models import Count, Q, QuerySet
 
 from gamedata.models import GamePlanet, GamePlanetCOGCStatusChoices, GamePlanetEnvironmentChoices, queryset_gameplanet
 
@@ -30,8 +30,7 @@ class SearchRequestType(TypedDict):
 
 class GamePlanetSearchService:
     @staticmethod
-    def search(search_request: SearchRequestType) -> list[GamePlanet]:
-        start_time = time.perf_counter()
+    def filtered(search_request: SearchRequestType) -> QuerySet[GamePlanet]:
         # annotated with active_cogc_program_type
         queryset = queryset_gameplanet()
 
@@ -100,18 +99,32 @@ class GamePlanetSearchService:
         if search_request.get('must_have_shipyard', False):
             queryset = queryset.filter(has_shipyard=True)
 
-        # execute, transform to list
-        data = list(queryset)
+        return queryset
+
+    @staticmethod
+    def search(search_request: SearchRequestType) -> list[str]:
+        start_time = time.perf_counter()
+        # ids only: the views serve the planets from their per-planet cache entries
+        data = list(
+            GamePlanetSearchService.filtered(search_request)
+            .prefetch_related(None)
+            .values_list('planet_natural_id', flat=True)
+        )
 
         duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        # counts, not the lists: request input stays out of the logs
         logger.info(
-            'planet_search_completed', search_request=search_request, results=len(data), duration_ms=duration_ms
+            'planet_search_completed',
+            materials=len(search_request.get('materials', [])),
+            cogc_programs=len(search_request.get('cogc_programs', [])),
+            results=len(data),
+            duration_ms=duration_ms,
         )
 
         return data
 
     @staticmethod
-    def search_by_term(search_term: str) -> list[GamePlanet]:
+    def search_by_term(search_term: str) -> list[str]:
         if not search_term:
             return []
 
@@ -121,4 +134,4 @@ class GamePlanetSearchService:
             Q(planet_natural_id__icontains=search_term) | Q(planet_name__icontains=search_term)
         ).distinct()
 
-        return list(queryset)
+        return list(queryset.prefetch_related(None).values_list('planet_natural_id', flat=True))

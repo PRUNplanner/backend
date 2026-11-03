@@ -12,6 +12,7 @@ from gamedata.fio.importers import (
     import_all_exchanges,
     import_all_materials,
     import_all_planet_plots,
+    import_all_planets,
     import_planet,
     import_planet_infrastructure,
     import_planet_plots,
@@ -370,3 +371,14 @@ class TestImportAllPlanetPlots:
             r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'planet_plots_refresh_failed'
         ]
         assert [m['planet_natural_id'] for m in failed] == ['AA-003a']
+
+
+class TestImportAllPlanets:
+    def test_queues_the_planet_cache_warm_after_saving(self):
+        with (
+            patch('gamedata.fio.importers.get_fio_service', return_value=_fio_returning(get_all_planets=[])),
+            patch('gamedata.tasks.gamedata_warm_planet_caches.delay') as warm,
+        ):
+            assert import_all_planets() is True
+
+        warm.assert_called_once_with()

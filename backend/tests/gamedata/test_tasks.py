@@ -10,6 +10,7 @@ import httpx
 import pytest
 from celery.canvas import Signature
 from core.services.cache_manager import CacheManager
+from django.urls import reverse
 from django.utils import timezone
 from gamedata.fio.importers import cxpc_objects
 from gamedata.fio.schemas import FIOExchangeCXPC, FIOExchangeFullSChema
@@ -28,11 +29,13 @@ from gamedata.tasks import (
     gamedata_refresh_planet_plots,
     gamedata_refresh_user_fiodata,
     gamedata_trigger_refresh_cxpc,
+    gamedata_warm_planet_caches,
     refresh_exchange_analytics,
     refresh_exchanges,
 )
 from model_bakery import baker
 from pydantic import TypeAdapter
+from rest_framework.test import APIClient
 
 CaptureOnCommit = Callable[..., AbstractContextManager[object]]
 LONG_AGO = timezone.now() - timedelta(days=1)
@@ -810,3 +813,24 @@ class TestRefreshUserFiodataChangeDetection:
         assert new_changed is True
         assert new_key != first_key
         assert GameFIOPlayerData.objects.get(user=user).storage_data == [{'Amount': 2}]
+
+
+@pytest.mark.usefixtures('locmem_cache')
+@pytest.mark.django_db
+class TestWarmPlanetCaches:
+    def test_fills_and_refreshes_the_planet_list_and_search_index(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet_factory(planet_natural_id='AB-001a')
+        gamedata_warm_planet_caches()
+        list_url, index_url = reverse('data:planet-list'), reverse('data:planet-search-index')
+
+        assert api_client.get(list_url)['X-Cache-Hit'] == '1'
+        assert api_client.get(index_url)['X-Cache-Hit'] == '1'
+
+        # a single planet refresh doesn't invalidate the list; the next warm picks it up
+        planet_factory(planet_natural_id='AB-002a')
+        gamedata_warm_planet_caches()
+
+        assert len(api_client.get(list_url).data) == 2
+        assert len(api_client.get(index_url).data) == 2

@@ -13,7 +13,7 @@ from django.utils import timezone
 
 from gamedata.fio.schemas import FIOWebhookRootSchema
 from gamedata.fio.services import get_fio_service, log_refresh_failure
-from gamedata.gamedata_cache_manager import CXPC, EXCHANGES, GamedataCacheManager
+from gamedata.gamedata_cache_manager import CXPC, EXCHANGES, PLANET_LIST, PLANET_SEARCH_INDEX, GamedataCacheManager
 from gamedata.services.cxpc_refresh import CXPCFetch, cxpc_window_start_ms, select_cxpc_pairs
 from gamedata.services.cxpc_sparklines import utc_today_epoch
 
@@ -427,6 +427,16 @@ def gamedata_warm_market_summary() -> bool:
     return CacheManager.warm(
         CXPC, MARKET_SUMMARY_ENDPOINT, today_epoch, build=lambda: build_market_summary(today_epoch)
     )
+
+
+# beat every 10 min (below the 15 min ttl) and after planet imports: their cold builds take longer than the
+# stampede wait, so no visitor should ever be the one building them
+@shared_task(name='gamedata_warm_planet_caches')
+def gamedata_warm_planet_caches() -> None:
+    from gamedata.services.planet_cache import build_planet_list, build_planet_search_index
+
+    CacheManager.warm(PLANET_LIST, 'list', build=build_planet_list, force=True)
+    CacheManager.warm(PLANET_SEARCH_INDEX, 'index', build=build_planet_search_index, force=True)
 
 
 @shared_task(name='gamedata_process_fio_webhook')
