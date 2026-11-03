@@ -1,6 +1,7 @@
 import time
 
 import structlog
+from celery.exceptions import SoftTimeLimitExceeded
 from core.services.cache_manager import CacheManager
 from django.db import transaction
 from django.db.models import Max
@@ -47,6 +48,9 @@ from gamedata.models import (
 )
 
 logger = structlog.get_logger(__name__)
+
+# full imports insert up to ~230k rows (planet resources); one INSERT per this many
+BULK_BATCH_SIZE = 1000
 
 
 def import_planet(planet_natural_id: str) -> bool:
@@ -269,7 +273,7 @@ def save_planets(planets: list[FIOPlanetSchema]) -> None:
         planet_objs = [
             GamePlanet(**p.model_dump(exclude={'resources', 'cogc_programs', 'production_fees'})) for p in planets
         ]
-        GamePlanet.objects.bulk_create(planet_objs)
+        GamePlanet.objects.bulk_create(planet_objs, batch_size=BULK_BATCH_SIZE)
 
         # create a map of planets by their planet_natural_id
         planet_map = {
@@ -307,9 +311,9 @@ def save_planets(planets: list[FIOPlanetSchema]) -> None:
             for r in p.cogc_programs
         ]
 
-        GamePlanetResource.objects.bulk_create(resource_objs, ignore_conflicts=True)
-        GamePlanetProductionFee.objects.bulk_create(fee_objs, ignore_conflicts=True)
-        GamePlanetCOGCProgram.objects.bulk_create(program_objs, ignore_conflicts=True)
+        GamePlanetResource.objects.bulk_create(resource_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
+        GamePlanetProductionFee.objects.bulk_create(fee_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
+        GamePlanetCOGCProgram.objects.bulk_create(program_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
 
     CacheManager.invalidate(PLANET_SEARCH_INDEX)
     CacheManager.invalidate(PLANET_LIST)  # single planets are invalidated by their post_delete signal
@@ -414,6 +418,8 @@ def import_all_planet_plots() -> tuple[int, int]:
                 refreshed += 1
             else:
                 failed += 1
+        except SoftTimeLimitExceeded:
+            raise  # the admin import's time limit ends the whole run, not one planet
         except Exception as exc:
             log_refresh_failure(logger, 'planet_plots_refresh_failed', exc, planet_natural_id=natural_id)
             failed += 1
@@ -441,6 +447,7 @@ def save_exchanges(exchanges: list[FIOExchangeSchema]) -> None:
 
         GameExchange.objects.bulk_create(
             exchange_objs,
+            batch_size=BULK_BATCH_SIZE,
             update_conflicts=True,
             unique_fields=['ticker_id'],
             update_fields=[
@@ -491,7 +498,7 @@ def save_recipes(recipes: list[FIORecipeSchema]) -> tuple[int, int, int]:
         GameRecipe.objects.all().delete()
 
         recipe_objs = [GameRecipe(**r.model_dump(exclude={'inputs', 'outputs'})) for r in recipes]
-        GameRecipe.objects.bulk_create(recipe_objs, ignore_conflicts=True)
+        GameRecipe.objects.bulk_create(recipe_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
 
         # Map created recipes by standard_recipe_name
         recipe_map = {
@@ -519,9 +526,9 @@ def save_recipes(recipes: list[FIORecipeSchema]) -> tuple[int, int, int]:
             for o in r.outputs
         ]
 
-        GameRecipeInput.objects.bulk_create(input_objs, ignore_conflicts=True)
+        GameRecipeInput.objects.bulk_create(input_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
 
-        GameRecipeOutput.objects.bulk_create(output_objs, ignore_conflicts=True)
+        GameRecipeOutput.objects.bulk_create(output_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
 
     CacheManager.invalidate(RECIPES)
 
@@ -541,7 +548,7 @@ def save_materials(fio_materials: list[FIOMaterialSchema]) -> tuple[int, int]:
     with transaction.atomic():
         deleted_count, _ = GameMaterial.objects.all().delete()
 
-        GameMaterial.objects.bulk_create(material_objs)
+        GameMaterial.objects.bulk_create(material_objs, batch_size=BULK_BATCH_SIZE)
 
     CacheManager.invalidate(MATERIALS)
 
@@ -565,7 +572,7 @@ def save_buildings(fio_buildings: list[FIOBuildingSchema]) -> tuple[int, int]:
         # Prepare GameBuilding objects
         building_objs = [GameBuilding(**b.model_dump(exclude={'building_costs'})) for b in fio_buildings]
 
-        GameBuilding.objects.bulk_create(building_objs, ignore_conflicts=True)
+        GameBuilding.objects.bulk_create(building_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
 
         # Map created buildings by ID
         building_map = {b.building_id: b for b in GameBuilding.objects.filter(building_id__in=fetched_ids)}
@@ -577,7 +584,7 @@ def save_buildings(fio_buildings: list[FIOBuildingSchema]) -> tuple[int, int]:
             for c in b.building_costs
         ]
 
-        GameBuildingCost.objects.bulk_create(cost_objs, ignore_conflicts=True)
+        GameBuildingCost.objects.bulk_create(cost_objs, ignore_conflicts=True, batch_size=BULK_BATCH_SIZE)
 
     CacheManager.invalidate(BUILDINGS)
 

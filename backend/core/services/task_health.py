@@ -80,14 +80,20 @@ def on_task_prerun(task_id: str | None = None, **kwargs: object) -> None:
 def on_task_postrun(
     task_id: str | None = None, task: object = None, retval: object = None, state: str | None = None, **kwargs: object
 ) -> None:
-    """SUCCESS and FAILURE are recorded; RETRY and other states only release the start time."""
+    """SUCCESS and FAILURE are recorded; RETRY and other states only release the start time. A task that catches
+    its error and returns False (logged where it was caught) counts as a failure too."""
     try:
         started = _started.pop(task_id, None) if task_id else None
         name = getattr(task, 'name', None)
         if not name or state not in ('SUCCESS', 'FAILURE'):
             return
         runtime_ms = None if started is None else int((time.monotonic() - started) * 1000)
-        record(name, ok=state == 'SUCCESS', error=None if state == 'SUCCESS' else repr(retval), runtime_ms=runtime_ms)
+        if state == 'FAILURE':
+            record(name, ok=False, error=repr(retval), runtime_ms=runtime_ms)
+        elif retval is False:
+            record(name, ok=False, error='returned False', runtime_ms=runtime_ms)
+        else:
+            record(name, ok=True, runtime_ms=runtime_ms)
     except Exception:
         logger.exception('task_health_receiver_failed')
 
