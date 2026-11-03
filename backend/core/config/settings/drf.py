@@ -37,7 +37,6 @@ REST_FRAMEWORK = {
     },
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
     ],
     'COERCE_DECIMAL_TO_STRING': False,
 }

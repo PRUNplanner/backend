@@ -236,6 +236,12 @@ class PlanningSharedCreateSerializer(serializers.ModelSerializer):
         model = PlanningShared
         fields = ['plan']
 
+    def get_fields(self) -> dict[str, serializers.Field]:
+        fields = super().get_fields()
+        # only the user's own plans: the browsable API renders this queryset as the form's options
+        fields['plan'].queryset = PlanningPlan.objects.filter(user_id=self.context['request'].user.pk)
+        return fields
+
     def validate_plan(self, value):
         if value.user != self.context['request'].user:
             raise serializers.ValidationError('You do not have permission to share this plan.')

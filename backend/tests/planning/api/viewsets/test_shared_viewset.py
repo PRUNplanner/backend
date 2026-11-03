@@ -1,9 +1,14 @@
 import pytest
+from api.renderers import OrjsonRenderer
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from planning.api.viewsets.shared_viewset import SharedViewSet
 from planning.models import PlanningShared
+from rest_framework.renderers import BrowsableAPIRenderer
+from rest_framework_simplejwt.tokens import AccessToken
 from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
+from user.models import UserAPIKey
 
 pytestmark = pytest.mark.django_db
 
@@ -184,3 +189,60 @@ class TestSharedViewSetOwnership:
 
         assert response.status_code == 200
         assert [row['uuid'] for row in response.data] == [str(share.uuid)]
+
+
+class TestSharedHtml:
+    """The browsable API's share form must never list another user's plans (SEC-01)."""
+
+    @pytest.fixture
+    def plans(self, user_factory, plan_factory):
+        owner = user_factory()
+        other = user_factory()
+        return owner, plan_factory(user=owner), plan_factory(user=other)
+
+    def _auth(self, api_client, role, user):
+        if role == 'jwt':
+            api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        elif role == 'api_key':
+            _, key = UserAPIKey.objects.create_key(name='script', user=user)
+            api_client.credentials(HTTP_AUTHORIZATION=f'Api-Key {key}')
+        elif role == 'staff':
+            user.is_staff = True
+            user.save()
+            api_client.force_authenticate(user=user)
+
+    @pytest.mark.parametrize('role', ['anonymous', 'jwt', 'api_key', 'staff'])
+    def test_production_serves_no_html(self, api_client, plans, role):
+        owner, own_plan, other_plan = plans
+        self._auth(api_client, role, owner)
+        url = reverse('planning:shared')
+
+        # ?format=api names a renderer that production doesn't have
+        response = api_client.get(url, {'format': 'api'})
+        assert response.status_code == 404
+        assert 'text/html' not in response['Content-Type']
+
+        # HTML only: nothing to offer
+        response = api_client.get(url, HTTP_ACCEPT='text/html')
+        assert response.status_code == 406
+        assert response['Content-Type'] == 'application/json'
+
+        # a browser's Accept header gets JSON
+        response = api_client.get(url, HTTP_ACCEPT='text/html,application/xhtml+xml,*/*;q=0.8')
+        assert response['Content-Type'] == 'application/json'
+        assert response.status_code == (401 if role == 'anonymous' else 200)
+        assert str(other_plan.uuid) not in response.content.decode()
+
+    def test_local_form_lists_only_own_plans(self, api_client, plans, monkeypatch):
+        # views bind renderer_classes at import, so give the view local.py's renderers directly
+        monkeypatch.setattr(SharedViewSet, 'renderer_classes', [OrjsonRenderer, BrowsableAPIRenderer])
+        owner, own_plan, other_plan = plans
+        api_client.force_authenticate(user=owner)
+
+        response = api_client.get(reverse('planning:shared'), {'format': 'api'})
+
+        assert response.status_code == 200
+        assert response['Content-Type'].startswith('text/html')
+        content = response.content.decode()
+        assert f'value="{own_plan.uuid}"' in content
+        assert str(other_plan.uuid) not in content
