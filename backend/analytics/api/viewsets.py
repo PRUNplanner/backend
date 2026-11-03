@@ -1,13 +1,17 @@
 from datetime import timedelta
 
-from analytics.api.serializer import AnalyticsMarketInsightSerializer, AnalyticsPlanAggregateSerializer
+from analytics.api.serializer import (
+    MATERIAL_INSIGHTS_SCHEMA,
+    AnalyticsPlanAggregateSerializer,
+    AnalyticsPlanBelowThresholdSerializer,
+)
 from analytics.models import AnalyticsEmpireMaterialSnapshot, AnalyticsPlanAggregate
 from analytics.services.analytics_cache_manager import MATERIALS_INSIGHT
 from core.services.cache_manager import CacheManager
 from django.db.models import Sum
 from django.http import Http404
 from django.utils import timezone
-from drf_spectacular.utils import OpenApiExample, extend_schema
+from drf_spectacular.utils import OpenApiExample, PolymorphicProxySerializer, extend_schema
 from gamedata.models.game_planet import GamePlanet
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -22,7 +26,15 @@ class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AnalyticsPlanAggregateSerializer
     permission_classes = [AllowAny]
 
-    @extend_schema(auth=[], summary='Fetch planet insights by Planet Natural Id')
+    @extend_schema(
+        auth=[],
+        summary='Fetch planet insights by Planet Natural Id',
+        responses=PolymorphicProxySerializer(
+            component_name='AnalyticsPlanetInsights',
+            serializers=[AnalyticsPlanAggregateSerializer, AnalyticsPlanBelowThresholdSerializer],
+            resource_type_field_name=None,
+        ),
+    )
     def retrieve(self, request, *args, **kwargs):
         planet_natural_id: str = kwargs.get('planet_natural_id', '')
 
@@ -49,7 +61,7 @@ class AnalyticsMarketInsightViewSet(viewsets.ViewSet):
     @extend_schema(
         auth=[],
         summary='Fetch planning insights for materials',
-        responses={200: AnalyticsMarketInsightSerializer},
+        responses={200: MATERIAL_INSIGHTS_SCHEMA},
         examples=[
             OpenApiExample(
                 'Material Insights Example',

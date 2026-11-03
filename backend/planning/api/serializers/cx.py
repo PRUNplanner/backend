@@ -15,7 +15,7 @@ class PlanningCXDetailSerializer(SaveConflictMixin, serializers.ModelSerializer)
 
     class Meta:
         model = PlanningCX
-        exclude = ['created_at', 'schema_version', 'user']
+        fields = ['uuid', 'base_modified_at', 'empires', 'cx_data', 'modified_at', 'cx_name']
 
     @transaction.atomic
     def create(self, validated_data):
@@ -35,7 +35,3 @@ class PlanningCXJunctionUpdateSerializer(serializers.Serializer):
 
 class PlanningCXJunctionsSyncErrorSerializer(serializers.Serializer):
     error = serializers.CharField()
-
-
-class PlanningCXJunctionsSyncSuccessSerializer(serializers.Serializer):
-    status = serializers.CharField(default='CX-Empire junctions updated')

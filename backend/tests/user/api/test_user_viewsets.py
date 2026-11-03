@@ -663,8 +663,8 @@ def _backdate(code: VerificationCode, age: timedelta) -> None:
     VerificationCode.objects.filter(pk=code.pk).update(created_at=timezone.now() - age)
 
 
-def _make_code(user: User, purpose: VerificationeCodeChoices, code: str) -> VerificationCode:
-    return baker.make('user.VerificationCode', user=user, code=code, purpose=purpose)
+def _make_code(user: User, purpose: VerificationeCodeChoices) -> VerificationCode:
+    return baker.make('user.VerificationCode', user=user, purpose=purpose)
 
 
 class TestUserEmailVerificationViewSet:
@@ -710,14 +710,15 @@ class TestUserEmailVerificationViewSet:
         send.assert_called_once()
         (code,) = VerificationCode.objects.filter(user=user, purpose=VerificationeCodeChoices.EMAIL_VERIFICATION)
         assert code.pk != previous.pk
-        assert send.call_args.kwargs['args'][3] == code.code
+        # only the id: the task derives the code itself
+        assert send.call_args.kwargs['args'] == [code.pk]
 
     def test_verify_email_with_valid_code(self, api_client, user_factory):
         user = user_factory(id=1, is_email_verified=False)
-        code = _make_code(user, VerificationeCodeChoices.EMAIL_VERIFICATION, 'ABCD1234')
+        code = _make_code(user, VerificationeCodeChoices.EMAIL_VERIFICATION)
         client = api_client.as_user(user)
 
-        response = client.post(reverse('user:user_verify_email'), data={'code': 'abcd1234'}, format='json')
+        response = client.post(reverse('user:user_verify_email'), data={'code': code.code.lower()}, format='json')
 
         assert response.status_code == 200
         assert response.data == {'detail': 'Email verified.', 'code': 'verified'}
@@ -726,7 +727,7 @@ class TestUserEmailVerificationViewSet:
         assert user.is_email_verified is True
         assert code.is_used is True
 
-        again = client.post(reverse('user:user_verify_email'), data={'code': 'ABCD1234'}, format='json')
+        again = client.post(reverse('user:user_verify_email'), data={'code': code.code}, format='json')
         assert again.status_code == 400
         assert again.data['code'] == 'already_verified'
 
@@ -741,7 +742,10 @@ class TestUserEmailVerificationViewSet:
     )
     def test_verify_email_failures(self, api_client, user_factory, code_input: str, age: timedelta, expected: str):
         user = user_factory(id=1, is_email_verified=False)
-        _backdate(_make_code(user, VerificationeCodeChoices.EMAIL_VERIFICATION, 'ABCD1234'), age)
+        code = _make_code(user, VerificationeCodeChoices.EMAIL_VERIFICATION)
+        _backdate(code, age)
+        # ABCD1234 stands for the real code
+        code_input = code.code if code_input == 'ABCD1234' else code_input
 
         response = api_client.as_user(user).post(
             reverse('user:user_verify_email'), data={'code': code_input}, format='json'
@@ -896,7 +900,7 @@ class TestUserPasswordResetViewSet:
         self, api_client, user_factory, django_capture_on_commit_callbacks
     ):
         user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
-        old = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+        old = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
         _backdate(old, RESET_RESEND_WINDOW + timedelta(seconds=1))
 
         with (
@@ -912,12 +916,12 @@ class TestUserPasswordResetViewSet:
 
     def test_password_reset_with_valid_code(self, api_client, user_factory):
         user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
-        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
-        other = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'OTHER123')
+        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
+        other = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
 
         response = api_client.post(
             reverse('user:user_password_reset'),
-            data={'email': 'Pilot@EXAMPLE.com', 'code': 'reset123', 'new_password': 'Xk7!qzR9pLm2'},
+            data={'email': 'Pilot@EXAMPLE.com', 'code': code.code.lower(), 'new_password': 'Xk7!qzR9pLm2'},
             format='json',
         )
 
@@ -933,11 +937,11 @@ class TestUserPasswordResetViewSet:
 
     def test_password_reset_accepts_a_password_over_72_bytes(self, api_client, user_factory):
         user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
-        _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
 
         response = api_client.post(
             reverse('user:user_password_reset'),
-            data={'email': user.email, 'code': 'RESET123', 'new_password': LONG_PASSWORD},
+            data={'email': user.email, 'code': code.code, 'new_password': LONG_PASSWORD},
             format='json',
         )
 
@@ -961,7 +965,10 @@ class TestUserPasswordResetViewSet:
         self, api_client, user_factory, verified: bool, code_input: str, age: timedelta, expected: str
     ):
         user = user_factory(id=1, email='pilot@example.com', is_email_verified=verified)
-        _backdate(_make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123'), age)
+        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
+        _backdate(code, age)
+        # RESET123 stands for the real code
+        code_input = code.code if code_input == 'RESET123' else code_input
 
         response = api_client.post(
             reverse('user:user_password_reset'),
@@ -976,11 +983,11 @@ class TestUserPasswordResetViewSet:
 
     def test_password_reset_keeps_field_errors_for_a_weak_password(self, api_client, user_factory):
         user = user_factory(id=1, email='pilot@example.com', is_email_verified=True)
-        _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
 
         response = api_client.post(
             reverse('user:user_password_reset'),
-            data={'email': user.email, 'code': 'RESET123', 'new_password': '123'},
+            data={'email': user.email, 'code': code.code, 'new_password': '123'},
             format='json',
         )
 
@@ -1359,13 +1366,14 @@ class TestProfileEmail:
 
         assert response.status_code == 200
         assert (response.data['email'], response.data['is_email_verified']) == ('new@example.com', False)
-        assert send.call_args.kwargs['args'][2] == 'new@example.com'
-        notice.assert_called_once_with(args=[user.pk, user.username, 'old@example.com'])
+        (new_code,) = VerificationCode.objects.filter(user=user)
+        assert send.call_args.kwargs['args'] == [new_code.pk]
+        notice.assert_called_once_with(args=[user.pk, 'old@example.com'])
 
     @pytest.mark.parametrize('cleared', ['', None])
     def test_clearing_the_email(self, api_client, django_capture_on_commit_callbacks, cleared: str | None):
         user = self._user(email='pilot@example.com', is_email_verified=True)
-        _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+        _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
 
         with (
             patch('user.tasks.send_email_verification_code.apply_async') as send,
@@ -1546,7 +1554,7 @@ class TestEmailFlowLogs:
 
         with (
             capture_logs() as logs,
-            patch('user.services.verification_service.VerificationService.generate_numeric_code', return_value=code),
+            patch.object(VerificationCode, 'code', new=code),
             patch('user.tasks.send_email_verification_code.apply_async'),
             patch('user.tasks.send_password_reset_code.apply_async'),
             django_capture_on_commit_callbacks(execute=True),
@@ -1639,11 +1647,11 @@ class TestPasswordChecks:
 
     def test_password_reset_rejects_a_password_equal_to_the_username(self, api_client, user_factory):
         user = user_factory(id=1, username='starpilot77', email='pilot@example.com', is_email_verified=True)
-        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET)
 
         response = api_client.post(
             reverse('user:user_password_reset'),
-            data={'email': user.email, 'code': 'RESET123', 'new_password': 'starpilot77'},
+            data={'email': user.email, 'code': code.code, 'new_password': 'starpilot77'},
             format='json',
         )
 

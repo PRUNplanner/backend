@@ -521,5 +521,5 @@ class VerificationCodeAdmin(ReadOnlyAdminMixin, ModelAdmin):
     list_select_related = ['user']
     list_filter = ['purpose', 'is_used']
     search_fields = ['user__username', 'user__email']
-    exclude = ['code']
+    exclude = ['secret']
     ordering = ['-created_at']

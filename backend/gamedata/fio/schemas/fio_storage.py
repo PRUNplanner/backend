@@ -1,6 +1,8 @@
 from datetime import datetime
 
+from drf_spectacular.utils import inline_serializer
 from pydantic import BaseModel, Field, field_validator
+from rest_framework import serializers
 
 
 class FIOUserStorageItemSchema(BaseModel):
@@ -71,3 +73,22 @@ class FIOUserStorageSchema(BaseModel):
             data['StorageItems'] = [item for item in data['StorageItems'] if item.get('MaterialTicker') is not None]
 
         return data
+
+
+# docs only: to_game_storage_dict plus the Identifier the storage serializer adds
+drf_storage_schema = inline_serializer(
+    name='FIOUserStorageResponse',
+    fields={
+        'Name': serializers.CharField(required=False),
+        'WeightCapacity': serializers.FloatField(),
+        'VolumeCapacity': serializers.FloatField(),
+        'WeightLoad': serializers.FloatField(),
+        'VolumeLoad': serializers.FloatField(),
+        'StorageItems': inline_serializer(
+            name='FIOUserStorageItemResponse',
+            many=True,
+            fields={'MaterialTicker': serializers.CharField(), 'MaterialAmount': serializers.IntegerField()},
+        ),
+        'Identifier': serializers.CharField(),
+    },
+)

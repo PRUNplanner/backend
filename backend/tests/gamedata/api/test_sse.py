@@ -7,6 +7,7 @@ import pytest
 from django.http import HttpResponseBase, StreamingHttpResponse
 from django.test import Client, RequestFactory
 from django.urls import reverse
+from drf_spectacular.generators import SchemaGenerator
 from gamedata.api import sse
 from pytest_django.fixtures import SettingsWrapper
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -186,3 +187,11 @@ class TestPool:
 
         from_url.assert_called_once()
         assert {id(client.connection_pool) for client in clients} == {id(from_url.return_value)}
+
+
+def test_stream_is_in_the_openapi_schema() -> None:
+    """A plain async view is skipped by drf-spectacular; the postprocessing hook documents it."""
+    operation = SchemaGenerator().get_schema(request=None, public=True)['paths']['/data/stream/']['get']
+
+    assert 'text/event-stream' in operation['responses']['200']['content']
+    assert [p['name'] for p in operation['parameters'] if p['in'] == 'query'] == ['channels']

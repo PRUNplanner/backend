@@ -6,8 +6,8 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
-from rest_framework import mixins, status, viewsets
+from drf_spectacular.utils import PolymorphicProxySerializer, extend_schema, inline_serializer
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -17,13 +17,17 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from user.api.serializer import (
     PLANET_CHECKLIST,
     CodeGenericResponseSerializer,
+    DetailResponseSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
+    UserAPIKeyCreatedSerializer,
     UserAPIKeyCreateSerializer,
     UserAPIKeySerializer,
     UserChangePasswordSerializer,
+    UserPreferenceResponseSerializer,
     UserPreferenceSerializer,
     UserProfileSerializer,
+    UserRegisteredSerializer,
     UserRegisterSerializer,
     VerifyCodeSerializer,
 )
@@ -68,13 +72,13 @@ class UserPreferenceViewSet(mixins.RetrieveModelMixin, mixins.UpdateModelMixin, 
         obj, created = UserPreference.objects.get_or_create(user=self.request.user)
         return obj.preferences
 
-    @extend_schema(summary='Get preferences')
+    @extend_schema(summary='Get preferences', responses=UserPreferenceResponseSerializer)
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @extend_schema(summary='Update preferences')
+    @extend_schema(summary='Update preferences', responses=UserPreferenceResponseSerializer)
     def partial_update(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -104,7 +108,7 @@ class UserRegisterViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
     def perform_create(self, serializer):
         serializer.save()
 
-    @extend_schema(auth=[], summary='Register account')
+    @extend_schema(auth=[], summary='Register account', responses={201: UserRegisteredSerializer})
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
@@ -140,7 +144,7 @@ class UserAPIKeyViewSet(viewsets.ModelViewSet):
             return UserAPIKeyCreateSerializer
         return UserAPIKeySerializer
 
-    @extend_schema(summary='Create API Key')
+    @extend_schema(summary='Create API Key', responses={201: UserAPIKeyCreatedSerializer})
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -197,7 +201,17 @@ class UserEmailVerificationViewSet(viewsets.ViewSet):
         request=VerifyCodeSerializer,
         responses={
             200: CodeGenericResponseSerializer,
-            400: CodeGenericResponseSerializer,
+            # a wrong or used code, or field errors for an invalid body
+            400: PolymorphicProxySerializer(
+                component_name='VerifyEmailError',
+                serializers=[
+                    CodeGenericResponseSerializer,
+                    inline_serializer(
+                        'VerifyEmailFieldErrors', fields={'code': serializers.ListField(child=serializers.CharField())}
+                    ),
+                ],
+                resource_type_field_name=None,
+            ),
             401: CodeGenericResponseSerializer,
             429: CodeGenericResponseSerializer,
         },
@@ -336,7 +350,7 @@ class UserProfileViewSet(viewsets.GenericViewSet):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @extend_schema(summary='Change password')
+    @extend_schema(summary='Change password', responses=DetailResponseSerializer)
     @action(detail=False, methods=['post'], url_path='change_password')
     def change_password(self, request):
         user = self.get_object()

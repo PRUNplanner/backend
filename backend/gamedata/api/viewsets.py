@@ -12,9 +12,10 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema, inline_serializer
+from drf_spectacular.utils import OpenApiExample, OpenApiRequest, OpenApiResponse, extend_schema, inline_serializer
 from gamedata.api.serializer import (
     CXPC_EXCHANGES,
+    PLANET_IDS_SCHEMA,
     CXPCDailyQuerySerializer,
     CXPCSparklinesQuerySerializer,
     CXPCSparklinesSerializer,
@@ -177,7 +178,12 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
 
         return CacheManager.respond(request, PLANET, 'retrieve', build=fetch_data, scope=planet_natural_id)
 
-    @extend_schema(auth=[], summary='Search a single planet by its Planet Natural Id or Name')
+    @extend_schema(
+        auth=[],
+        summary='Search a single planet by its Planet Natural Id or Name',
+        responses=GamePlanetSerializer(many=True),
+        operation_id='data_planets_retrieve',
+    )
     def search_single(self, request, *args, **kwargs):
         search_term: str = cast(str, kwargs.get('search_term'))
 
@@ -189,7 +195,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
     @extend_schema(
         auth=[],
         summary='Fetch multiple planets by their Planet Natural Ids',
-        request=PlanetIdsSerializer,
+        request=OpenApiRequest(PLANET_IDS_SCHEMA),
         responses=GamePlanetSerializer(many=True),
     )
     def multiple(self, request: Request):
@@ -231,7 +237,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
     @extend_schema(
         auth=[],
         summary='Fetch the latest population reports of multiple planets by their Planet Natural Ids',
-        request=PlanetIdsSerializer,
+        request=OpenApiRequest(PLANET_IDS_SCHEMA),
         responses=GamePlanetInfrastructureReportSerializer(many=True),
     )
     def multiple_popr(self, request: Request):

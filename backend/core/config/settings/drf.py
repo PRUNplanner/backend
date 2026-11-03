@@ -62,7 +62,7 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
     'SECURITY': [],
-    'POSTPROCESSING_HOOKS': [],
+    'POSTPROCESSING_HOOKS': ['gamedata.api.sse.add_stream_to_schema'],
 }
 
 SIMPLE_JWT = {

@@ -1,3 +1,6 @@
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
+from drf_spectacular.openapi import AutoSchema
+from drf_spectacular.plumbing import ResolvedComponent
 from pydantic import BaseModel, ValidationError
 from rest_framework import serializers
 
@@ -22,6 +25,25 @@ class PydanticJSONField(serializers.JSONField):
 
     def to_representation(self, value):
         return value
+
+
+class PydanticJSONFieldExtension(OpenApiSerializerFieldExtension):
+    """Documents a PydanticJSONField with its model's JSON schema, as a component, instead of any value."""
+
+    target_class = PydanticJSONField
+
+    def map_serializer_field(self, auto_schema: AutoSchema, direction: str) -> dict[str, str]:
+        model: type[BaseModel] = self.target.pydantic_model
+        schema = model.model_json_schema(ref_template='#/components/schemas/{model}')
+        for name, sub_schema in schema.pop('$defs', {}).items():
+            auto_schema.registry.register_on_missing(
+                ResolvedComponent(name=name, type=ResolvedComponent.SCHEMA, object=name, schema=sub_schema)
+            )
+        component = ResolvedComponent(
+            name=model.__name__, type=ResolvedComponent.SCHEMA, object=model.__name__, schema=schema
+        )
+        auto_schema.registry.register_on_missing(component)
+        return component.ref
 
 
 class ClientErrorSerializer(serializers.Serializer):

@@ -15,12 +15,22 @@ logger = get_logger(__name__)
 
 
 # email verification logics
+# a save limited to other fields (last_login, tokens) changes nothing check_user_changes looks at
+WATCHED_FIELDS = frozenset({'email', 'is_email_verified', 'prun_username', 'fio_apikey'})
+
+
 @receiver(pre_save, sender=User)
 def check_user_changes(sender, instance, **kwargs):
 
     # existing email / migration logic to track if email was changed and needs to be verified again
 
     if getattr(instance, '_migration_in_progress', False):
+        return
+
+    update_fields = kwargs.get('update_fields')
+    if update_fields is not None and not WATCHED_FIELDS.intersection(update_fields):
+        # no SELECT of the previous row; trigger_fio_refresh reads these flags
+        instance._fio_existed_before = instance._fio_credentials_changed = False
         return
 
     # previous row, read once for the email and fio checks below
@@ -122,7 +132,7 @@ def handle_email_verification_trigger(sender, instance, created, **kwargs):
         if old_email:
             del instance._old_email
             # the old owner learns of a takeover even when the attacker controls the new address
-            args = [instance.id, instance.username, old_email]
+            args = [instance.id, old_email]
             transaction.on_commit(lambda: send_email_changed_notice.apply_async(args=args))
 
         if hasattr(instance, '_email_changed'):

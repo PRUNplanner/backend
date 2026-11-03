@@ -18,12 +18,6 @@ from user.models import User, UserAPIKey
 logger = structlog.get_logger(__name__)
 
 
-class UserSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ['id', 'username', 'email', 'prun_username', 'fio_apikey']
-
-
 class UserAPIKeySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAPIKey
@@ -32,11 +26,26 @@ class UserAPIKeySerializer(serializers.ModelSerializer):
 
 
 class UserAPIKeyCreateSerializer(serializers.ModelSerializer):
-    key = serializers.CharField(read_only=True, max_length=50)
-
     class Meta:
         model = UserAPIKey
-        fields = ['id', 'name', 'key']
+        fields = ['id', 'name']
+
+
+class UserAPIKeyCreatedSerializer(serializers.Serializer):
+    """Docs only: the create response, the only time the key is shown."""
+
+    id = serializers.CharField()
+    name = serializers.CharField()
+    api_key = serializers.CharField()
+    prefix = serializers.CharField()
+
+
+class DetailResponseSerializer(serializers.Serializer):
+    detail = serializers.CharField()
+
+
+class UserRegisteredSerializer(serializers.Serializer):
+    username = serializers.CharField()
 
 
 class CodeGenericResponseSerializer(serializers.Serializer):
@@ -312,6 +321,19 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
         if merged['market_card_trigger'] not in MARKET_CARD_TRIGGERS:
             merged['market_card_trigger'] = 'hover'
         return super().to_representation(merged)
+
+
+class UserPreferenceResponseSerializer(UserPreferenceSerializer):
+    """Docs only: the response merges every default in, and a null in a keyed preference deletes its key."""
+
+    planOverrides = serializers.DictField(source='plan_overrides', child=PlanOverrideSerializer())
+    fioRepairPlanLinks = serializers.DictField(source='fio_repair_plan_links', child=FIORepairPlanLinkSerializer())
+
+    def get_fields(self) -> dict[str, serializers.Field]:
+        fields = super().get_fields()
+        for field in fields.values():
+            field.required = True
+        return fields
 
 
 FIO_FIELDS = ('fio_apikey', 'prun_username')

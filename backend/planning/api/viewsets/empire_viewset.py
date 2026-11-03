@@ -3,7 +3,6 @@ from typing import cast
 from uuid import UUID
 
 from core.services.cache_manager import CacheManager
-from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -18,9 +17,10 @@ from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.api.serializers.empire import (
     PlanningEmpireMaterialIOExportSerializer,
     PlanningEmpirePlanMaterialIOExportSerializer,
+    PlanningEmpireStateRequestSerializer,
     PlanningEmpireStateUpdateSerializer,
 )
-from planning.models import PlanningEmpire, PlanningEmpirePlan, PlanningPlan
+from planning.models import PlanningEmpire
 from planning.planning_cache_manager import PLANNING
 from planning.services.empire_export_service import (
     MATERIAL_IO_HEADER,
@@ -30,7 +30,8 @@ from planning.services.empire_export_service import (
     Row,
 )
 from planning.services.empire_state_service import EmpireStateService
-from rest_framework import mixins, status, viewsets
+from planning.services.junction_service import JunctionRejected, sync_empire_plans
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -110,7 +111,9 @@ class EmpireViewSet(
 
         return CacheManager.respond(request, PLANNING, 'empire-retrieve', pk, build=fetch_data, scope=user_id)
 
-    @extend_schema(summary='Get all plans of the users specific empire')
+    @extend_schema(
+        summary='Get all plans of the users specific empire', responses=PlanningPlanListSerializer(many=True)
+    )
     def retrieve_plans(self, request, *args, **kwargs) -> HttpResponse:
         pk: UUID = cast(UUID, kwargs.get('pk'))
         user_id = request.user.id
@@ -257,80 +260,28 @@ class EmpireViewSet(
         responses={200: PlanningEmpireDetailSerializer(many=True), 403: PlanningEmpirePlanSyncErrorSerializer},
         summary='Update empire-plan junctions',
     )
-    @action(detail=False, methods=['post'], url_path='empire-junctions')
+    @action(detail=False, methods=['post'])
     def sync_junctions(self, request):
         # input validation
         serializer = PlanningEmpireJunctionsSerializer(data=request.data, many=True)
         serializer.is_valid(raise_exception=True)
 
-        user: User = request.user
-        payload = serializer.validated_data
-
-        # extract UUIDs
-        req_empire_uuids = {item['empire_uuid'] for item in payload}
-        req_plan_uuids = {plan['baseplanner_uuid'] for item in payload for plan in item['baseplanners']}
-
-        # fetch user owned empires and plans
-        owned_empire_uuids = set(
-            PlanningEmpire.objects.filter(user=user, uuid__in=req_empire_uuids).values_list('uuid', flat=True)
-        )
-        owned_plan_uuids = set(
-            PlanningPlan.objects.filter(user=user, uuid__in=req_plan_uuids).values_list('uuid', flat=True)
-        )
-
-        unauthorized_empires = req_empire_uuids - owned_empire_uuids
-        unauthorized_plans = req_plan_uuids - owned_plan_uuids
-
-        # check, if any requested uuid is NOT in the owned sets
-        if unauthorized_empires or unauthorized_plans:
-            return Response(
-                {
-                    'error': 'Unauthorized or non-existend objects referenced',
-                    'invalid_empires': list(unauthorized_empires),
-                    'invalid_plans': list(unauthorized_plans),
-                },
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        # desired state pairs
-        desired_pairs = {
-            (item['empire_uuid'], plan['baseplanner_uuid']) for item in payload for plan in item['baseplanners']
-        }
-
-        # database sync
-        with transaction.atomic():
-            # already existing links
-            existing_links = PlanningEmpirePlan.objects.filter(user=user, empire_id__in=req_empire_uuids).values_list(
-                'uuid', 'empire_id', 'plan_id'
-            )
-
-            # mapping (empire_id, plan_id) -> junction_uuid
-            existing_map = {(e_id, p_id): jct_uuid for jct_uuid, e_id, p_id in existing_links}
-            existing_pairs = set(existing_map.keys())
-
-            # diffs
-            to_delete_uuids = [existing_map[pair] for pair in (existing_pairs - desired_pairs)]
-            to_create_pairs = desired_pairs - existing_pairs
-
-            # execution of parts
-            if to_delete_uuids:
-                PlanningEmpirePlan.objects.filter(uuid__in=to_delete_uuids).delete()
-            if to_create_pairs:
-                PlanningEmpirePlan.objects.bulk_create(
-                    [PlanningEmpirePlan(user=user, empire_id=e_id, plan_id=p_id) for e_id, p_id in to_create_pairs]
-                )
-
-        if to_delete_uuids or to_create_pairs:
-            CacheManager.invalidate(PLANNING, user.id)
+        links: dict[UUID, set[UUID]] = {}
+        for item in serializer.validated_data:
+            links.setdefault(item['empire_uuid'], set()).update(p['baseplanner_uuid'] for p in item['baseplanners'])
+        try:
+            sync_empire_plans(cast(User, request.user), links)
+        except JunctionRejected as exc:
+            return Response(exc.body, status=exc.status_code)
 
         return self.list(request)
 
     @extend_schema(
         summary='Sync empire state (empire material i/o, plan material i/o and metadata)',
-        request=PlanningEmpireStateUpdateSerializer,
+        request=PlanningEmpireStateRequestSerializer,
         responses={200: PlanningEmpireDetailSerializer},
     )
-    @action(detail=True, methods=['patch'], url_path='empire-sync-state')
+    @action(detail=True, methods=['patch'])
     def sync_state(self, request, pk=None):
 
         instance = self.get_object()

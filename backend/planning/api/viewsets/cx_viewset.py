@@ -2,8 +2,7 @@ from typing import cast
 from uuid import UUID
 
 from core.services.cache_manager import CacheManager
-from django.db import transaction
-from django.db.models import Case, Prefetch, Value, When
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
@@ -15,7 +14,8 @@ from planning.api.serializers import (
 from planning.api.serializers.conflict import PlanningSaveConflictSerializer
 from planning.models import PlanningCX, PlanningEmpire
 from planning.planning_cache_manager import PLANNING
-from rest_framework import mixins, status, viewsets
+from planning.services.junction_service import JunctionRejected, sync_cx_empires
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -85,42 +85,17 @@ class CXViewSet(
         },
         summary='Update cx-empire junctions',
     )
-    @action(detail=False, methods=['post'], url_path='cx-junctions')
+    @action(detail=False, methods=['post'])
     def sync_junctions(self, request):
         serializer = PlanningCXJunctionUpdateSerializer(data=request.data, many=True)
         serializer.is_valid(raise_exception=True)
 
-        user: User = request.user
-        payload = serializer.validated_data
-
-        # collect all cx uuids
-        input_cx_uuids = {item['cx_uuid'] for item in payload}
-        input_empire_uuids = {emp['empire_uuid'] for item in payload for emp in item['empires']}
-
-        # validate ownerships
-        ## cx ownership
-        if PlanningCX.objects.filter(user=user, uuid__in=input_cx_uuids).count() != len(input_cx_uuids):
-            return Response({'error': 'Invalid CX UUIDs detected.'}, status=status.HTTP_403_FORBIDDEN)
-        ## empire ownership
-        if PlanningEmpire.objects.filter(user=user, uuid__in=input_empire_uuids).count() != len(input_empire_uuids):
-            return Response({'error': 'Invalid Empire UUIDs detected.'}, status=status.HTTP_403_FORBIDDEN)
-
-        # no empire is assigned twice
-        all_emp_list = [emp['empire_uuid'] for item in payload for emp in item['empires']]
-        if len(all_emp_list) != len(set(all_emp_list)):
-            return Response({'error': 'Duplicate empire assignment in request.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # build the update conditions
-        update_conditions = []
-        for item in payload:
-            cx_uuid = item['cx_uuid']
-            for emp in item['empires']:
-                update_conditions.append(When(uuid=emp['empire_uuid'], then=Value(cx_uuid)))
-
-        # apply changes
-        with transaction.atomic():
-            PlanningEmpire.objects.filter(user=user).update(cx_id=Case(*update_conditions, default=None))
-
-        CacheManager.invalidate(PLANNING, user.id)
+        assignments = [
+            (item['cx_uuid'], [e['empire_uuid'] for e in item['empires']]) for item in serializer.validated_data
+        ]
+        try:
+            sync_cx_empires(cast(User, request.user), assignments)
+        except JunctionRejected as exc:
+            return Response(exc.body, status=exc.status_code)
 
         return self.list(request)

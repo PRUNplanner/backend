@@ -40,7 +40,7 @@ def _insert(
 ) -> PlanningPlanVersion:
     return PlanningPlanVersion.objects.create(
         plan_id=plan.pk,
-        user_id=plan.user_id,  # ty: ignore[unresolved-attribute]
+        user_id=plan.user_id,
         kind=kind,
         name=name,
         source_version=source,
@@ -52,7 +52,7 @@ def _insert(
 def _log_created(version: PlanningPlanVersion, pruned: int = 0) -> None:
     logger.info(
         'plan_version_created',
-        plan_uuid=str(version.plan_id),  # ty: ignore[unresolved-attribute]
+        plan_uuid=str(version.plan_id),
         kind=version.kind,
         named=bool(version.name),
         data_bytes=version.data_bytes,
@@ -107,7 +107,7 @@ def record_created(plan: PlanningPlan) -> PlanningPlanVersion:
 def rename_version(version: PlanningPlanVersion, name: str) -> PlanningPlanVersion:
     version.name = name
     version.save(update_fields=['name', 'updated_at'])
-    logger.info('plan_version_renamed', plan_uuid=str(version.plan_id), named=bool(name))  # ty: ignore[unresolved-attribute]
+    logger.info('plan_version_renamed', plan_uuid=str(version.plan_id), named=bool(name))
     return version
 
 
@@ -120,13 +120,13 @@ def clone_version(version: PlanningPlanVersion, user: User) -> PlanningPlan:
     with transaction.atomic():
         plan = PlanningPlan.objects.create(user=user, **snapshot)
         record_created(plan)
-    logger.info('plan_version_cloned', plan_uuid=str(version.plan_id))  # ty: ignore[unresolved-attribute]
+    logger.info('plan_version_cloned', plan_uuid=str(version.plan_id))
     return plan
 
 
 def _restore(version: PlanningPlanVersion, seen_draft: datetime | None = None, *, admin: bool = False) -> PlanningPlan:
     # writes the plan, so modified_at moves and open editors get the conflict dialog on their next save
-    before = PlanningPlan.objects.select_for_update().get(pk=version.plan_id)  # ty: ignore[unresolved-attribute]
+    before = PlanningPlan.objects.select_for_update().get(pk=version.plan_id)
     plan = PlanningPlan.objects.get(pk=before.pk)
     for field in SNAPSHOT_FIELDS:
         setattr(plan, field, getattr(version, field))
@@ -164,7 +164,7 @@ def delete_version(version: PlanningPlanVersion) -> None:
     PlanningPlanVersion.objects.filter(pk=version.pk).only('pk').delete()
     logger.info(
         'plan_version_deleted',
-        plan_uuid=str(version.plan_id),  # ty: ignore[unresolved-attribute]
+        plan_uuid=str(version.plan_id),
         kind=version.kind,
         named=bool(version.name),
     )
@@ -176,7 +176,7 @@ def save_draft(plan: PlanningPlan, fields: dict[str, object], base_modified_at: 
         plan=plan,
         defaults={
             **fields,
-            'user_id': plan.user_id,  # ty: ignore[unresolved-attribute]
+            'user_id': plan.user_id,
             'kind': PlanVersionKind.DRAFT,
             'schema_version': plan.schema_version,
             'base_modified_at': base_modified_at,
@@ -201,4 +201,4 @@ def delete_draft(plan: PlanningPlan) -> None:
 
 def move_versions(plan: PlanningPlan) -> None:
     """After a plan changes owner: versions cascade from their user, so the old owner's deletion would take them."""
-    PlanningPlanVersion.all_objects.filter(plan=plan).update(user_id=plan.user_id)  # ty: ignore[unresolved-attribute]
+    PlanningPlanVersion.all_objects.filter(plan=plan).update(user_id=plan.user_id)

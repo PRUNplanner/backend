@@ -77,8 +77,8 @@ drf_sites_schema = inline_serializer(
     fields={
         'SiteId': serializers.CharField(min_length=32, max_length=32),
         'PlanetIdentifier': serializers.CharField(min_length=7),
-        'PlanetName': serializers.CharField(allow_null=True),
-        'PlanetFoundedEpochMs': serializers.IntegerField(),
+        # left out when None (exclude_none)
+        'PlanetName': serializers.CharField(required=False),
         'InvestedPermits': serializers.IntegerField(),
         'MaximumPermits': serializers.IntegerField(),
         'Buildings': inline_serializer(
@@ -87,11 +87,13 @@ drf_sites_schema = inline_serializer(
             fields={
                 'BuildingTicker': serializers.CharField(min_length=2, max_length=3),
                 'BuildingCreated': serializers.IntegerField(),
-                'BuildingLastRepair': serializers.IntegerField(allow_null=True),
+                'BuildingLastRepair': serializers.DateTimeField(required=False),
+                'AgeDays': serializers.IntegerField(required=False, help_text='Days since BuildingLastRepair'),
                 'Condition': serializers.FloatField(min_value=0.0),
                 'ReclaimableMaterials': inline_serializer(
                     name='FIOUserSiteMaterialResponse',
                     many=True,
+                    required=False,
                     fields={
                         'MaterialTicker': serializers.CharField(min_length=1, max_length=3),
                         'MaterialAmount': serializers.IntegerField(min_value=0),
@@ -100,6 +102,7 @@ drf_sites_schema = inline_serializer(
                 'RepairMaterials': inline_serializer(
                     name='FIOUserSiteMaterialResponseRef',
                     many=True,
+                    required=False,
                     fields={
                         'MaterialTicker': serializers.CharField(min_length=1, max_length=3),
                         'MaterialAmount': serializers.IntegerField(min_value=0),

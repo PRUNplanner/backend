@@ -1,5 +1,4 @@
 import secrets
-import string
 from typing import Literal
 
 import structlog
@@ -33,26 +32,18 @@ CodeFailure = Literal['invalid', 'expired']
 
 
 class VerificationService:
-    CODE_LENGTH = 8
-
-    @classmethod
-    def generate_numeric_code(cls) -> str:
-        chars = string.ascii_uppercase + string.digits
-        return ''.join(secrets.choice(chars) for _ in range(cls.CODE_LENGTH))
-
     @classmethod
     def create_and_send_code(cls, user: User, purpose: VerificationeCodeChoices) -> None:
         if not user.email:
             raise ValueError('User has no email to send a code to.')
 
-        code_str = cls.generate_numeric_code()
-
         with transaction.atomic():
             VerificationCode.objects.filter(user=user, purpose=purpose).delete()
-            VerificationCode.objects.create(user=user, code=code_str, purpose=purpose)
+            code = VerificationCode.objects.create(user=user, purpose=purpose)
 
         task = SEND_TASKS[purpose]
-        args = [user.id, user.username, user.email, code_str]
+        # only the id: Redis keeps task args, the task loads the address and derives the code itself
+        args = [code.pk]
         # after commit: a rolled-back signup or change must not send anything
         transaction.on_commit(lambda: task.apply_async(args=args))
 

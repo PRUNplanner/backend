@@ -24,6 +24,27 @@ class TestUserPreSaveCost:
         selects = [q for q in ctx.captured_queries if q['sql'].lstrip().upper().startswith('SELECT')]
         assert len(selects) <= 1
 
+    def test_a_save_of_other_fields_reads_nothing(self, django_assert_num_queries) -> None:
+        user: User = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        user.last_login = timezone.now()
+
+        # just the UPDATE: no previous-row SELECT, no FIO refresh for unchanged credentials
+        with django_assert_num_queries(1):
+            user.save(update_fields=['last_login'])
+
+    def test_a_save_of_a_watched_field_still_checks(self, django_capture_on_commit_callbacks) -> None:
+        user: User = baker.make('user.User', email='old@example.com', is_email_verified=True)
+        user.email = 'new@example.com'
+
+        with (
+            patch('user.tasks.send_email_verification_code.apply_async') as send,
+            patch('user.tasks.send_email_changed_notice.apply_async'),
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            user.save(update_fields=['email', 'is_email_verified'])
+
+        send.assert_called_once()
+
     def test_email_change_still_resets_verification(self, django_capture_on_commit_callbacks) -> None:
         user: User = baker.make('user.User', email='old@example.com', is_email_verified=True)
 
@@ -103,7 +124,7 @@ class TestEmailSignals:
                 callback()
 
         if notified:
-            notice.assert_called_once_with(args=[user.pk, user.username, 'old@example.com'])
+            notice.assert_called_once_with(args=[user.pk, 'old@example.com'])
         else:
             notice.assert_not_called()
         assert not hasattr(user, '_old_email')

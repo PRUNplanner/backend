@@ -97,7 +97,9 @@ class TestCXViewSetSyncJunctions:
         assert response.status_code == 401
 
     @pytest.mark.usefixtures('locmem_cache')
-    def test_sync_junctions_assigns_empire_to_cx(self, api_client, user_factory, cx_factory, empire_factory):
+    def test_sync_junctions_assigns_empire_to_cx(
+        self, api_client, user_factory, cx_factory, empire_factory, django_capture_on_commit_callbacks
+    ):
         user = user_factory(id=1)
         cx = cx_factory(user=user, cx_name='My CX')
         empire = empire_factory(user=user)
@@ -109,7 +111,8 @@ class TestCXViewSetSyncJunctions:
         url = reverse('planning:cx-junctions')
         payload = [{'cx_uuid': str(cx.uuid), 'empires': [{'empire_uuid': str(empire.uuid)}]}]
 
-        response = api_client.as_user(user).post(url, data=payload, format='json')
+        with django_capture_on_commit_callbacks(execute=True):
+            response = api_client.as_user(user).post(url, data=payload, format='json')
 
         assert response.status_code == 200
         assert [e['uuid'] for e in response.data[0]['empires']] == [str(empire.uuid)]

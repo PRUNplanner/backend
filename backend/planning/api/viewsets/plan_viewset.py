@@ -6,6 +6,7 @@ from django.db.models import Prefetch
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
+    PlanningPlanDetailResponseSerializer,
     PlanningPlanDetailSerializer,
 )
 from planning.api.serializers.conflict import PlanningSaveConflictSerializer
@@ -39,7 +40,7 @@ class PlanViewSet(
             .order_by('plan_name')
         )
 
-    @extend_schema(summary='List all users plans')
+    @extend_schema(summary='List all users plans', responses=PlanningPlanDetailResponseSerializer(many=True))
     def list(self, request, *args, **kwargs):
         user_id = request.user.id
 
@@ -48,7 +49,7 @@ class PlanViewSet(
 
         return CacheManager.respond(request, PLANNING, 'plan-list', build=fetch_data, scope=user_id)
 
-    @extend_schema(summary='Get a users specific plan')
+    @extend_schema(summary='Get a users specific plan', responses=PlanningPlanDetailResponseSerializer)
     def retrieve(self, request, *args, **kwargs):
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
         pk = self.kwargs.get(lookup_url_kwarg)
@@ -59,13 +60,13 @@ class PlanViewSet(
 
         return CacheManager.respond(request, PLANNING, 'plan-retrieve', pk, build=fetch_data, scope=user_id)
 
-    @extend_schema(summary='Creates a new plan')
+    @extend_schema(summary='Creates a new plan', responses={201: PlanningPlanDetailResponseSerializer})
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
     @extend_schema(
         summary='Updates an existing plan',
-        responses={200: PlanningPlanDetailSerializer, 409: PlanningSaveConflictSerializer},
+        responses={200: PlanningPlanDetailResponseSerializer, 409: PlanningSaveConflictSerializer},
     )
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
@@ -74,7 +75,9 @@ class PlanViewSet(
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
 
-    @extend_schema(summary='Clone an existing plan', request=None, responses={201: PlanningPlanDetailSerializer})
+    @extend_schema(
+        summary='Clone an existing plan', request=None, responses={201: PlanningPlanDetailResponseSerializer}
+    )
     @action(detail=True, methods=['post'])
     def clone(self, request, pk=None):
         original_plan = self.get_object()

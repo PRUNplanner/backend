@@ -1,5 +1,3 @@
-from typing import Any
-
 import bcrypt
 import structlog
 from django.contrib.auth import get_user_model
@@ -45,7 +43,7 @@ class LegacyAwareBackend(ModelBackend):
         request: HttpRequest | None = None,
         username: str | None = None,
         password: str | None = None,
-        **kwargs: Any,
+        **kwargs: object,
     ) -> AbstractBaseUser | None:
         if username is None or password is None:
             return None

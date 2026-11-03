@@ -201,7 +201,7 @@ class TestPlanVersions:
     def _form_data(self, plan: PlanningPlan, rows: list[PlanningPlanVersion]) -> dict[str, object]:
         # what the browser posts back: the read-only inline's rows too, the draft among them
         data = {
-            'user': plan.user_id,  # ty: ignore[unresolved-attribute]
+            'user': plan.user_id,
             'plan_name': 'Edited',
             'planet_natural_id': plan.planet_natural_id,
             'plan_permits_used': plan.plan_permits_used,
