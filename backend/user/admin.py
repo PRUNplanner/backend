@@ -36,7 +36,7 @@ from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationFo
 from unfold.sections import TableSection
 
 from user.models import GlobalConfigWebhook, User, UserAPIKey, UserPreference, VerificationCode
-from user.models.user import FIO_LINKED_Q
+from user.models.user import FIO_LINKED_Q, token_cutoff
 from user.models.verification_codes import VerificationeCodeChoices
 from user.services.verification_service import VerificationService
 
@@ -435,7 +435,7 @@ class UserAdmin(SummaryStripMixin, ChangeHeaderMixin[User], BaseUserAdmin, Model
     @admin.action(description='Deactivate')
     def action_deactivate(self, request: HttpRequest, queryset: QuerySet[User]) -> None:
         # never lock yourself out
-        count = queryset.exclude(pk=request.user.pk).update(is_active=False)
+        count = queryset.exclude(pk=request.user.pk).update(is_active=False, tokens_valid_after=token_cutoff())
         log_admin_action(request, User, f'Deactivated {count} users')
         messages.success(request, f'Deactivated {count} users.')
 
