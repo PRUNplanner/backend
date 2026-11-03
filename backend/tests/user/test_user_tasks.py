@@ -1,9 +1,11 @@
 from collections.abc import Callable
 from contextlib import AbstractContextManager
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog
 from celery import Task
 from celery.exceptions import Retry
 from core.env import settings
@@ -21,6 +23,7 @@ from user.tasks import (
     send_email_changed_notice,
     send_email_verification_code,
     send_password_reset_code,
+    send_with_retry,
     user_handle_post_refresh,
     user_purge_verification_codes,
 )
@@ -154,31 +157,6 @@ class TestCodeEmails:
         assert link in message.body
         assert 'pilot' in message.body
 
-    def test_a_failed_send_is_retried_then_logged_once_and_reported(
-        self, task: CodeEmailTask, link: str, subject: str, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        # apply() runs the retries eagerly, so every attempt happens here
-        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')) as send:
-            assert task.apply(args=(1, 'pilot', 'pilot@example.com', 'abc123')).get() is False
-
-        assert send.call_count == 1 + EMAIL_MAX_RETRIES
-        events = [
-            r.msg['event'] for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'].startswith('email_')
-        ]
-        assert events == ['email_send_failed']
-
-    def test_a_transient_send_failure_is_retried(
-        self, task: CodeEmailTask, link: str, subject: str, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=[OSError('provider down'), 1]) as send:
-            assert task.apply(args=(1, 'pilot', 'pilot@example.com', 'abc123')).get() is True
-
-        assert send.call_count == 2
-        events = [
-            r.msg['event'] for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'].startswith('email_')
-        ]
-        assert events == ['email_sent']
-
     def test_a_retry_backs_off(self, task: CodeEmailTask, link: str, subject: str) -> None:
         with (
             patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')),
@@ -225,13 +203,64 @@ class TestEmailChangedNotice:
         assert 'pilot' in message.body
         assert 'someone else knows your password' in message.body
 
-    def test_a_failed_send_is_retried_then_logged_once_and_reported(self, caplog: pytest.LogCaptureFixture) -> None:
-        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')) as send:
-            assert send_email_changed_notice.apply(args=(1, 'pilot', 'old@example.com')).get() is False
+    def test_a_failed_send_is_retried(self) -> None:
+        with (
+            patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')),
+            patch.object(send_email_changed_notice, 'retry', side_effect=Retry()) as retry,
+            pytest.raises(Retry),
+        ):
+            send_email_changed_notice(1, 'pilot', 'old@example.com')
 
-        assert send.call_count == 1 + EMAIL_MAX_RETRIES
+        assert retry.call_args.kwargs['countdown'] == EMAIL_RETRY_BASE_SECONDS
 
-        events = [
-            r.msg['event'] for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'].startswith('email_')
-        ]
-        assert events == ['email_send_failed']
+
+def email_task(retries: int) -> MagicMock:
+    """A bound task on its given attempt; retry() raises like Celery's does."""
+    task = MagicMock(spec=Task)
+    task.request = SimpleNamespace(retries=retries)
+    task.retry.side_effect = Retry()
+    return task
+
+
+def failing_message() -> MagicMock:
+    message = MagicMock()
+    message.send.side_effect = OSError('provider down')
+    return message
+
+
+def email_events(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.msg['event'] for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'].startswith('email_')]
+
+
+class TestSendWithRetry:
+    """AC6: a failed send retries with backoff (30 s, 60 s, 120 s), and only the last failure is logged."""
+
+    @pytest.mark.parametrize('retries', range(EMAIL_MAX_RETRIES))
+    def test_a_failure_with_retries_left_retries_silently(self, retries: int, caplog: pytest.LogCaptureFixture) -> None:
+        task, message = email_task(retries), failing_message()
+
+        with pytest.raises(Retry):
+            send_with_retry(task, message, structlog.get_logger('user.tasks'))
+
+        assert task.retry.call_args.kwargs['countdown'] == EMAIL_RETRY_BASE_SECONDS * 2**retries
+        assert email_events(caplog) == []
+
+    def test_the_last_failure_is_logged_once_and_reported(self, caplog: pytest.LogCaptureFixture) -> None:
+        task, message = email_task(EMAIL_MAX_RETRIES), failing_message()
+
+        assert send_with_retry(task, message, structlog.get_logger('user.tasks')) is False
+
+        task.retry.assert_not_called()
+        assert email_events(caplog) == ['email_send_failed']
+
+    def test_a_retried_send_that_succeeds_is_logged_as_sent(self, caplog: pytest.LogCaptureFixture) -> None:
+        task, message = email_task(1), MagicMock()
+
+        assert send_with_retry(task, message, structlog.get_logger('user.tasks')) is True
+        assert email_events(caplog) == ['email_sent']
+
+    @pytest.mark.parametrize(
+        'email_task_fn', [send_email_verification_code, send_password_reset_code, send_email_changed_notice]
+    )
+    def test_every_email_task_allows_the_retries(self, email_task_fn: Task) -> None:
+        assert email_task_fn.max_retries == EMAIL_MAX_RETRIES
