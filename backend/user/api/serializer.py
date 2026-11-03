@@ -345,9 +345,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if 'email' in attrs and attrs['email'] != user.email:
             # the email receives the reset codes: moving it without the password would take the account over
             if not password:
-                raise serializers.ValidationError({'current_password': 'password_required'})
+                raise serializers.ValidationError({'current_password': 'password_required'})  # nosec B105: an error code
             if not user.check_password(password):
-                raise serializers.ValidationError({'current_password': 'password_invalid'})
+                raise serializers.ValidationError({'current_password': 'password_invalid'})  # nosec B105: an error code
 
         new = {f: str(attrs.get(f, getattr(self.instance, f)) or '').strip() for f in FIO_FIELDS}
         if all(new[f] == (getattr(self.instance, f) or '').strip() for f in FIO_FIELDS):
