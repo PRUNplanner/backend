@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     admin_axiom_url: str | None = Field(default=None)
     frontend_url: str | None = Field(default=None)
 
+    # 'django' for the web, 'celery' for worker and beat (docker-compose.yml, Procfile), 'manage' for migrations
+    service_type: str = Field(default='django')
+
     database: DatabaseSettings = DatabaseSettings()
     cache: CacheSettings = CacheSettings()
     celery: CelerySettings = CelerySettings()

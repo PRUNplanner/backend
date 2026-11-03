@@ -4,6 +4,8 @@ from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
+from celery import Task
+from celery.exceptions import Retry
 from core.env import settings
 from django.core import mail
 from django.core.mail import EmailMultiAlternatives
@@ -13,6 +15,8 @@ from model_bakery import baker
 from user.models import User, VerificationCode, VerificationeCodeChoices
 from user.models.verification_codes import EXPIRY_TIME
 from user.tasks import (
+    EMAIL_MAX_RETRIES,
+    EMAIL_RETRY_BASE_SECONDS,
     expiry_text,
     send_email_changed_notice,
     send_email_verification_code,
@@ -124,7 +128,7 @@ class TestUserPurgeVerificationCodes:
         assert User.objects.filter(pk=user.pk).exists()
 
 
-CodeEmailTask = Callable[[int, str, str, str], bool]
+CodeEmailTask = Task
 
 
 @pytest.mark.parametrize(
@@ -150,14 +154,40 @@ class TestCodeEmails:
         assert link in message.body
         assert 'pilot' in message.body
 
-    def test_a_failed_send_is_logged_and_reported(
+    def test_a_failed_send_is_retried_then_logged_once_and_reported(
         self, task: CodeEmailTask, link: str, subject: str, caplog: pytest.LogCaptureFixture
     ) -> None:
-        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')):
-            assert task(1, 'pilot', 'pilot@example.com', 'abc123') is False
+        # apply() runs the retries eagerly, so every attempt happens here
+        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')) as send:
+            assert task.apply(args=(1, 'pilot', 'pilot@example.com', 'abc123')).get() is False
 
-        events = [r.msg['event'] for r in caplog.records if isinstance(r.msg, dict)]
+        assert send.call_count == 1 + EMAIL_MAX_RETRIES
+        events = [
+            r.msg['event'] for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'].startswith('email_')
+        ]
         assert events == ['email_send_failed']
+
+    def test_a_transient_send_failure_is_retried(
+        self, task: CodeEmailTask, link: str, subject: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=[OSError('provider down'), 1]) as send:
+            assert task.apply(args=(1, 'pilot', 'pilot@example.com', 'abc123')).get() is True
+
+        assert send.call_count == 2
+        events = [
+            r.msg['event'] for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'].startswith('email_')
+        ]
+        assert events == ['email_sent']
+
+    def test_a_retry_backs_off(self, task: CodeEmailTask, link: str, subject: str) -> None:
+        with (
+            patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')),
+            patch.object(task, 'retry', side_effect=Retry()) as retry,
+            pytest.raises(Retry),
+        ):
+            task(1, 'pilot', 'pilot@example.com', 'abc123')
+
+        assert retry.call_args.kwargs['countdown'] == EMAIL_RETRY_BASE_SECONDS
 
 
 @pytest.mark.parametrize(
@@ -195,9 +225,13 @@ class TestEmailChangedNotice:
         assert 'pilot' in message.body
         assert 'someone else knows your password' in message.body
 
-    def test_a_failed_send_is_logged_and_reported(self, caplog: pytest.LogCaptureFixture) -> None:
-        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')):
-            assert send_email_changed_notice(1, 'pilot', 'old@example.com') is False
+    def test_a_failed_send_is_retried_then_logged_once_and_reported(self, caplog: pytest.LogCaptureFixture) -> None:
+        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')) as send:
+            assert send_email_changed_notice.apply(args=(1, 'pilot', 'old@example.com')).get() is False
 
-        events = [r.msg['event'] for r in caplog.records if isinstance(r.msg, dict)]
+        assert send.call_count == 1 + EMAIL_MAX_RETRIES
+
+        events = [
+            r.msg['event'] for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'].startswith('email_')
+        ]
         assert events == ['email_send_failed']

@@ -101,6 +101,13 @@ class FIOURL:
 logger = structlog.get_logger(__name__)
 
 
+def is_transient_fio_error(exc: Exception) -> bool:
+    """FIO unreachable, slow, rate limiting or failing on its side: retrying later will work."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
 def log_refresh_failure(log: FilteringBoundLogger, event: str, exc: Exception, **fields: object) -> None:
     """Log a refresh failure once, from inside its except block.
 

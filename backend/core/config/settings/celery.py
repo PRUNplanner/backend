@@ -6,6 +6,11 @@ CELERY_RESULT_BACKEND = settings.celery.result_backend
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_ACKS_LATE = True
 
+# no task holds the worker indefinitely; admin imports get their own, longer limits below
+CELERY_TASK_SOFT_TIME_LIMIT = 120
+CELERY_TASK_TIME_LIMIT = 150
+ADMIN_IMPORT_SOFT_TIME_LIMIT = 2 * 60 * 60
+
 # JSON
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
@@ -19,7 +24,6 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_RESULT_EXPIRES = 3600
 
 # Worker
-CELERY_WORKER_CONCURRENCY = 4
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 CELERY_WORKER_MAX_MEMORY_PER_CHILD = 200000
@@ -54,6 +58,7 @@ CELERY_TASK_ANNOTATIONS = {
     'gamedata_refresh_planet': {
         'priority': 5,
         'rate_limit': '2/s',
+        'expires': 5,
     },
     'gamedata_refresh_planet_infrastructure': {
         'priority': 5,
@@ -65,13 +70,24 @@ CELERY_TASK_ANNOTATIONS = {
     },
     # ahead of user FIO refreshes (3), so a webhook never waits behind them
     'gamedata_process_fio_webhook': {'priority': 2},
-    'gamedata_dispatch_fio_updates': {'priority': 3},
+    'gamedata_dispatch_fio_updates': {'priority': 3, 'expires': 300},
     'gamedata_refresh_user_fiodata': {
         'priority': 3,
         'rate_limit': '10/s',
     },
-    'gamedata_refresh_cxpc': {'priority': 9, 'rate_limit': '10/s', 'acks_late': True, 'ignore_results': False},
+    'gamedata_refresh_cxpc': {'priority': 9, 'rate_limit': '10/s'},
     'gamedata_refresh_exchange_analytics': {'priority': 9},
     'gamedata_warm_market_summary': {'priority': 9},
-    'gamedata_warm_planet_caches': {'priority': 9},
+    'gamedata_warm_planet_caches': {'priority': 9, 'expires': 300},
+    'gamedata_admin_import': {
+        'soft_time_limit': ADMIN_IMPORT_SOFT_TIME_LIMIT,
+        'time_limit': ADMIN_IMPORT_SOFT_TIME_LIMIT + 300,
+    },
+    # periodic tasks: a run still queued when the next one is due is dropped (expires < beat interval)
+    'gamedata_refresh_exchanges': {'expires': 600},
+    'gamedata_trigger_refresh_cxpc': {'expires': 3600},
+    'update_daily_stats': {'expires': 1800},
+    'analytics_bulk_materialize_empire_snapshots': {'expires': 1800},
+    'analytics_update_plan_insight_aggregates': {'expires': 3600},
+    'user_purge_verification_codes': {'expires': 3600},
 }

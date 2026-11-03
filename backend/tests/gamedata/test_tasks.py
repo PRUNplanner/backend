@@ -23,6 +23,7 @@ from gamedata.services.fio_refresh import fio_connection
 from gamedata.tasks import (
     gamedata_clean_user_fiodata,
     gamedata_dispatch_fio_updates,
+    gamedata_process_fio_webhook,
     gamedata_refresh_cxpc,
     gamedata_refresh_planet,
     gamedata_refresh_planet_infrastructure,
@@ -62,7 +63,8 @@ class TestGamedataTasks:
             patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
             patch('gamedata.tasks.gamedata_refresh_planet_plots.delay') as plots,
         ):
-            assert gamedata_refresh_planet() is (True if scenario == 'success' else False)
+            # nothing due is not a failure
+            assert gamedata_refresh_planet() is (scenario != 'error')
 
         # every picked planet queues its plots refresh, whatever the planet refresh does
         assert plots.call_args_list == ([] if scenario == 'none' else [(('M',),)])
@@ -95,9 +97,10 @@ class TestGamedataTasks:
         assert [(lvl, msg['planet_natural_id']) for lvl, msg in failed] == [(level, 'M')]
         # a traceback only for what is not an HTTP error status or transport failure
         assert ('exception' in failed[0][1]) is (level == 'ERROR')
-        # the failure is recorded for a retry either way
+        # the failure is recorded for a retry either way; a transient FIO error doesn't count toward the cap
         planet = GamePlanet.objects.get(planet_natural_id='M')
-        assert (planet.automation_refresh_status, planet.automation_error_count) == ('retrying', 1)
+        expected_count = 0 if level == 'WARNING' else 1
+        assert (planet.automation_refresh_status, planet.automation_error_count) == ('retrying', expected_count)
         assert planet.automation_next_retry_at is not None
 
     @pytest.mark.parametrize(
@@ -164,7 +167,8 @@ class TestGamedataTasks:
         mock_fio.get_user_storage.side_effect = Exception if scenario == 'fio_fail' else None
         mock_fio.get_user_storage.return_value = [MagicMock(model_dump=lambda **k: {})]
 
-        assert gamedata_refresh_user_fiodata(user.id) is (True if scenario == 'success' else False)
+        # a missing user is a skip (None), not a failure
+        assert gamedata_refresh_user_fiodata(user.id) is {'missing': None, 'fio_fail': False, 'success': True}[scenario]
 
     @pytest.mark.parametrize(
         'error, level',
@@ -194,6 +198,33 @@ class TestGamedataTasks:
         # a task queued before the signature change still carries (prun_username, fio_apikey)
         assert gamedata_refresh_user_fiodata(user.id, 'Old', 'old-key') is True
         mock_fio.get_user_storage.assert_called_once_with('Stored', 'stored-key')
+
+    @pytest.mark.parametrize(
+        'error',
+        [
+            httpx.ReadTimeout('The read operation timed out'),
+            httpx.ConnectError('down'),
+            httpx.HTTPStatusError('503', request=MagicMock(), response=MagicMock(status_code=503)),
+            httpx.HTTPStatusError('429', request=MagicMock(), response=MagicMock(status_code=429)),
+        ],
+        ids=['timeout', 'connect', '503', '429'],
+    )
+    @patch('gamedata.tasks.get_fio_service')
+    def test_refresh_user_fiodata_keeps_retrying_through_an_fio_outage(self, mock_get_fio, error: Exception):
+        user = baker.make('user.User', prun_username='Name', fio_apikey='key')
+        mock_get_fio.return_value.__enter__.return_value.get_user_storage.side_effect = error
+        start = timezone.now() - timedelta(hours=1)
+        GameFIOPlayerData.objects.create(user=user, automation_last_refreshed_at=start)
+
+        for _ in range(GameFIOPlayerData.MAX_RETRIES):
+            assert gamedata_refresh_user_fiodata(user.id) is False
+
+        row = GameFIOPlayerData.objects.get(user=user)
+        assert (row.automation_refresh_status, row.automation_error_count) == ('retrying', 0)
+        assert not row.is_permanently_failed
+        # backs off by the outage so far (1 h), between 15 min and 2 h
+        delay = row.automation_next_retry_at - timezone.now()
+        assert timedelta(minutes=59) < delay <= timedelta(hours=1, minutes=1)
 
     @patch('gamedata.tasks.get_fio_service')
     def test_refresh_user_fiodata_401_fails_at_once(self, mock_get_fio):
@@ -834,3 +865,7 @@ class TestWarmPlanetCaches:
 
         assert len(api_client.get(list_url).data) == 2
         assert len(api_client.get(index_url).data) == 2
+
+
+def test_fio_webhook_reports_a_failed_payload() -> None:
+    assert gamedata_process_fio_webhook({'not': 'a webhook'}) is False

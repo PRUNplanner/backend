@@ -57,6 +57,8 @@ class CeleryAutomationModel(models.Model):
 
     RETRY_DELAY_MINUTES = 15
     MAX_RETRIES = 10
+    # a transient error (FIO down) retries forever, backing off up to this
+    TRANSIENT_RETRY_CAP = timedelta(hours=2)
     # a row marked pending holds its next_retry_at as a lease; a worker that dies leaves it to expire
     PENDING_LEASE = timedelta(hours=1)
 
@@ -75,7 +77,11 @@ class CeleryAutomationModel(models.Model):
     def is_permanently_failed(self) -> bool:
         return self.automation_error_count >= self.MAX_RETRIES
 
-    def update_refresh_result(self, error: Exception | None = None, commit: bool = True) -> None:
+    def update_refresh_result(
+        self, error: Exception | None = None, commit: bool = True, transient: bool = False
+    ) -> None:
+        """A transient error (outage, timeout) doesn't count toward MAX_RETRIES; it backs off by the time since the
+        last success, between RETRY_DELAY_MINUTES and TRANSIENT_RETRY_CAP."""
         now = timezone.now()
 
         if error is None:
@@ -84,6 +90,12 @@ class CeleryAutomationModel(models.Model):
             self.automation_last_refreshed_at = now
             self.automation_next_retry_at = None
             self.automation_error_count = 0
+        elif transient:
+            self.automation_error = str(error)[:2000]
+            outage = min(now - self.automation_last_refreshed_at, self.TRANSIENT_RETRY_CAP)
+            delay = max(timedelta(minutes=self.RETRY_DELAY_MINUTES), outage)
+            self.automation_refresh_status = 'retrying'
+            self.automation_next_retry_at = now + delay
         else:
             self.automation_error_count += 1
             self.automation_error = str(error)[:2000]
