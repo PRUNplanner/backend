@@ -199,7 +199,7 @@ class PlanningPlanAdmin(SummaryStripMixin, ChangeHeaderMixin[PlanningPlan], Mode
             {
                 'label': 'Owner',
                 'value': str(obj.user),
-                'href': reverse('admin:user_user_change', args=[obj.user_id]),  # ty: ignore[unresolved-attribute]
+                'href': reverse('admin:user_user_change', args=[obj.user_id]),
             },
             {
                 'label': 'Planet',

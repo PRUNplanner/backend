@@ -1,6 +1,7 @@
 import pytest
 from django.core import mail
 from model_bakery import baker
+from structlog.testing import capture_logs
 from user.models import User, VerificationCode
 
 pytestmark = pytest.mark.django_db
@@ -45,3 +46,13 @@ class TestCreateLegacyUser:
         email = User.objects.get(id=4711).email
         assert email.startswith('migrated_')
         assert email.endswith('_vet@example.com')
+
+    def test_another_conflict_is_logged_not_printed(self, capsys) -> None:
+        baker.make('user.User', username='veteran')
+
+        with capture_logs() as logs:
+            User.objects.create_legacy_user(id=4711, username='veteran', hashed_password=LEGACY_HASH)
+
+        assert [log['event'] for log in logs] == ['legacy_user_migration_failed']
+        assert logs[0]['user_id'] == 4711
+        assert capsys.readouterr().out == ''

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
+from django.db.models.functions import Upper
 from django.utils import timezone
 
 from user.manager.user_manager import CustomUserManager
@@ -60,5 +61,10 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     class Meta:
         db_table = 'prunplanner_users'
+        # email__iexact / username__iexact compile to UPPER(col::text) = UPPER(%s) on Postgres
+        indexes = [
+            models.Index(Upper('email'), name='user_email_upper_idx'),
+            models.Index(Upper('username'), name='user_username_upper_idx'),
+        ]
         verbose_name = 'User'
         verbose_name_plural = 'Users'

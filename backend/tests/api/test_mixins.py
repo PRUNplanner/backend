@@ -12,15 +12,6 @@ class DummySafeSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
-class BaseToMock:
-    def validate(self, attrs):
-        return attrs
-
-
-class MockedSafeSerializer(JSONSafeSerializerMixin, BaseToMock):
-    pass
-
-
 def test_json_safe_serializer_mixin_conversion():
     raw_uuid = uuid4()
     raw_date = '2024-01-01T12:00:00Z'
@@ -39,12 +30,8 @@ def test_json_safe_serializer_mixin_conversion():
 
 def test_json_safe_serializer_handles_nested_data():
 
-    mixin_instance = MockedSafeSerializer()
+    mixin_instance = JSONSafeSerializerMixin()
 
-    data = {'metadata': {'score': Decimal('10.5'), 'timestamp': datetime(2024, 1, 1)}}
+    data: dict[str, object] = {'metadata': {'score': Decimal('10.5'), 'timestamp': datetime(2024, 1, 1)}}
 
-    result = mixin_instance.validate(data)
-
-    assert not isinstance(result['metadata']['score'], Decimal)
-    assert isinstance(result['metadata']['score'], (float, str))
-    assert isinstance(result['metadata']['timestamp'], str)
+    assert mixin_instance.validate(data) == {'metadata': {'score': 10.5, 'timestamp': '2024-01-01T00:00:00'}}

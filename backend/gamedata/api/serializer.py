@@ -1,9 +1,10 @@
+import copy
 from datetime import UTC, date, datetime, time, timedelta
 
 from api.mixins import BlankAsNullMixin
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field, inline_serializer
-from gamedata.fio.schemas import drf_sites_schema
+from gamedata.fio.schemas import drf_sites_schema, drf_storage_schema
 from gamedata.models import (
     GameBuilding,
     GameBuildingCost,
@@ -80,6 +81,8 @@ class GameBuildingSerializer(BlankAsNullMixin, serializers.ModelSerializer):
     class Meta:
         model = GameBuilding
         exclude = ['building_id']
+        # output only: these document the response (always sent, '' served as null)
+        extra_kwargs = {'expertise': {'allow_blank': False, 'required': True}, 'building_type': {'required': True}}
 
 
 class GameBuildingCSVSerializer(serializers.ModelSerializer):
@@ -103,12 +106,20 @@ class GamePlanetResourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = GamePlanetResource
         fields = ['resource_type', 'factor', 'daily_extraction', 'material_ticker', 'max_daily_extraction']
+        # output only: always sent, set on save
+        extra_kwargs = {
+            'daily_extraction': {'required': True},
+            'material_ticker': {'required': True},
+            'max_daily_extraction': {'required': True},
+        }
 
 
 class GamePlanetCOGCProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = GamePlanetCOGCProgram
         fields = ['program_type', 'start_epochms', 'end_epochms']
+        # output only: the FIO ingest never stores a blank program type
+        extra_kwargs = {'program_type': {'allow_blank': False}}
 
 
 class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
@@ -116,7 +127,7 @@ class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
     resources = GamePlanetResourceSerializer(many=True, read_only=True)
     cogc_programs = GamePlanetCOGCProgramSerializer(many=True, read_only=True)
 
-    active_cogc_program_type = serializers.CharField(read_only=True)
+    active_cogc_program_type = serializers.CharField(read_only=True, allow_null=True)
 
     production_fees = serializers.SerializerMethodField()
 
@@ -146,10 +157,18 @@ class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
             'production_fees',
             *GamePlanet.PLOT_FIELDS,
         ]
+        # output only: these document the response (always sent, '' served as null)
+        extra_kwargs = {
+            'planet_name': {'required': True},
+            'faction_code': {'allow_blank': False},
+            'faction_name': {'allow_blank': False},
+            'cogc_program_status': {'allow_blank': False},
+        }
 
     @extend_schema_field(
         inline_serializer(
             name='PlanetProductionFeeSchema',
+            allow_null=True,
             fields={
                 'currency': serializers.ChoiceField(choices=GamePlanetCurrencyCodeChoices.choices),
                 'fees': serializers.DictField(
@@ -237,32 +256,52 @@ class PlanetSearchIndexSerializer(BlankAsNullMixin, serializers.ModelSerializer)
             'resources',
             *GamePlanet.PLOT_FIELDS,
         ]
+        # output only: these document the response (always sent, '' served as null)
+        extra_kwargs = {
+            'planet_name': {'required': True},
+            'gravity_type': {'required': True},
+            'pressure_type': {'required': True},
+            'temperature_type': {'required': True},
+            'cogc_program_status': {'allow_blank': False, 'required': True},
+        }
+
+
+MAX_PLANET_IDS = 200
 
 
 class PlanetIdsSerializer(serializers.ListSerializer):
     child = serializers.CharField(min_length=7, max_length=7)
 
     def __init__(self, *args: object, **kwargs: object) -> None:
-        kwargs.setdefault('max_length', 200)
+        kwargs.setdefault('max_length', MAX_PLANET_IDS)
         super().__init__(*args, **kwargs)
+
+
+# docs: drf-spectacular drops a ListSerializer's limits
+PLANET_IDS_SCHEMA = {
+    'type': 'array',
+    'items': {'type': 'string', 'minLength': 7, 'maxLength': 7},
+    'maxItems': MAX_PLANET_IDS,
+}
 
 
 class GameExchangeSerializer(serializers.ModelSerializer):
     ticker_id = serializers.CharField(read_only=True)
-    exchange_status = serializers.CharField(read_only=True)
+    exchange_status = serializers.ChoiceField(choices=['ACTIVE', 'INACTIVE', 'STALE'], read_only=True)
 
-    # live data fields
+    # live data fields, 0 without live data
 
-    ask = serializers.FloatField(read_only=True, allow_null=True)
-    bid = serializers.FloatField(read_only=True, allow_null=True)
-    supply = serializers.FloatField(read_only=True, allow_null=True)
-    demand = serializers.FloatField(read_only=True, allow_null=True)
+    ask = serializers.FloatField(read_only=True)
+    bid = serializers.FloatField(read_only=True)
+    supply = serializers.FloatField(read_only=True)
+    demand = serializers.FloatField(read_only=True)
 
     class Meta:
         model = GameExchangeAnalytics
         fields = [
             'ticker',
             'exchange_code',
+            'date_epoch',
             'calendar_date',
             'ticker_id',
             'exchange_status',
@@ -339,9 +378,9 @@ class GameStorageSerializer(serializers.Serializer):
         inline_serializer(
             name='StorageDataMap',
             fields={
-                'planets': serializers.DictField(child=serializers.DictField()),
-                'warehouses': serializers.DictField(child=serializers.DictField()),
-                'ships': serializers.DictField(child=serializers.DictField()),
+                'planets': serializers.DictField(child=copy.deepcopy(drf_storage_schema)),
+                'warehouses': serializers.DictField(child=copy.deepcopy(drf_storage_schema)),
+                'ships': serializers.DictField(child=copy.deepcopy(drf_storage_schema)),
             },
         )
     )

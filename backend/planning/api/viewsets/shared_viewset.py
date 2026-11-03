@@ -1,6 +1,7 @@
 from django.db.models import F
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
+    PlanningPlanDetailResponseSerializer,
     PlanningPlanDetailSerializer,
     PlanningSharedCreateSerializer,
     PlanningSharedDetailSerializer,
@@ -74,7 +75,10 @@ class SharedViewSet(
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @extend_schema(summary='Share a plan')
+    @extend_schema(
+        summary='Share a plan',
+        responses={201: PlanningSharedDetailSerializer, 200: PlanningSharedDetailSerializer},
+    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -91,7 +95,7 @@ class SharedViewSet(
             full_serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK, headers=headers
         )
 
-    @extend_schema(summary='Clone a shared plan')
+    @extend_schema(summary='Clone a shared plan', request=None, responses={201: PlanningPlanDetailResponseSerializer})
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def clone(self, request, pk=None):
         shared_instance = self.get_object()

@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
-from planning.api.serializers import PlanningPlanDetailSerializer
+from planning.api.serializers import PlanningPlanDetailResponseSerializer, PlanningPlanDetailSerializer
 from planning.api.serializers.conflict import (
     DraftConflict,
     PlanningDraftConflictSerializer,
@@ -104,7 +104,9 @@ class PlanVersionViewSet(viewsets.GenericViewSet):
         version = plan_version_service.rename_version(version, name)
         return Response(PlanningPlanVersionSerializer(version, context={'active_uuid': _active_uuid(plan)}).data)
 
-    @extend_schema(summary='Open a version as a new plan', request=None, responses={201: PlanningPlanDetailSerializer})
+    @extend_schema(
+        summary='Open a version as a new plan', request=None, responses={201: PlanningPlanDetailResponseSerializer}
+    )
     def clone(self, request: Request, plan_pk: UUID, pk: UUID) -> Response:
         version = get_object_or_404(_saved_versions(_owned_plan(request, plan_pk)), pk=pk)
         plan = plan_version_service.clone_version(version, request.user)
@@ -113,7 +115,7 @@ class PlanVersionViewSet(viewsets.GenericViewSet):
     @extend_schema(
         summary='Make a version the plan as saved, through a new restore version',
         request=PlanningPlanVersionActivateSerializer,
-        responses={200: PlanningPlanDetailSerializer, 400: PlanningVersionActiveSerializer},
+        responses={200: PlanningPlanDetailResponseSerializer, 400: PlanningVersionActiveSerializer},
     )
     @transaction.atomic
     def activate(self, request: Request, plan_pk: UUID, pk: UUID) -> Response:

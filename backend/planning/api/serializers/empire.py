@@ -17,7 +17,7 @@ class PlanningEmpireNestedSerializer(serializers.ModelSerializer):
 
 
 class PlanningEmpireListSerializer(serializers.ModelSerializer):
-    cx = PlanningCXMinimal(read_only=True)
+    cx = PlanningCXMinimal(read_only=True, allow_null=True)
     # configuration version: state syncs and cx-junctions don't change it
     modified_at = serializers.DateTimeField(source='config_modified_at', read_only=True)
 
@@ -36,7 +36,7 @@ class PlanningEmpireListSerializer(serializers.ModelSerializer):
 
 class PlanningEmpireDetailSerializer(SaveConflictMixin, serializers.ModelSerializer):
     plans = PlanningPlanMinimalSerializer(many=True, read_only=True)
-    cx = PlanningCXMinimal(read_only=True)
+    cx = PlanningCXMinimal(read_only=True, allow_null=True)
     # the model's modified_at moves on every state sync, so the configuration has its own version
     modified_at = serializers.DateTimeField(source='config_modified_at', read_only=True)
 
@@ -44,7 +44,20 @@ class PlanningEmpireDetailSerializer(SaveConflictMixin, serializers.ModelSeriali
 
     class Meta:
         model = PlanningEmpire
-        exclude = ['created_at', 'config_modified_at', 'user', 'empire_state']
+        fields = [
+            'uuid',
+            'base_modified_at',
+            'plans',
+            'cx',
+            'modified_at',
+            'empire_name',
+            'empire_faction',
+            'empire_permits_used',
+            'empire_permits_total',
+            'needs_state_sync',
+        ]
+        # set by the state sync, never by the client
+        read_only_fields = ['needs_state_sync']
 
     @transaction.atomic
     def update(self, instance, validated_data):
@@ -75,10 +88,6 @@ class PlanningEmpirePlanSyncErrorSerializer(serializers.Serializer):
     error = serializers.CharField(default='Unauthorized or non-existent objects referenced')
     invalid_empires = serializers.ListField(child=serializers.UUIDField())
     invalid_plans = serializers.ListField(child=serializers.UUIDField())
-
-
-class PlanningEmpirePlanSyncSuccessSerializer(serializers.Serializer):
-    status = serializers.CharField(default='Empire-Plan junctions updated')
 
 
 # per day, far above any real empire; FloatField already rejects NaN and inf
@@ -131,6 +140,19 @@ class PlanningEmpireStateUpdateSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         raise NotImplementedError('Use the main Empire serializer for creation.')
+
+
+class PlanningEmpireStateRequestSerializer(PlanningEmpireStateUpdateSerializer):
+    """Docs only: the state PATCH validates without partial, so every field is required."""
+
+    @property
+    def partial(self) -> bool:
+        return False
+
+    @partial.setter
+    def partial(self, value: bool) -> None:
+        # drf-spectacular marks every PATCH body partial
+        pass
 
 
 class PlanningEmpireMaterialIOExportRowSerializer(serializers.Serializer):

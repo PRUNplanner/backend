@@ -91,6 +91,17 @@ class TestEmpireViewSetCrud:
         assert response.status_code == 200
         assert response.data['empire_name'] == 'New Name'
 
+    def test_update_ignores_needs_state_sync(self, api_client, user_factory, empire_factory):
+        user = user_factory(id=1)
+        empire = empire_factory(user=user, needs_state_sync=False)
+
+        url = reverse('planning:empire-detail', kwargs={'pk': str(empire.uuid)})
+        response = api_client.as_user(user).put(url, data=_empire_payload(needs_state_sync=True), format='json')
+
+        assert response.status_code == 200
+        empire.refresh_from_db()
+        assert empire.needs_state_sync is False
+
     def test_destroy(self, api_client, user_factory, empire_factory):
         user = user_factory(id=1)
         empire = empire_factory(user=user)

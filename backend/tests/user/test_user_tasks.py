@@ -133,18 +133,37 @@ class TestUserPurgeVerificationCodes:
 
 CodeEmailTask = Task
 
+VERIFY = VerificationeCodeChoices.EMAIL_VERIFICATION
+RESET = VerificationeCodeChoices.PASSWORD_RESET
+
+
+def _pilot_code(purpose: VerificationeCodeChoices) -> VerificationCode:
+    user: User = baker.make('user.User', username='pilot')
+    # update(): an email set through save() would already get a verification code from the signal
+    User.objects.filter(pk=user.pk).update(email='pilot@example.com')
+    return baker.make('user.VerificationCode', user=user, purpose=purpose)
+
 
 @pytest.mark.parametrize(
-    ('task', 'link', 'subject'),
+    ('task', 'purpose', 'link', 'subject'),
     [
         # the links must match the frontend routes /verify-email/:verifyCode and /password-reset/:resetCode
-        (send_email_verification_code, 'https://prunplanner.org/verify-email/abc123', 'PRUNplanner Email Verification'),
-        (send_password_reset_code, 'https://prunplanner.org/password-reset/abc123', 'PRUNplanner Password Reset'),
+        (
+            send_email_verification_code,
+            VERIFY,
+            'https://prunplanner.org/verify-email/',
+            'PRUNplanner Email Verification',
+        ),
+        (send_password_reset_code, RESET, 'https://prunplanner.org/password-reset/', 'PRUNplanner Password Reset'),
     ],
 )
 class TestCodeEmails:
-    def test_sends_the_code_link_as_html_and_text(self, task: CodeEmailTask, link: str, subject: str) -> None:
-        assert task(1, 'pilot', 'pilot@example.com', 'abc123') is True
+    def test_sends_the_code_link_as_html_and_text(
+        self, task: CodeEmailTask, purpose: VerificationeCodeChoices, link: str, subject: str
+    ) -> None:
+        code = _pilot_code(purpose)
+        link += code.code
+        assert task(code.pk) is True
 
         (message,) = mail.outbox
         assert isinstance(message, EmailMultiAlternatives)
@@ -157,15 +176,28 @@ class TestCodeEmails:
         assert link in message.body
         assert 'pilot' in message.body
 
-    def test_a_retry_backs_off(self, task: CodeEmailTask, link: str, subject: str) -> None:
+    def test_a_retry_backs_off(
+        self, task: CodeEmailTask, purpose: VerificationeCodeChoices, link: str, subject: str
+    ) -> None:
+        code = _pilot_code(purpose)
         with (
             patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')),
             patch.object(task, 'retry', side_effect=Retry()) as retry,
             pytest.raises(Retry),
         ):
-            task(1, 'pilot', 'pilot@example.com', 'abc123')
+            task(code.pk)
 
         assert retry.call_args.kwargs['countdown'] == EMAIL_RETRY_BASE_SECONDS
+
+    def test_a_replaced_or_used_code_sends_nothing(
+        self, task: CodeEmailTask, purpose: VerificationeCodeChoices, link: str, subject: str
+    ) -> None:
+        used = _pilot_code(purpose)
+        VerificationCode.objects.filter(pk=used.pk).update(is_used=True)
+
+        assert task(used.pk) is False
+        assert task(used.pk + 1000) is False
+        assert mail.outbox == []
 
 
 @pytest.mark.parametrize(
@@ -177,14 +209,14 @@ def test_expiry_text(minutes: int, text: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ('task', 'setting'),
+    ('task', 'purpose', 'setting'),
     [
-        (send_email_verification_code, 'verification_expiry_minutes'),
-        (send_password_reset_code, 'password_reset_expiry_minutes'),
+        (send_email_verification_code, VERIFY, 'verification_expiry_minutes'),
+        (send_password_reset_code, RESET, 'password_reset_expiry_minutes'),
     ],
 )
-def test_code_emails_state_their_expiry(task: CodeEmailTask, setting: str) -> None:
-    task(1, 'pilot', 'pilot@example.com', 'abc123')
+def test_code_emails_state_their_expiry(task: CodeEmailTask, purpose: VerificationeCodeChoices, setting: str) -> None:
+    task(_pilot_code(purpose).pk)
 
     (message,) = mail.outbox
     assert f'This link expires in {expiry_text(getattr(settings.email, setting))}.' in message.body
@@ -192,7 +224,8 @@ def test_code_emails_state_their_expiry(task: CodeEmailTask, setting: str) -> No
 
 class TestEmailChangedNotice:
     def test_goes_to_the_old_address_as_html_and_text(self) -> None:
-        assert send_email_changed_notice(1, 'pilot', 'old@example.com') is True
+        user = baker.make('user.User', username='pilot')
+        assert send_email_changed_notice(user.pk, 'old@example.com') is True
 
         (message,) = mail.outbox
         assert isinstance(message, EmailMultiAlternatives)
@@ -204,12 +237,13 @@ class TestEmailChangedNotice:
         assert 'someone else knows your password' in message.body
 
     def test_a_failed_send_is_retried(self) -> None:
+        user = baker.make('user.User')
         with (
             patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')),
             patch.object(send_email_changed_notice, 'retry', side_effect=Retry()) as retry,
             pytest.raises(Retry),
         ):
-            send_email_changed_notice(1, 'pilot', 'old@example.com')
+            send_email_changed_notice(user.pk, 'old@example.com')
 
         assert retry.call_args.kwargs['countdown'] == EMAIL_RETRY_BASE_SECONDS
 

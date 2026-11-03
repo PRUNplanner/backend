@@ -40,19 +40,19 @@ class TestSecrets:
         assert 'name="fio_apikey"' not in html
 
     def test_verification_code_is_never_shown(self, admin_client: Client) -> None:
-        code = baker.make(
-            VerificationCode, user=baker.make(User), code='QZX7K2PA', purpose=VerificationeCodeChoices.PASSWORD_RESET
-        )
+        code = baker.make(VerificationCode, user=baker.make(User), purpose=VerificationeCodeChoices.PASSWORD_RESET)
         pages = [
             reverse('admin:user_verificationcode_changelist'),
             reverse('admin:user_verificationcode_change', args=[code.pk]),
         ]
 
-        assert 'QZX7K2PA' not in str(code)
+        assert code.code not in str(code)
         for page in pages:
             response = admin_client.get(page)
             assert response.status_code == 200
-            assert 'QZX7K2PA' not in response.content.decode()
+            html = response.content.decode()
+            assert code.code not in html
+            assert code.secret not in html
 
     def test_verification_code_search_works(self, admin_client: Client) -> None:
         """A1: searching used to 500 on the FK."""

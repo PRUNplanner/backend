@@ -32,7 +32,7 @@ def drop_plan_overrides(
         return
 
     # replaces the frontend's cleanPlanPreferences(), which also dropped plans created in another tab
-    preference = UserPreference.objects.select_for_update().filter(user_id=instance.user_id).first()  # type: ignore
+    preference = UserPreference.objects.select_for_update().filter(user_id=instance.user_id).first()
     if not preference:
         return
     plan_uuid = str(instance.uuid)

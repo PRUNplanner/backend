@@ -26,19 +26,26 @@ def _backdate(code: VerificationCode, age: timedelta) -> VerificationCode:
 
 
 class TestVerificationService:
-    def test_generate_numeric_code_is_correct_format(self) -> None:
-        code = VerificationService.generate_numeric_code()
+    def test_code_is_derived_not_stored(self, user: User, verification_code_factory: CodeFactory) -> None:
+        code_obj = verification_code_factory(user=user)
+        code = code_obj.code
+
         assert len(code) == 8
         assert code.isalnum() and code.isupper()
+        # the same code on every read (task retries mail the same one), and no column holds it
+        assert VerificationCode.objects.get(pk=code_obj.pk).code == code
+        assert code not in str(VerificationCode.objects.filter(pk=code_obj.pk).values().get())
+        assert verification_code_factory(user=user).code != code
 
     def test_check_code(self, user: User, verification_code_factory: CodeFactory) -> None:
-        code_obj = verification_code_factory(user=user, code='ABCDEF12')
+        code_obj = verification_code_factory(user=user)
+        code = code_obj.code
 
-        assert VerificationService.check_code(code_obj, 'abcdef12') is None
+        assert VerificationService.check_code(code_obj, code.lower()) is None
         assert VerificationService.check_code(code_obj, 'WRONGCOD') == 'invalid'
 
         with patch.object(VerificationCode, 'is_expired', new=True):
-            assert VerificationService.check_code(code_obj, 'ABCDEF12') == 'expired'
+            assert VerificationService.check_code(code_obj, code) == 'expired'
             # only someone holding the code learns that it expired
             assert VerificationService.check_code(code_obj, 'WRONGCOD') == 'invalid'
 
@@ -74,18 +81,20 @@ class TestVerificationService:
         verification_code_factory: CodeFactory,
         django_capture_on_commit_callbacks: CaptureOnCommit,
     ) -> None:
-        verification_code_factory(user=user, purpose=purpose)  # old code
+        old = verification_code_factory(user=user, purpose=purpose)
 
         with patch(task_path) as mock_task, django_capture_on_commit_callbacks() as callbacks:
             VerificationService.create_and_send_code(user, purpose)
             mock_task.assert_not_called()
 
-        assert VerificationCode.objects.filter(user=user, purpose=purpose).count() == 1
+        (new,) = VerificationCode.objects.filter(user=user, purpose=purpose)
+        assert new.pk != old.pk
         assert len(callbacks) == 1
         with patch(task_path) as mock_task:
             callbacks[0]()
         mock_task.assert_called_once()
-        assert mock_task.call_args.kwargs['args'][2] == user.email
+        # only the id: no address or code in the broker
+        assert mock_task.call_args.kwargs['args'] == [new.pk]
 
     @pytest.mark.parametrize('email', [None, ''])
     def test_create_and_send_code_needs_an_email(
@@ -116,15 +125,15 @@ class TestVerificationService:
         assert send_task.call_args.kwargs['priority'] == 1
 
     def test_verify_code_confirms_the_email(self, user: User, verification_code_factory: CodeFactory) -> None:
-        code = verification_code_factory(user=user, code='VALID123')
+        code = verification_code_factory(user=user)
 
-        assert VerificationService.verify_code(user, 'valid123') == (True, 'verified')
+        assert VerificationService.verify_code(user, code.code.lower()) == (True, 'verified')
 
         user.refresh_from_db()
         code.refresh_from_db()
         assert user.is_email_verified is True
         assert code.is_used is True
-        assert VerificationService.verify_code(user, 'VALID123') == (False, 'already_verified')
+        assert VerificationService.verify_code(user, code.code) == (False, 'already_verified')
 
     @pytest.mark.parametrize(
         ('purpose', 'age', 'code_input', 'expected'),
@@ -145,7 +154,9 @@ class TestVerificationService:
         user: User,
         verification_code_factory: CodeFactory,
     ) -> None:
-        _backdate(verification_code_factory(user=user, code='VALID123', purpose=purpose), age)
+        code_obj = _backdate(verification_code_factory(user=user, purpose=purpose), age)
+        # VALID123 stands for the real code
+        code_input = code_obj.code if code_input == 'VALID123' else code_input
 
         assert VerificationService.verify_code(user, code_input) == (False, expected)
         user.refresh_from_db()
@@ -153,7 +164,7 @@ class TestVerificationService:
 
     def test_get_valid_code_or_raise(self, verification_code_factory: CodeFactory) -> None:
         user: User = baker.make('user.User', email='pilot@example.com', is_email_verified=False)
-        verification_code_factory(user=user, code='PASS1234', purpose=VerificationeCodeChoices.PASSWORD_RESET)
+        code = verification_code_factory(user=user, purpose=VerificationeCodeChoices.PASSWORD_RESET).code
 
         def failure(email: str, code: str) -> object:
             with pytest.raises(serializers.ValidationError) as exc:
@@ -161,17 +172,17 @@ class TestVerificationService:
             return exc.value.detail
 
         # unconfirmed users can't reset
-        assert failure('pilot@example.com', 'PASS1234') == {'detail': 'Invalid code.', 'code': 'invalid'}
+        assert failure('pilot@example.com', code) == {'detail': 'Invalid code.', 'code': 'invalid'}
 
         User.objects.filter(pk=user.pk).update(is_email_verified=True)
         assert failure('pilot@example.com', 'WRONG123') == {'detail': 'Invalid code.', 'code': 'invalid'}
-        assert failure('nobody@example.com', 'PASS1234') == {'detail': 'Invalid code.', 'code': 'invalid'}
+        assert failure('nobody@example.com', code) == {'detail': 'Invalid code.', 'code': 'invalid'}
 
-        found_user, code_obj = VerificationService.get_valid_code_or_raise('Pilot@EXAMPLE.com', 'pass1234')
-        assert found_user == user and code_obj.code == 'PASS1234'
+        found_user, code_obj = VerificationService.get_valid_code_or_raise('Pilot@EXAMPLE.com', code.lower())
+        assert found_user == user and code_obj.code == code
 
         _backdate(code_obj, EXPIRY_TIME[VerificationeCodeChoices.PASSWORD_RESET] + timedelta(minutes=1))
-        assert failure('pilot@example.com', 'PASS1234') == {'detail': 'Code expired.', 'code': 'expired'}
+        assert failure('pilot@example.com', code) == {'detail': 'Code expired.', 'code': 'expired'}
 
     def test_execute_password_reset(self, user: User, verification_code_factory: CodeFactory) -> None:
         code_obj = verification_code_factory(user=user, purpose=VerificationeCodeChoices.PASSWORD_RESET)

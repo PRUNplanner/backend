@@ -8,7 +8,6 @@ from typing import cast
 import structlog
 from django.conf import settings
 from django.http import HttpRequest, HttpResponseBase, JsonResponse, StreamingHttpResponse
-from drf_spectacular.utils import extend_schema
 from redis import asyncio as aioredis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.typing import KeyT, StreamIdT
@@ -76,15 +75,61 @@ async def _claim_ip_slot(ip_key: str, conn_id: str) -> bool:
         await redis.aclose()
 
 
+def add_stream_to_schema(
+    result: dict[str, dict[str, object]], generator: object, request: object, public: bool
+) -> dict[str, dict[str, object]]:
+    """drf-spectacular postprocessing hook: the stream is a plain async Django view, which the generator skips."""
+    error = {
+        'content': {
+            'application/json': {
+                'schema': {'type': 'object', 'properties': {'detail': {'type': 'string'}}, 'required': ['detail']}
+            }
+        }
+    }
+    result['paths']['/data/stream/'] = {
+        'get': {
+            'operationId': 'data_stream_retrieve',
+            'summary': 'Real-time data stream (SSE)',
+            'description': (
+                'Server-sent events for EventSource. Each event is `id: <stream id>` and `data: <JSON payload>`; a '
+                '`: ` comment line every 5 s keeps the connection alive. Send the last seen id as `Last-Event-ID` '
+                f'to resume. At most {MAX_STREAMS_PER_IP} open streams per IP.'
+            ),
+            'tags': ['data'],
+            'parameters': [
+                {
+                    'in': 'query',
+                    'name': 'channels',
+                    'required': True,
+                    'description': f'Comma separated, one or more of: {", ".join(sorted(ALLOWED_CHANNELS))}',
+                    'schema': {'type': 'string'},
+                },
+                {
+                    'in': 'header',
+                    'name': 'Last-Event-ID',
+                    'required': False,
+                    'description': 'Resume after this event id (`<ms>-<seq>`)',
+                    'schema': {'type': 'string', 'pattern': _EVENT_ID.pattern},
+                },
+            ],
+            'responses': {
+                '200': {
+                    'content': {'text/event-stream': {'schema': {'type': 'string'}}},
+                    'description': 'Event stream',
+                },
+                '400': {**error, 'description': 'Unknown channel or invalid Last-Event-ID'},
+                '429': {**error, 'description': 'Too many open streams'},
+                '503': {**error, 'description': 'Stream unavailable'},
+            },
+        }
+    }
+    return result
+
+
 def _error(status: int, detail: str) -> JsonResponse:
     return JsonResponse({'detail': detail}, status=status)
 
 
-@extend_schema(
-    summary='Real-time data stream (SSE)',
-    description='Connect to this endpoint using EventSource to receive real-time updates.',
-    responses={200: str},
-)
 async def sse_stream_view(request: HttpRequest) -> HttpResponseBase:
     channels = [c.strip() for c in request.GET.get('channels', '').split(',') if c.strip()]
     if not channels or not ALLOWED_CHANNELS.issuperset(channels):

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from core.models import ChangeTrackedModel, UUIDModel
 from django.core.validators import MaxValueValidator, MinLengthValidator, MinValueValidator
 from django.db import models
@@ -33,6 +35,7 @@ class PlanningCOGCChoices(models.TextChoices):
 
 class PlanningPlan(UUIDModel, ChangeTrackedModel):
     user = models.ForeignKey('user.User', on_delete=models.CASCADE, related_name='plans')
+    user_id: int
 
     plan_name = models.CharField(max_length=200)
 
@@ -180,6 +183,7 @@ class PlanningPlanVersion(UUIDModel):
     """A snapshot of a plan: one row per save, plus at most one autosave draft. Written by plan_version_service only."""
 
     plan = models.ForeignKey(PlanningPlan, on_delete=models.CASCADE, related_name='versions')
+    plan_id: UUID
     user = models.ForeignKey('user.User', on_delete=models.CASCADE, related_name='plan_versions')
 
     kind = models.CharField(max_length=10, choices=PlanVersionKind.choices)

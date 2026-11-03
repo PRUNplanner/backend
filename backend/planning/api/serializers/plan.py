@@ -19,7 +19,6 @@ from planning.services import plan_version_service
 from rest_framework import serializers
 
 from .conflict import SaveConflictMixin
-from .cx import PlanningCXDetailSerializer
 from .empire import PlanningEmpireListSerializer
 
 COGC_MAP: dict[GamePlanetCOGCProgramChoices, PlanningCOGCChoices] = {
@@ -42,7 +41,6 @@ COGC_MAP: dict[GamePlanetCOGCProgramChoices, PlanningCOGCChoices] = {
 
 class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerializer):
     empires = PlanningEmpireListSerializer(many=True, read_only=True)
-    cx = PlanningCXDetailSerializer(read_only=True)
 
     # Input-only field for the junction
     empire_uuid = serializers.UUIDField(write_only=True, required=False)
@@ -68,7 +66,6 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
             'plan_corphq',
             'plan_data',
             'empires',
-            'cx',
             'empire_uuid',
             'version_name',
             'restored_from',
@@ -177,7 +174,17 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
         PlanningEmpirePlan.objects.update_or_create(user=user, plan=plan, empire=empire)
 
 
+class PlanningPlanDetailResponseSerializer(PlanningPlanDetailSerializer):
+    """Docs only: a plan as responses send it."""
+
+    # the response always has a cogc: validate fills a missing one
+    plan_cogc = serializers.ChoiceField(choices=PlanningCOGCChoices.choices, read_only=True)
+
+
 class PlanningPlanListSerializer(PlanningPlanDetailSerializer):
+    # the response always has a cogc: validate fills a missing one
+    plan_cogc = serializers.ChoiceField(choices=PlanningCOGCChoices.choices, read_only=True)
+
     class Meta(PlanningPlanDetailSerializer.Meta):
         fields = [
             'uuid',
@@ -194,6 +201,9 @@ class PlanningPlanListSerializer(PlanningPlanDetailSerializer):
 
 class PlanningSharedPlanSerializer(PlanningPlanDetailSerializer):
     # public payload of a shared plan: never the owner's empires or CX
+    # the response always has a cogc: validate fills a missing one
+    plan_cogc = serializers.ChoiceField(choices=PlanningCOGCChoices.choices, read_only=True)
+
     class Meta(PlanningPlanDetailSerializer.Meta):
         fields = [
             'uuid',

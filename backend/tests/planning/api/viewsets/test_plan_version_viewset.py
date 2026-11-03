@@ -63,7 +63,7 @@ def versions_url(plan: PlanningPlan) -> str:
 
 
 def version_url(version: PlanningPlanVersion, name: str = 'planning:plan-version-detail') -> str:
-    return reverse(name, kwargs={'plan_pk': version.plan_id, 'pk': version.pk})  # ty:ignore[unresolved-attribute]
+    return reverse(name, kwargs={'plan_pk': version.plan_id, 'pk': version.pk})
 
 
 def draft_url(plan: PlanningPlan) -> str:

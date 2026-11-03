@@ -80,6 +80,8 @@ class PlanningPlanDraftSavedSerializer(serializers.ModelSerializer):
 
 class PlanningPlanDraftDetailSerializer(serializers.ModelSerializer):
     plan_data = PydanticJSONField(pydantic_model=LATEST_SCHEMA['PLANNING_DATA'], read_only=True)
+    # never null on a draft (DB check constraint)
+    base_modified_at = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = PlanningPlanVersion
