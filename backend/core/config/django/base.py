@@ -66,7 +66,7 @@ MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
-    'django.middleware.gzip.GZipMiddleware',
+    'core.middleware.GZipMiddleware',
     # after gzip, so etags hash the plain body
     'django.middleware.http.ConditionalGetMiddleware',
     'core.middleware.default_cache_control',
