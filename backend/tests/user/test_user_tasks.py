@@ -14,6 +14,7 @@ from user.models import User, VerificationCode, VerificationeCodeChoices
 from user.models.verification_codes import EXPIRY_TIME
 from user.tasks import (
     expiry_text,
+    send_email_changed_notice,
     send_email_verification_code,
     send_password_reset_code,
     user_handle_post_refresh,
@@ -179,3 +180,24 @@ def test_code_emails_state_their_expiry(task: CodeEmailTask, setting: str) -> No
 
     (message,) = mail.outbox
     assert f'This link expires in {expiry_text(getattr(settings.email, setting))}.' in message.body
+
+
+class TestEmailChangedNotice:
+    def test_goes_to_the_old_address_as_html_and_text(self) -> None:
+        assert send_email_changed_notice(1, 'pilot', 'old@example.com') is True
+
+        (message,) = mail.outbox
+        assert isinstance(message, EmailMultiAlternatives)
+        assert message.to == ['old@example.com']
+        assert message.subject == 'PRUNplanner Email Changed'
+        ((html, mimetype),) = message.alternatives
+        assert mimetype == 'text/html'
+        assert 'pilot' in message.body
+        assert 'someone else knows your password' in message.body
+
+    def test_a_failed_send_is_logged_and_reported(self, caplog: pytest.LogCaptureFixture) -> None:
+        with patch('user.tasks.EmailMultiAlternatives.send', side_effect=OSError('provider down')):
+            assert send_email_changed_notice(1, 'pilot', 'old@example.com') is False
+
+        events = [r.msg['event'] for r in caplog.records if isinstance(r.msg, dict)]
+        assert events == ['email_send_failed']
