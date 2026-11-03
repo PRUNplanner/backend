@@ -1,5 +1,5 @@
 import structlog
-from celery import shared_task
+from celery import Task, shared_task
 from core.env import settings
 from django.contrib.auth.models import update_last_login
 from django.core.mail import EmailMultiAlternatives
@@ -8,11 +8,28 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.utils.html import strip_tags
 from gamedata.services.fio_refresh import request_fio_refresh
+from structlog.typing import FilteringBoundLogger
 
 from user.models import User, VerificationCode
 from user.models.verification_codes import EXPIRY_TIME
 
 logger = structlog.get_logger(__name__)
+
+EMAIL_MAX_RETRIES = 3
+EMAIL_RETRY_BASE_SECONDS = 30
+
+
+def send_with_retry(task: Task, message: EmailMultiAlternatives, log: FilteringBoundLogger) -> bool:
+    """Sends, retrying a failed send with backoff (30 s, 60 s, 120 s); only the last failure is logged."""
+    try:
+        message.send()
+    except Exception as exc:
+        if task.request.retries < EMAIL_MAX_RETRIES:
+            raise task.retry(exc=exc, countdown=EMAIL_RETRY_BASE_SECONDS * 2**task.request.retries) from exc
+        log.exception('email_send_failed')
+        return False
+    log.info('email_sent')
+    return True
 
 
 def expiry_text(minutes: int) -> str:
@@ -23,8 +40,8 @@ def expiry_text(minutes: int) -> str:
     return f'{hours} hour{"s" if hours != 1 else ""}'
 
 
-@shared_task(name='user_send_email_verification_code')
-def send_email_verification_code(user_id: int, user_username: str, user_email: str, code_str: str):
+@shared_task(name='user_send_email_verification_code', bind=True, max_retries=EMAIL_MAX_RETRIES)
+def send_email_verification_code(self: Task, user_id: int, user_username: str, user_email: str, code_str: str):
     log = logger.bind(user_id=user_id, email_kind='verification')
 
     context = {
@@ -44,17 +61,11 @@ def send_email_verification_code(user_id: int, user_username: str, user_email: s
 
     message.attach_alternative(html_content, 'text/html')
 
-    try:
-        message.send()
-        log.info('email_sent')
-        return True
-    except Exception:
-        log.exception('email_send_failed')
-        return False
+    return send_with_retry(self, message, log)
 
 
-@shared_task(name='user_send_password_reset_code')
-def send_password_reset_code(user_id: int, user_username: str, user_email: str, code_str: str):
+@shared_task(name='user_send_password_reset_code', bind=True, max_retries=EMAIL_MAX_RETRIES)
+def send_password_reset_code(self: Task, user_id: int, user_username: str, user_email: str, code_str: str):
     log = logger.bind(user_id=user_id, email_kind='password_reset')
 
     context = {
@@ -74,17 +85,11 @@ def send_password_reset_code(user_id: int, user_username: str, user_email: str, 
 
     message.attach_alternative(html_content, 'text/html')
 
-    try:
-        message.send()
-        log.info('email_sent')
-        return True
-    except Exception:
-        log.exception('email_send_failed')
-        return False
+    return send_with_retry(self, message, log)
 
 
-@shared_task(name='user_send_email_changed_notice')
-def send_email_changed_notice(user_id: int, user_username: str, old_email: str):
+@shared_task(name='user_send_email_changed_notice', bind=True, max_retries=EMAIL_MAX_RETRIES)
+def send_email_changed_notice(self: Task, user_id: int, user_username: str, old_email: str):
     log = logger.bind(user_id=user_id, email_kind='email_changed')
 
     html_content = render_to_string('emails/email_changed.html', {'username': user_username})
@@ -99,13 +104,7 @@ def send_email_changed_notice(user_id: int, user_username: str, old_email: str):
 
     message.attach_alternative(html_content, 'text/html')
 
-    try:
-        message.send()
-        log.info('email_sent')
-        return True
-    except Exception:
-        log.exception('email_send_failed')
-        return False
+    return send_with_retry(self, message, log)
 
 
 @shared_task(name='user_handle_post_refresh', ignore_result=True)

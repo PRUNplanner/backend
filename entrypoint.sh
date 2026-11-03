@@ -13,7 +13,8 @@ fi
 # Migrations & Static files
 if [ "$SERVICE_TYPE" = "django" ]; then
     echo "Running Migrations..."
-    uv run python backend/manage.py migrate --noinput
+    # no statement timeout for migrations (core/config/settings/database.py)
+    SERVICE_TYPE=manage uv run python backend/manage.py migrate --noinput
 
     echo "Collecting Static..."
     uv run python backend/manage.py collectstatic --noinput --clear

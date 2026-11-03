@@ -1,5 +1,9 @@
 from core.env import settings
 
+# a stuck query fails instead of holding a web worker or the single Celery worker; tasks get more room, and
+# anything else (migrations, management commands under another SERVICE_TYPE) none (0)
+STATEMENT_TIMEOUT_MS = {'django': 15_000, 'celery': 120_000}.get(settings.service_type, 0)
+
 DATABASE_ROUTERS = ['legacy_migration.db_router.LegacyRouter']
 
 # Database
@@ -16,12 +20,13 @@ DATABASES = {
         'CONN_MAX_AGE': 0,
         'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
+            'options': f'-c statement_timeout={STATEMENT_TIMEOUT_MS}',
             'pool': {
                 'min_size': 3,
                 'max_size': 10,
                 'timeout': 10,
                 'max_waiting': 50,
-            }
+            },
         },
     }
 }

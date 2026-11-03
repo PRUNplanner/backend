@@ -106,6 +106,20 @@ class TestReceivers:
         assert len(entry['last_error']) == task_health.ERROR_MAX_CHARS
         assert fake_redis.counters[day_key('update_daily_stats', timezone.now().date(), 'fail')] == 1
 
+    def test_a_swallowed_failure_returning_false_is_a_failure(self, fake_redis: FakeRedis) -> None:
+        run_task('gamedata_refresh_exchanges', 'SUCCESS', retval=False)
+
+        entry = fake_redis.hashes[hash_key('gamedata_refresh_exchanges')]
+        assert 'last_failure_at' in entry and 'last_success_at' not in entry
+        assert entry['last_error'] == b'returned False'
+        assert fake_redis.counters[day_key('gamedata_refresh_exchanges', timezone.now().date(), 'fail')] == 1
+
+    @pytest.mark.parametrize('retval', [None, True, 0, 'done'])
+    def test_other_return_values_are_a_success(self, fake_redis: FakeRedis, retval: object) -> None:
+        run_task('gamedata_refresh_exchanges', 'SUCCESS', retval=retval)
+
+        assert 'last_success_at' in fake_redis.hashes[hash_key('gamedata_refresh_exchanges')]
+
     def test_retry_records_nothing(self, fake_redis: FakeRedis) -> None:
         run_task('update_daily_stats', 'RETRY')
 
@@ -204,6 +218,7 @@ class TestStates:
         run_task('update_daily_stats', 'SUCCESS')
         run_task('update_daily_stats', 'FAILURE', retval=RuntimeError('boom'))
         run_task('gamedata_refresh_user_fiodata', 'SUCCESS')
+        run_task('gamedata_refresh_exchanges', 'SUCCESS', retval=False)
 
         rows, _ = task_health_rows()
         by_task = {row.task: row for row in rows}
@@ -214,6 +229,8 @@ class TestStates:
         assert scheduled.last_error == "RuntimeError('boom')"
         assert (scheduled.days[-1].ok, scheduled.days[-1].fail) == (1, 1)
         assert len(scheduled.days) == task_health.TRACKER_DAYS
+        # a task that caught its error and returned False shows as failing on the page
+        assert by_task['gamedata_refresh_exchanges'].state == 'failing'
         assert by_task['gamedata_refresh_user_fiodata'].periodic_task_id is None
 
     def test_rows_without_redis(self) -> None:

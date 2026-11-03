@@ -421,8 +421,9 @@ class TestMarketSummary:
     def test_warm_task_builds_the_entry_before_the_next_visitor(self, api_client):
         CacheManager.invalidate(CXPC)
 
-        assert gamedata_warm_market_summary() is True
-        assert gamedata_warm_market_summary() is False
+        # neither a build nor a cache hit returns False (task health reads False as a failure)
+        assert gamedata_warm_market_summary() is None
+        assert gamedata_warm_market_summary() is None
 
         assert api_client.get(self.URL)['X-Cache-Hit'] == '1'
 

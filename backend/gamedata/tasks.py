@@ -12,7 +12,7 @@ from django.db.models import F, Max, Q
 from django.utils import timezone
 
 from gamedata.fio.schemas import FIOWebhookRootSchema
-from gamedata.fio.services import get_fio_service, log_refresh_failure
+from gamedata.fio.services import get_fio_service, is_transient_fio_error, log_refresh_failure
 from gamedata.gamedata_cache_manager import CXPC, EXCHANGES, PLANET_LIST, PLANET_SEARCH_INDEX, GamedataCacheManager
 from gamedata.services.cxpc_refresh import CXPCFetch, cxpc_window_start_ms, select_cxpc_pairs
 from gamedata.services.cxpc_sparklines import utc_today_epoch
@@ -69,8 +69,9 @@ def gamedata_refresh_planet() -> bool:
         .first()
     )
 
+    # nothing due is not a failure (task health reads False as one)
     if not to_update:
-        return False
+        return True
 
     # trigger infrastructure and plots refresh
     gamedata_refresh_planet_infrastructure.delay(to_update.planet_natural_id)
@@ -88,7 +89,7 @@ def gamedata_refresh_planet() -> bool:
 
     except Exception as exc:
         log_refresh_failure(logger, 'planet_refresh_failed', exc, planet_natural_id=to_update.planet_natural_id)
-        to_update.update_refresh_result(error=exc)
+        to_update.update_refresh_result(error=exc, transient=is_transient_fio_error(exc))
 
         return False
 
@@ -209,7 +210,7 @@ def gamedata_clean_user_fiodata(user_id: int) -> None:
 
 
 @shared_task(name='gamedata_refresh_user_fiodata')
-def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
+def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool | None:
     # credentials are loaded here, so the FIO api key never passes through the broker.
     # _legacy_args: (prun_username, fio_apikey) of tasks queued before this change, ignored; remove next release
     log = logger.bind(user_id=user_id)
@@ -217,7 +218,7 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
     # SUBSEQUENT REFRESH LOCK
     if not GamedataCacheManager.set_fio_refresh_lock(user_id):
         log.info('fio_refresh_skipped', skip='lock')
-        return False
+        return None  # a skip, not a failure
 
     # STORAGE REFRESH LOGIC
 
@@ -231,7 +232,7 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
             # user does not exist anymore, clean up lock key and return
             GamedataCacheManager.delete_fio_refresh_lock(user_id)
             log.info('fio_refresh_skipped', skip='user_missing')
-            return False
+            return None
 
         to_update, _ = GameFIOPlayerData.objects.get_or_create(user_id=user_id)
 
@@ -283,7 +284,7 @@ def gamedata_refresh_user_fiodata(user_id: int, *_legacy_args: str) -> bool:
                 log.warning('fio_refresh_failed')
             else:
                 log.exception('fio_refresh_failed')
-            to_update.update_refresh_result(error=exc, commit=False)
+            to_update.update_refresh_result(error=exc, commit=False, transient=is_transient_fio_error(exc))
             to_update.save(update_fields=[*GameFIOPlayerData.BOOKKEEPING_FIELDS])
             # remove lock key, so retry is possible
             GamedataCacheManager.delete_fio_refresh_lock(user_id)
@@ -420,13 +421,12 @@ def refresh_exchange_analytics():
 
 
 @shared_task(name='gamedata_warm_market_summary')
-def gamedata_warm_market_summary() -> bool:
+def gamedata_warm_market_summary() -> None:
     from gamedata.services.market_summary import MARKET_SUMMARY_ENDPOINT, build_market_summary
 
+    # warm's False only means it was cached already, not a failure
     today_epoch = utc_today_epoch()
-    return CacheManager.warm(
-        CXPC, MARKET_SUMMARY_ENDPOINT, today_epoch, build=lambda: build_market_summary(today_epoch)
-    )
+    CacheManager.warm(CXPC, MARKET_SUMMARY_ENDPOINT, today_epoch, build=lambda: build_market_summary(today_epoch))
 
 
 # beat every 10 min (below the 15 min ttl) and after planet imports: their cold builds take longer than the
@@ -440,7 +440,7 @@ def gamedata_warm_planet_caches() -> None:
 
 
 @shared_task(name='gamedata_process_fio_webhook')
-def gamedata_process_fio_webhook(payload):
+def gamedata_process_fio_webhook(payload) -> bool:
     from gamedata.services.fio_webhook_dispatcher import FIOWebhookDispatcher
 
     try:
@@ -449,6 +449,8 @@ def gamedata_process_fio_webhook(payload):
 
         # hand-off to webhook dispatcher
         FIOWebhookDispatcher.dispatch(validated_data)
+        return True
 
     except Exception:
         logger.exception('fio_webhook_processing_failed')
+        return False

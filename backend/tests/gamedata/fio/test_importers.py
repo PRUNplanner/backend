@@ -382,3 +382,39 @@ class TestImportAllPlanets:
             assert import_all_planets() is True
 
         warm.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_save_planets_inserts_in_batches(montem_raw_bytes) -> None:
+    from django.db.models.query import QuerySet
+    from gamedata.fio.importers import BULK_BATCH_SIZE, save_planets
+    from gamedata.fio.schemas import FIOPlanetSchema
+
+    # resources reference materials (a foreign key Postgres checks); the batch size is what's under test
+    planet = FIOPlanetSchema.model_validate_json(montem_raw_bytes).model_copy(update={'resources': []})
+    original = QuerySet.bulk_create
+
+    with patch.object(QuerySet, 'bulk_create', autospec=True, side_effect=original) as bulk_create:
+        save_planets([planet])
+
+    # planet, resources, fees and COGC programs: ~230k rows on a full import, never one INSERT
+    assert len(bulk_create.call_args_list) == 4
+    assert {c.kwargs['batch_size'] for c in bulk_create.call_args_list} == {BULK_BATCH_SIZE}
+    assert GamePlanet.objects.filter(planet_natural_id=planet.planet_natural_id).exists()
+
+
+@pytest.mark.django_db
+def test_import_all_planet_plots_stops_at_the_soft_time_limit() -> None:
+    from celery.exceptions import SoftTimeLimitExceeded
+    from gamedata.fio.importers import import_all_planet_plots
+
+    baker.make(GamePlanet, planet_natural_id='A')
+    baker.make(GamePlanet, planet_natural_id='B')
+
+    with (
+        patch('gamedata.fio.importers.import_planet_plots', side_effect=SoftTimeLimitExceeded()) as plots,
+        pytest.raises(SoftTimeLimitExceeded),
+    ):
+        import_all_planet_plots()
+
+    assert plots.call_count == 1
