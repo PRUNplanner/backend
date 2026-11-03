@@ -3,6 +3,7 @@ import gzip
 import io
 
 import pytest
+from api.renderers import FORMULA_PREFIXES
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -186,6 +187,42 @@ class TestEmpireViewSetSyncJunctions:
 
 
 class TestEmpireViewSetSyncState:
+    @pytest.fixture(autouse=True)
+    def materials(self):
+        baker.make('gamedata.GameMaterial', ticker='H2O')
+
+    @pytest.mark.parametrize(
+        'mutate',
+        [
+            pytest.param(
+                lambda s: s['empire_total'].update({'ZZZ': {'p': 1.0, 'c': 0.0, 'd': 1.0}}), id='unknown-total'
+            ),
+            pytest.param(
+                lambda s: next(iter(s['plan_details'].values()))['deltas'].update(
+                    {'ZZZ': {'p': 1.0, 'c': 0.0, 'd': 1.0}}
+                ),
+                id='unknown-plan-delta',
+            ),
+            pytest.param(lambda s: s['empire_total']['H2O'].update({'p': 1e20}), id='huge'),
+            pytest.param(lambda s: s['empire_total']['H2O'].update({'p': 'nan'}), id='nan'),
+            pytest.param(lambda s: s['empire_total']['H2O'].update({'c': '-Infinity'}), id='inf'),
+        ],
+    )
+    def test_sync_state_rejects_out_of_bounds(self, api_client, user_factory, empire_factory, plan_factory, mutate):
+        user = user_factory(id=1)
+        empire = empire_factory(user=user, empire_state={}, needs_state_sync=False)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis, planet_natural_id='OT-580b')
+        payload = _state_payload(str(plan.uuid))
+        mutate(payload)
+
+        url = reverse('planning:empire-sync-state', kwargs={'pk': str(empire.uuid)})
+        response = api_client.as_user(user).patch(url, data=payload, format='json')
+
+        assert response.status_code == 400
+        empire.refresh_from_db()
+        assert empire.empire_state == {}
+        assert empire.needs_state_sync is False
+
     def test_sync_state_requires_auth(self, api_client, user_factory, empire_factory):
         user = user_factory(id=1)
         empire = empire_factory(user=user)
@@ -287,6 +324,10 @@ def _state(plan_details: dict[str, object] | None = None) -> dict[str, object]:
     }
 
 
+def _csv_cell(value: object) -> str:
+    return f"'{value}" if isinstance(value, str) and value.startswith(FORMULA_PREFIXES) else str(value)
+
+
 def _csv_rows(response) -> list[list[str]]:
     return list(csv.reader(io.StringIO(response.content.decode())))
 
@@ -300,6 +341,7 @@ class TestEmpireExports:
     def empire(self, user, empire_factory, plan_factory):
         baker.make('gamedata.GameMaterial', ticker='DW', name='drinkingWater')
         baker.make('gamedata.GameMaterial', ticker='RAT', name='rations')
+        baker.make('gamedata.GameMaterial', ticker='H2O', name='water')
         empire = empire_factory(user=user)
         linked_b = plan_factory(user=user, plan_name='B base', planet_natural_id='ZV-307c')
         linked_a = plan_factory(user=user, plan_name='A base', planet_natural_id='OT-580b')
@@ -367,7 +409,8 @@ class TestEmpireExports:
         assert response['Content-Type'] == 'text/csv; charset=utf-8'
         header, *lines = _csv_rows(response)
         assert header == list(rows[0])
-        assert lines == [[str(value) for value in row.values()] for row in rows]
+        # the renderer quotes text that would start a formula, e.g. cogc '---'
+        assert lines == [[_csv_cell(value) for value in row.values()] for row in rows]
 
     def test_plan_material_io_only_linked_plans_sorted(self, api_client, user, empire):
         rows = self._get(api_client, user, 'planning:empire-plans-material-io', empire).data['rows']
@@ -515,6 +558,15 @@ class TestEmpireExports:
 
         assert rows[0]['delta'] == 15.2
         assert _csv_rows(csv_response)[1][4] == '15.2'
+
+    @pytest.mark.parametrize('route', ['planning:empire-plans-material-io-csv', 'planning:empire-plan-list-csv'])
+    def test_csv_plan_name_is_no_formula(self, api_client, user, empire, route: str):
+        PlanningPlan.objects.filter(plan_name='A base').update(plan_name='=1+1')
+
+        cells = [cell for row in _csv_rows(self._get(api_client, user, route, empire)) for cell in row]
+
+        assert "'=1+1" in cells
+        assert '=1+1' not in cells
 
     @pytest.mark.parametrize(
         'route',

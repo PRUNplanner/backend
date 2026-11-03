@@ -3607,6 +3607,7 @@ components:
         locale:
           type: string
           nullable: true
+          maxLength: 16
         defaultEmpireUuid:
           type: string
           format: uuid
@@ -3631,6 +3632,7 @@ components:
           default: 18
         burnOrigin:
           type: string
+          maxLength: 100
         supplyCartDays:
           type: number
           format: double
@@ -3765,6 +3767,8 @@ components:
           type: array
           items:
             type: string
+            maxLength: 3
+          maxItems: 500
         autoOptimizeHabs:
           type: boolean
           default: true
@@ -4269,12 +4273,18 @@ components:
         p:
           type: number
           format: double
+          maximum: 1000000000.0
+          minimum: -1000000000.0
         c:
           type: number
           format: double
+          maximum: 1000000000.0
+          minimum: -1000000000.0
         d:
           type: number
           format: double
+          maximum: 1000000000.0
+          minimum: -1000000000.0
       required:
       - c
       - d
@@ -5209,6 +5219,7 @@ components:
         locale:
           type: string
           nullable: true
+          maxLength: 16
         defaultEmpireUuid:
           type: string
           format: uuid
@@ -5233,6 +5244,7 @@ components:
           default: 18
         burnOrigin:
           type: string
+          maxLength: 100
         supplyCartDays:
           type: number
           format: double

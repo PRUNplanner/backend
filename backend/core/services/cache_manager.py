@@ -9,13 +9,13 @@ from uuid import UUID
 
 import orjson
 import structlog
+from api.renderers import SafeCSVRenderer
 from django.core.cache import cache
 from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.utils.cache import patch_cache_control, patch_vary_headers
 from django.utils.http import parse_etags
 from rest_framework.request import Request
-from rest_framework_csv.renderers import CSVRenderer
 
 logger = structlog.get_logger(__name__)
 
@@ -134,7 +134,7 @@ class CacheManager:
         if fmt == 'csv':
             # rendered from the json round trip, so values match the json payload
             context = {'header': csv_header} if csv_header else {}
-            body = CSVRenderer().render(orjson.loads(body), renderer_context=context)
+            body = SafeCSVRenderer().render(orjson.loads(body), renderer_context=context)
         # weak: the gzip and the plain body share it
         return f'W/"{blake2b(body, digest_size=16).hexdigest()}"', gzip.compress(body, compresslevel=9, mtime=0)
 

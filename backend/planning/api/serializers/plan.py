@@ -149,6 +149,8 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
         source = PlanningPlanVersion.objects.filter(pk=restored_from, plan=instance).first() if restored_from else None
         if restored_from and source is None:
             raise serializers.ValidationError({'restored_from': 'Not a version of this plan.'})
+        if version_name and plan_version_service.named_full(instance):
+            raise serializers.ValidationError({'version_name': plan_version_service.NAMED_FULL})
 
         # a client that didn't see the stored draft can't be saving it, also one that doesn't send the field: it stays
         keep_draft = plan_version_service.newer_draft(instance, seen_draft) is not None

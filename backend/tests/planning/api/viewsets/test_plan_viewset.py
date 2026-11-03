@@ -74,6 +74,9 @@ class TestPlanViewSetCrud:
         [
             {**plan_data_vallis, 'buildings': [{'name': 'C', 'amount': 1, 'active_recipes': []}]},
             {**plan_data_vallis, 'infrastructure': [{'building': 'XYZ', 'amount': 1}]},
+            # used to reach Postgres as a 500 (int64 overflow)
+            {**plan_data_vallis, 'experts': [{'type': 'Agriculture', 'amount': 10**20}]},
+            {**plan_data_vallis, 'buildings': [{'name': 'FP', 'amount': 100_001, 'active_recipes': []}]},
         ],
     )
     def test_create_rejects_invalid_plan_data(self, api_client, user_factory, plan_data):
@@ -105,6 +108,17 @@ class TestPlanViewSetCrud:
 
         assert response.status_code == 200
         assert response.data['plan_name'] == 'New Name'
+
+    @pytest.mark.parametrize(('amount', 'status'), [(100_000, 200), (100_001, 400), (10**20, 400)])
+    def test_update_caps_amounts(self, api_client, user_factory, plan_factory, amount: int, status: int):
+        user = user_factory(id=1)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+        plan_data = {**plan_data_vallis, 'buildings': [{'name': 'FP', 'amount': amount, 'active_recipes': []}]}
+
+        url = reverse('planning:plan-detail', kwargs={'pk': str(plan.uuid)})
+        response = api_client.as_user(user).put(url, data=_plan_payload(plan_data=plan_data), format='json')
+
+        assert response.status_code == status
 
     def test_destroy(self, api_client, user_factory, plan_factory):
         user = user_factory(id=1)

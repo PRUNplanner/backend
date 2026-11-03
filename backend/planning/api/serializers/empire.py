@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.utils import timezone
+from gamedata.models import GameMaterial
 from planning.models import PlanningCOGCChoices, PlanningEmpire, PlanningFactionChoices
 from rest_framework import serializers
 
@@ -80,10 +81,14 @@ class PlanningEmpirePlanSyncSuccessSerializer(serializers.Serializer):
     status = serializers.CharField(default='Empire-Plan junctions updated')
 
 
+# per day, far above any real empire; FloatField already rejects NaN and inf
+MAX_MATERIAL_IO = 1e9
+
+
 class PlanningEmpireMaterialIOSerializer(serializers.Serializer):
-    p = serializers.FloatField()
-    c = serializers.FloatField()
-    d = serializers.FloatField()
+    p = serializers.FloatField(min_value=-MAX_MATERIAL_IO, max_value=MAX_MATERIAL_IO)
+    c = serializers.FloatField(min_value=-MAX_MATERIAL_IO, max_value=MAX_MATERIAL_IO)
+    d = serializers.FloatField(min_value=-MAX_MATERIAL_IO, max_value=MAX_MATERIAL_IO)
 
 
 class PlanningEmpireMetadataSerializer(serializers.Serializer):
@@ -110,6 +115,16 @@ class PlanningEmpireStateUpdateSerializer(serializers.Serializer):
     metadata = PlanningEmpireMetadataSerializer()
     empire_total = serializers.DictField(child=PlanningEmpireMaterialIOSerializer())
     plan_details = serializers.DictField(child=SinglePlanDetailSerializer())
+
+    def validate(self, attrs: dict) -> dict:
+        # empire_total feeds the public material tracker: known materials only
+        tickers = set(attrs['empire_total'])
+        for detail in attrs['plan_details'].values():
+            tickers.update(detail['deltas'])
+        unknown = tickers - set(GameMaterial.objects.filter(ticker__in=tickers).values_list('ticker', flat=True))
+        if unknown:
+            raise serializers.ValidationError(f'Unknown material tickers: {", ".join(sorted(unknown)[:20])}')
+        return attrs
 
     def update(self, instance, validated_data):
         return instance

@@ -10,6 +10,7 @@ from django.db.models.functions import Concat
 from django.utils import timezone
 from gamedata.models import GameBuilding, GameRecipe
 from planning.models import PlanningPlan
+from planning.schemas.planning_plan_data import MAX_AMOUNT
 
 
 @dataclass
@@ -29,6 +30,17 @@ class _MixUsage(_Usage):
 class _BuildingUsage(_Usage):
     recipes: dict[str, _Usage] = field(default_factory=lambda: defaultdict(_Usage))
     mixes: dict[tuple[str, ...], _MixUsage] = field(default_factory=lambda: defaultdict(_MixUsage))
+
+
+def _out_of_bounds(data: dict) -> bool:
+    """Plans stored before the schema caps may hold amounts that overflow the medians or orjson; they don't count."""
+    buildings = data.get('buildings', [])
+    amounts = [
+        *(e.get('amount', 0) for e in data.get('experts', [])),
+        *(b.get('amount', 0) for b in buildings),
+        *(r.get('amount', 0) for b in buildings for r in b.get('active_recipes', [])),
+    ]
+    return any(not isinstance(a, int) or a > MAX_AMOUNT for a in amounts)
 
 
 def _median(amounts: list[int]) -> int:
@@ -108,6 +120,8 @@ class PlanInsightAggregatorService:
         experts_v2: dict[str, _Usage] = defaultdict(_Usage)
 
         for user_id, data in plans:
+            if _out_of_bounds(data):
+                continue
             total_valid_plans += 1
             users.add(user_id)
 
