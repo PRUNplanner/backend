@@ -120,6 +120,7 @@ class VerificationService:
     @transaction.atomic
     def execute_password_reset(cls, user: User, code_obj: VerificationCode, new_password: str) -> None:
         user.set_password(new_password)
+        user.cut_off_tokens()
         user.save()
         code_obj.is_used = True
         code_obj.save()

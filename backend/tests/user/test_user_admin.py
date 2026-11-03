@@ -177,6 +177,8 @@ class TestUserActions:
         other.refresh_from_db()
         superuser.refresh_from_db()
         assert (other.is_active, superuser.is_active) == (False, True)
+        # their tokens stay dead after a later Reactivate
+        assert (other.tokens_valid_after is not None, superuser.tokens_valid_after) == (True, None)
         assert LogEntry.objects.count() == 1
 
     def test_reactivate(self, admin_client: Client) -> None:

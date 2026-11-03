@@ -185,6 +185,7 @@ class TestVerificationService:
         code_obj.refresh_from_db()
         assert user.check_password('NewPass123!')
         assert user.password != old_password
+        assert user.tokens_valid_after is not None  # older sessions end
         assert code_obj.is_used is True
         assert not VerificationCode.objects.filter(pk=other.pk).exists()
         assert VerificationCode.objects.filter(pk=verification.pk).exists()

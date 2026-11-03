@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.db import connection
@@ -8,6 +8,7 @@ from model_bakery import baker
 from rest_framework import exceptions
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
+from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.tokens import AccessToken
 from user.auth_apikey import LoggedJWTAuthentication, UserAPIKeyAuthentication
 from user.models import UserAPIKey
@@ -161,3 +162,69 @@ class TestUserAPIKeyAuthenticationCost:
 
         assert authenticated_user == user
         assert len(ctx.captured_queries) == 1
+
+
+class TestKeyOfInactiveUserOrExpired:
+    @pytest.mark.parametrize(
+        ('is_active', 'expiry', 'ok'),
+        [
+            (True, None, True),
+            (True, timedelta(days=1), True),
+            (True, -timedelta(seconds=1), False),
+            (False, None, False),
+        ],
+    )
+    def test_key_works_only_for_an_active_user_before_expiry(self, is_active, expiry, ok):
+        user = baker.make('user.User', is_active=is_active)
+        _, key = UserAPIKey.objects.create_key(
+            name='script', user=user, expiry_date=timezone.now() + expiry if expiry else None
+        )
+        request = Request(APIRequestFactory().get('/', {'api_key': key}))
+
+        if ok:
+            assert UserAPIKeyAuthentication().authenticate(request)[0] == user
+        else:
+            with pytest.raises(exceptions.AuthenticationFailed, match='Invalid API Key'):
+                UserAPIKeyAuthentication().authenticate(request)
+            assert request._request._auth_error == 'api_key_invalid'
+
+
+class TestJWTCutoff:
+    def _auth(self, token: AccessToken):
+        request = Request(APIRequestFactory().get('/', HTTP_AUTHORIZATION=f'Bearer {token}'))
+        return LoggedJWTAuthentication().authenticate(request)
+
+    @pytest.mark.parametrize(
+        ('cutoff_offset', 'ok'),
+        [
+            (None, True),  # no cutoff yet: tokens from before the migration keep working
+            (timedelta(seconds=-10), True),  # token issued after the cutoff
+            (timedelta(0), True),  # same second as the cutoff (a login right after the change)
+            (timedelta(seconds=10), False),  # token issued before the cutoff
+        ],
+    )
+    def test_access_token_against_the_cutoff(self, cutoff_offset, ok):
+        user = baker.make('user.User')
+        token = AccessToken.for_user(user)
+        if cutoff_offset is not None:
+            user.tokens_valid_after = datetime.fromtimestamp(token['iat'], tz=UTC) + cutoff_offset
+            user.save()
+
+        if ok:
+            assert self._auth(token)[0] == user
+        else:
+            with pytest.raises(InvalidToken):
+                self._auth(token)
+
+    def test_cut_off_tokens_is_whole_seconds(self):
+        user = baker.make('user.User')
+        user.cut_off_tokens()
+
+        assert user.tokens_valid_after is not None and user.tokens_valid_after.microsecond == 0
+
+    def test_cutoff_check_reads_only_the_user_row(self, django_assert_num_queries):
+        user = baker.make('user.User', tokens_valid_after=timezone.now() - timedelta(minutes=1))
+        token = AccessToken.for_user(user)
+
+        with django_assert_num_queries(1):
+            assert self._auth(token)[0] == user

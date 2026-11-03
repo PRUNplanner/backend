@@ -1457,3 +1457,88 @@ class TestPasswordChecks:
         assert 'new_password' in response.data
         code.refresh_from_db()
         assert code.is_used is False
+
+
+class TestTokenCutoff:
+    """A password change, reset or deactivation ends every older session (User.tokens_valid_after)."""
+
+    PASSWORD = 'CorrectHorse1!'
+
+    def _login(self, client, user: User) -> Mapping[str, str]:
+        response = client.post(
+            reverse('user:token_obtain_pair'), data={'username': user.username, 'password': self.PASSWORD}
+        )
+        assert response.status_code == 200
+        return response.data
+
+    def _refresh(self, client, refresh: str) -> int:
+        with patch('user.api.viewsets.user_handle_post_refresh.delay'):
+            return client.post(reverse('user:token_refresh'), data={'refresh': refresh}, format='json').status_code
+
+    def _profile(self, client, access: str) -> int:
+        return client.get(reverse('user:user_profile'), HTTP_AUTHORIZATION=f'Bearer {access}').status_code
+
+    @pytest.fixture
+    def user(self) -> User:
+        user = baker.make(User, username='pilot')
+        user.set_password(self.PASSWORD)
+        user.save()
+        return user
+
+    def test_change_password_ends_older_sessions(self, api_client, user, monkeypatch):
+        with patch('user.api.urls.request_fio_refresh'):
+            other_tab = self._login(api_client, user)
+        # tokens are whole seconds: put the change a second later than the other tab's login
+        later = timezone.now() + timedelta(seconds=1)
+        monkeypatch.setattr('user.models.user.timezone.now', lambda: later)
+
+        response = api_client.post(
+            reverse('user:user_change_password'),
+            data={'old_password': self.PASSWORD, 'new_password': 'Xk7!qzR9pLm2'},
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {other_tab["access"]}',
+        )
+
+        assert response.status_code == 200
+        assert self._refresh(api_client, other_tab['refresh']) == 401
+        assert self._profile(api_client, other_tab['access']) == 401
+
+    def test_tokens_issued_after_the_cutoff_work(self, api_client, user):
+        user.tokens_valid_after = timezone.now() - timedelta(minutes=1)
+        user.save()
+        with patch('user.api.urls.request_fio_refresh'):
+            tokens = self._login(api_client, user)
+
+        assert self._refresh(api_client, tokens['refresh']) == 200
+        assert self._profile(api_client, tokens['access']) == 200
+
+    def test_refresh_from_before_the_cutoff_is_401(self, api_client, user):
+        refresh = RefreshToken.for_user(user)
+        user.tokens_valid_after = timezone.now() + timedelta(seconds=5)
+        user.save()
+
+        assert self._refresh(api_client, str(refresh)) == 401
+
+    def test_refresh_without_a_cutoff_works(self, api_client, user):
+        assert self._refresh(api_client, str(RefreshToken.for_user(user))) == 200
+
+    @pytest.mark.parametrize('gone', ['deleted', 'inactive'])
+    def test_refresh_of_a_deleted_or_inactive_user_is_401(self, api_client, user, gone):
+        refresh = str(RefreshToken.for_user(user))
+        if gone == 'deleted':
+            user.delete()
+        else:
+            User.objects.filter(pk=user.pk).update(is_active=False)
+
+        assert self._refresh(api_client, refresh) == 401
+
+    @pytest.mark.parametrize('cutoff', [None, timedelta(minutes=-1)])
+    def test_profile_query_count_is_the_same_with_a_cutoff(self, api_client, user, cutoff, django_assert_num_queries):
+        if cutoff is not None:
+            user.tokens_valid_after = timezone.now() + cutoff
+            user.save()
+        access = str(RefreshToken.for_user(user).access_token)
+
+        # the cutoff is read from the user row JWT auth loads anyway
+        with django_assert_num_queries(1):
+            assert self._profile(api_client, access) == 200

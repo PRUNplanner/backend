@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -10,6 +12,11 @@ FIO_LINKED_Q = (
     & ~models.Q(prun_username='')
     & ~models.Q(fio_apikey='')
 )
+
+
+def token_cutoff() -> datetime:
+    # whole seconds like a JWT's iat, so a login in the same second as the cutoff still counts
+    return timezone.now().replace(microsecond=0)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -26,10 +33,20 @@ class User(AbstractBaseUser, PermissionsMixin):
     prun_username = models.CharField(max_length=255, null=True, blank=True, default=None)  # noqa: DJ001
     fio_apikey = models.CharField(max_length=255, null=True, blank=True, default=None)  # noqa: DJ001
 
+    # JWTs issued before this are rejected (password change, reset, deactivation); empty: all tokens count
+    tokens_valid_after = models.DateTimeField(null=True, blank=True)
+
     objects = CustomUserManager()
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = []
+
+    def cut_off_tokens(self) -> None:
+        """Ends every session issued before now; the caller saves."""
+        self.tokens_valid_after = token_cutoff()
+
+    def issued_before_cutoff(self, iat: int) -> bool:
+        return self.tokens_valid_after is not None and iat < self.tokens_valid_after.timestamp()
 
     def _has_fio_credentials(self) -> bool:
         # .strip() to remove " " and "\n"

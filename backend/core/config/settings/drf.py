@@ -69,6 +69,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=settings.rest_framework.access_token_lifetime),
     'REFRESH_TOKEN_LIFETIME': timedelta(minutes=settings.rest_framework.refresh_token_lifetime),
     'UPDATE_LAST_LOGIN': True,
+    # rejects refresh tokens from before the user's tokens_valid_after
+    'TOKEN_REFRESH_SERIALIZER': 'user.auth_apikey.TokenRefreshSerializer',
 }
 
 DRF_API_KEY_CUSTOM_MODEL = 'user.UserAPIKey'
