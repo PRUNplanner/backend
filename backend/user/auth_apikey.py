@@ -76,11 +76,3 @@ class LoggedJWTAuthentication(JWTAuthentication):
         if result is not None:
             _mark(request, auth='jwt')
         return result
-
-
-class LoggedBasicAuthentication(authentication.BasicAuthentication):
-    def authenticate(self, request):
-        result = super().authenticate(request)
-        if result is not None:
-            _mark(request, auth='basic')
-        return result

@@ -109,8 +109,8 @@ from core.config.settings.logging import *  # noqa: E402, F403
 from core.config.settings.unfold import *  # noqa: E402, F403
 
 AUTHENTICATION_BACKENDS = [
+    # covers every hasher in PASSWORD_HASHERS and legacy $2b$ hashes; a second backend would hash a wrong password twice
     'user.backends.LegacyAwareBackend',
-    'django.contrib.auth.backends.ModelBackend',
 ]
 
 AUTH_PASSWORD_VALIDATORS = [

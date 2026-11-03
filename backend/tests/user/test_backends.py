@@ -4,8 +4,13 @@ import bcrypt
 import pytest
 from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
+from django.test import RequestFactory
 from django.urls import reverse
 from model_bakery import baker
+from rest_framework.exceptions import Throttled
+from rest_framework.request import Request
+from rest_framework.test import APIClient
+from structlog.testing import capture_logs
 from user.models import User
 
 pytestmark = pytest.mark.django_db
@@ -105,3 +110,90 @@ class TestLongPasswords:
         assert _login(api_client, 'veteran', LONG_PASSWORD) == 200
         # the new hash covers the whole password, not just its first 72 bytes
         assert _login(api_client, 'veteran', LONG_PASSWORD[:72]) == 401
+
+
+def _hasher_calls() -> tuple:
+    # bcrypt_sha256 and bcrypt hash through bcrypt.hashpw (verify re-encodes), legacy $2b$ hashes through bcrypt.checkpw
+    return patch('bcrypt.hashpw', wraps=bcrypt.hashpw), patch('bcrypt.checkpw', wraps=bcrypt.checkpw)
+
+
+class TestOneHashPerAttempt:
+    @pytest.mark.parametrize('username', ['pilot', 'nobody', 'veteran'])
+    def test_failed_login_costs_exactly_one_hash(self, username: str) -> None:
+        baker.make('user.User', username='pilot', password=make_password(PASSWORD))
+        _legacy_user()
+        hashpw, checkpw = _hasher_calls()
+
+        with hashpw as hashed, checkpw as checked:
+            assert authenticate(username=username, password='wrong-password') is None
+
+        assert hashed.call_count + checked.call_count == 1
+
+
+class TestFailedLoginCounter:
+    def _fail(self, api_client, n: int, username: str = 'pilot', ip: str | None = None) -> list[int]:
+        statuses = []
+        for i in range(n):
+            with patch('user.api.urls.request_fio_refresh'):
+                response = api_client.post(
+                    reverse('user:token_obtain_pair'),
+                    data={'username': username, 'password': 'wrong-password'},
+                    format='json',
+                    REMOTE_ADDR=ip or f'10.0.0.{i}',
+                )
+            statuses.append(response.status_code)
+        return statuses
+
+    def test_eleventh_failure_for_a_username_is_throttled_across_idents(self, api_client, locmem_cache) -> None:
+        baker.make('user.User', username='pilot', password=make_password(PASSWORD))
+        assert self._fail(api_client, 10) == [401] * 10
+
+        hashpw, checkpw = _hasher_calls()
+        with hashpw as hashed, checkpw as checked, capture_logs() as logs:
+            response = api_client.post(
+                reverse('user:token_obtain_pair'),
+                data={'username': 'PILOT', 'password': PASSWORD},
+                format='json',
+                REMOTE_ADDR='10.0.1.1',
+            )
+            self._fail(api_client, 2, ip='10.0.1.2')
+
+        assert response.status_code == 429
+        assert int(response['Retry-After']) > 0
+        assert hashed.call_count + checked.call_count == 0
+        assert [line['by'] for line in logs if line['event'] == 'login_throttled'] == ['username']
+
+        locmem_cache.clear()  # the window has passed
+        assert _login(api_client, 'pilot', PASSWORD) == 200
+
+    def test_eleventh_failure_from_one_ident_is_throttled_across_usernames(self, locmem_cache) -> None:
+        # straight to authenticate(): on the JWT view auth_login (10/h per IP) would answer 429 first
+        def attempt(username: str, ip: str) -> None:
+            request = Request(RequestFactory().post('/', REMOTE_ADDR=ip))
+            # a DRF Request, as simplejwt passes it
+            user = authenticate(request, username=username, password='wrong-password')  # ty:ignore[invalid-argument-type]
+            assert user is None
+
+        for i in range(10):
+            attempt(f'user{i}', '10.9.9.9')
+
+        with pytest.raises(Throttled):
+            attempt('someone-else', '10.9.9.9')
+        attempt('someone-else', '10.9.9.8')
+
+    def test_admin_login_shares_the_counter(self, client, locmem_cache) -> None:
+        baker.make('user.User', username='pilot', password=make_password(PASSWORD), is_staff=True, is_superuser=True)
+        self._fail(APIClient(), 10)
+
+        response = client.post(reverse('admin:login'), {'username': 'pilot', 'password': PASSWORD, 'next': '/'})
+
+        # the form is shown again, no session
+        assert response.status_code == 200
+        assert '_auth_user_id' not in client.session
+
+    def test_admin_failures_count_too(self, client, locmem_cache) -> None:
+        baker.make('user.User', username='pilot', password=make_password(PASSWORD), is_staff=True, is_superuser=True)
+        for i in range(10):
+            client.post(reverse('admin:login'), {'username': 'pilot', 'password': 'wrong'}, REMOTE_ADDR=f'10.0.0.{i}')
+
+        assert _login(APIClient(), 'pilot', PASSWORD) == 429

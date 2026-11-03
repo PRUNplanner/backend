@@ -1,7 +1,6 @@
-from drf_spectacular.authentication import BasicScheme
 from drf_spectacular.contrib.rest_framework_simplejwt import SimpleJWTScheme
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
-from user.auth_apikey import LoggedBasicAuthentication, LoggedJWTAuthentication, UserAPIKeyAuthentication
+from user.auth_apikey import LoggedJWTAuthentication, UserAPIKeyAuthentication
 
 
 class UserAPIKeySchema(OpenApiAuthenticationExtension):
@@ -32,7 +31,3 @@ class UserAPIKeySchema(OpenApiAuthenticationExtension):
 # spectacular matches authenticators by exact class, so the logging subclasses need their own entries
 class LoggedJWTScheme(SimpleJWTScheme):
     target_class = LoggedJWTAuthentication
-
-
-class LoggedBasicScheme(BasicScheme):
-    target_class = LoggedBasicAuthentication
