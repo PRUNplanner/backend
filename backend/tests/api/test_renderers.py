@@ -1,9 +1,12 @@
+import csv
 import decimal
+import io
 import uuid
 
 import orjson
 import pytest
-from api.renderers import OrjsonRenderer
+from api.renderers import OrjsonRenderer, SafeCSVRenderer
+from rest_framework_csv.renderers import CSVRenderer
 
 
 class TestOrjsonRenderer:
@@ -48,3 +51,17 @@ class TestOrjsonRenderer:
 
         assert decoded['prices'][0] == 1.99
         assert isinstance(decoded['meta']['uid'], str)
+
+
+class TestSafeCSVRenderer:
+    @pytest.mark.parametrize('prefix', ['=', '+', '-', '@', '\t', '\r'])
+    def test_formula_cells_get_a_quote(self, prefix):
+        rendered = SafeCSVRenderer().render([{'name': f'{prefix}1+1'}]).decode()
+
+        assert next(csv.reader(io.StringIO(rendered), dialect='excel'))[0] == 'name'
+        assert list(csv.reader(io.StringIO(rendered)))[1] == [f"'{prefix}1+1"]
+
+    def test_numbers_and_plain_text_unchanged(self):
+        rendered = SafeCSVRenderer().render([{'a': -5, 'b': -1.5, 'c': 'A base', 'd': None, 'e': "'quoted"}])
+
+        assert rendered == CSVRenderer().render([{'a': -5, 'b': -1.5, 'c': 'A base', 'd': None, 'e': "'quoted"}])

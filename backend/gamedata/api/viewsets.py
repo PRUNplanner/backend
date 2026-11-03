@@ -3,6 +3,7 @@ from itertools import chain
 from typing import Any, cast
 
 import structlog
+from api.renderers import SafeCSVRenderer
 from core.services.cache_manager import CacheManager
 from django.db import connection
 from django.db.models import Case, CharField, F, OuterRef, Q, QuerySet, Subquery, Value, When
@@ -73,7 +74,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_csv.renderers import CSVRenderer
 from user.models import GlobalConfigWebhook, User, WebhookSenderChoices
 
 logger = structlog.get_logger(__name__)
@@ -358,7 +358,7 @@ class GameExchangeViewSet(viewsets.GenericViewSet, mixins.ListModelMixin):
     ],
 )
 class GameExchangeCSVViewSet(GameExchangeViewSet):
-    renderer_classes = [CSVRenderer]
+    renderer_classes = [SafeCSVRenderer]
 
     header = [
         'ticker',

@@ -702,3 +702,29 @@ class TestAccess:
         client = api_client.as_user(baker.make(User))  # ty:ignore[unresolved-attribute]
 
         assert getattr(client, method)(url(plan, version), payload(), format='json').status_code == 404
+
+
+class TestNamedVersionCap:
+    def test_save_with_a_name_past_the_cap_is_rejected(self, client: APIClient, plan: PlanningPlan) -> None:
+        for i in range(plan_version_service.MAX_NAMED):
+            save(client, plan, version_name=f'v{i}')
+
+        response = client.put(detail(plan), payload(version_name='one more'), format='json')
+
+        assert response.status_code == 400
+        assert 'version_name' in response.data
+        assert PlanningPlanVersion.objects.filter(plan=plan).exclude(name='').count() == plan_version_service.MAX_NAMED
+        # unnamed saves still work, and keep the named ones
+        assert save(client, plan).name == ''
+
+    def test_naming_past_the_cap_is_rejected_renaming_is_not(self, client: APIClient, plan: PlanningPlan) -> None:
+        named = [save(client, plan, version_name=f'v{i}') for i in range(plan_version_service.MAX_NAMED)]
+        unnamed = save(client, plan)
+
+        response = client.patch(version_url(unnamed), {'name': 'one more'}, format='json')
+
+        assert response.status_code == 400
+        assert 'name' in response.data
+        assert client.patch(version_url(named[0]), {'name': 'renamed'}, format='json').status_code == 200
+        assert client.patch(version_url(named[0]), {'name': ''}, format='json').status_code == 200
+        assert client.patch(version_url(unnamed), {'name': 'fits again'}, format='json').status_code == 200

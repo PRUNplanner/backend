@@ -25,6 +25,7 @@ from planning.api.serializers.version import (
 from planning.models import PlanningPlan, PlanningPlanVersion
 from planning.services import plan_version_service
 from rest_framework import status, viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -97,7 +98,10 @@ class PlanVersionViewSet(viewsets.GenericViewSet):
         serializer = PlanningPlanVersionRenameSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        version = plan_version_service.rename_version(version, serializer.validated_data['name'])
+        name = serializer.validated_data['name']
+        if name and not version.name and plan_version_service.named_full(plan):
+            raise ValidationError({'name': plan_version_service.NAMED_FULL})
+        version = plan_version_service.rename_version(version, name)
         return Response(PlanningPlanVersionSerializer(version, context={'active_uuid': _active_uuid(plan)}).data)
 
     @extend_schema(summary='Open a version as a new plan', request=None, responses={201: PlanningPlanDetailSerializer})

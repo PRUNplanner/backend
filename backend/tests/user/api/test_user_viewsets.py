@@ -25,6 +25,8 @@ pytestmark = pytest.mark.django_db
 # Test settings use DummyCache, which never throttles; ScopedRateThrottle needs a real cache backend.
 LOCMEM_CACHES = {'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache', 'LOCATION': 'throttle-test'}}
 
+# plan uuids as planOverrides keys
+P1, P2, P3 = (f'00000000-0000-4000-8000-00000000000{i}' for i in (1, 2, 3))
 PASSWORD = 'CorrectHorse1!'
 LONG_PASSWORD = ('Xk7!qzR9pLm2' * 9)[:100]  # over bcrypt's 72-byte limit
 
@@ -220,20 +222,22 @@ class TestUserPreferenceViewSet:
 
     def test_update_round_trips_construction_built(self, api_client, user_factory):
         user = user_factory(id=1)
+        for uuid in (P1, P2):
+            baker.make('planning.PlanningPlan', user=user, uuid=uuid)
         payload = {
             'planOverrides': {
-                'p1': {'includeCM': True, 'autoOptimizeHabs': False, 'constructionBuilt': {'FRM': 3, 'HB1': 0}}
+                P1: {'includeCM': True, 'autoOptimizeHabs': False, 'constructionBuilt': {'FRM': 3, 'HB1': 0}}
             }
         }
 
         response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
 
         assert response.status_code == 200
-        override = response.data['planOverrides']['p1']
+        override = response.data['planOverrides'][P1]
         assert override['constructionBuilt'] == {'FRM': 3, 'HB1': 0}
         assert override['includeCM'] is True
         assert override['autoOptimizeHabs'] is False
-        stored = UserPreference.objects.get(user=user).preferences['plan_overrides']['p1']
+        stored = UserPreference.objects.get(user=user).preferences['plan_overrides'][P1]
         assert stored['construction_built'] == {'FRM': 3, 'HB1': 0}
         assert stored['include_cm'] is True
 
@@ -243,7 +247,7 @@ class TestUserPreferenceViewSet:
     )
     def test_update_rejects_invalid_construction_built(self, api_client, user_factory, built):
         user = user_factory(id=1)
-        payload = {'planOverrides': {'p1': {'autoOptimizeHabs': True, 'constructionBuilt': built}}}
+        payload = {'planOverrides': {P1: {'autoOptimizeHabs': True, 'constructionBuilt': built}}}
 
         response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
 
@@ -251,8 +255,10 @@ class TestUserPreferenceViewSet:
 
     def test_update_accepts_100_construction_built_entries(self, api_client, user_factory):
         user = user_factory(id=1)
+        for uuid in (P1, P2):
+            baker.make('planning.PlanningPlan', user=user, uuid=uuid)
         built = {f'A{i}': 1 for i in range(100)}
-        payload = {'planOverrides': {'p1': {'autoOptimizeHabs': True, 'constructionBuilt': built}}}
+        payload = {'planOverrides': {P1: {'autoOptimizeHabs': True, 'constructionBuilt': built}}}
 
         response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=payload, format='json')
 
@@ -260,24 +266,26 @@ class TestUserPreferenceViewSet:
 
     def test_construction_built_defaults_to_empty(self, api_client, user_factory):
         user = user_factory(id=1)
+        for uuid in (P1, P2):
+            baker.make('planning.PlanningPlan', user=user, uuid=uuid)
         baker.make(
             UserPreference,
             user=user,
-            preferences={'plan_overrides': {'p1': {'include_cm': True, 'auto_optimize_habs': False}}},
+            preferences={'plan_overrides': {P1: {'include_cm': True, 'auto_optimize_habs': False}}},
         )
 
         response = api_client.as_user(user).get(reverse('user:user_preferences'))
         assert response.status_code == 200
-        assert response.data['planOverrides']['p1']['constructionBuilt'] == {}
-        assert response.data['planOverrides']['p1']['includeCM'] is True
+        assert response.data['planOverrides'][P1]['constructionBuilt'] == {}
+        assert response.data['planOverrides'][P1]['includeCM'] is True
 
         response = api_client.as_user(user).patch(
             reverse('user:user_preferences'),
-            data={'planOverrides': {'p1': {'includeCM': True, 'autoOptimizeHabs': False}}},
+            data={'planOverrides': {P1: {'includeCM': True, 'autoOptimizeHabs': False}}},
             format='json',
         )
         assert response.status_code == 200
-        assert response.data['planOverrides']['p1']['constructionBuilt'] == {}
+        assert response.data['planOverrides'][P1]['constructionBuilt'] == {}
 
     def test_update_accepts_decimal_supply_cart_days(self, api_client, user_factory):
         user = user_factory(id=1)
@@ -308,7 +316,7 @@ class TestUserPreferenceViewSet:
             'burn_origin': 'Moria Station Warehouse',
             'layout_navigation_style': 'collapsed',
             'plan_overrides': {
-                'p1': {'include_cm': True, 'visitation_material_exclusions': [], 'auto_optimize_habs': False}
+                P1: {'include_cm': True, 'visitation_material_exclusions': [], 'auto_optimize_habs': False}
             },
         }
         baker.make(UserPreference, user=user, preferences=stored)
@@ -324,33 +332,72 @@ class TestUserPreferenceViewSet:
 
     def test_partial_update_merges_plan_overrides_per_plan(self, api_client, user_factory):
         user = user_factory(id=1)
+        for uuid in (P1, P2):
+            baker.make('planning.PlanningPlan', user=user, uuid=uuid)
         override = {'include_cm': False, 'visitation_material_exclusions': [], 'auto_optimize_habs': True}
-        baker.make(UserPreference, user=user, preferences={'plan_overrides': {'p1': override, 'p2': override}})
+        baker.make(UserPreference, user=user, preferences={'plan_overrides': {P1: override, P2: override}})
 
         response = api_client.as_user(user).patch(
             reverse('user:user_preferences'),
-            data={'planOverrides': {'p2': {'includeCM': True, 'autoOptimizeHabs': True}}},
+            data={'planOverrides': {P2: {'includeCM': True, 'autoOptimizeHabs': True}}},
             format='json',
         )
 
         assert response.status_code == 200
-        assert list(response.data['planOverrides']) == ['p1', 'p2']
+        assert list(response.data['planOverrides']) == [P1, P2]
         stored = UserPreference.objects.get(user=user).preferences['plan_overrides']
-        assert stored['p1'] == override
-        assert stored['p2']['include_cm'] is True
+        assert stored[P1] == override
+        assert stored[P2]['include_cm'] is True
+
+    def test_plan_overrides_drop_plans_the_user_does_not_own(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make('planning.PlanningPlan', user=user, uuid=P1)
+        baker.make('planning.PlanningPlan', user=user_factory(id=2), uuid=P2)
+        override = {'includeCM': True, 'autoOptimizeHabs': True}
+
+        response = api_client.as_user(user).patch(
+            reverse('user:user_preferences'),
+            data={'planOverrides': {P1: override, P2: override, P3: override}},
+            format='json',
+        )
+
+        assert response.status_code == 200
+        assert list(response.data['planOverrides']) == [P1]
+        assert list(UserPreference.objects.get(user=user).preferences['plan_overrides']) == [P1]
+
+    @pytest.mark.parametrize(
+        'data',
+        [
+            {'planOverrides': {'p1': None}},
+            {'planOverrides': {'ABCDEF00-0000-4000-8000-000000000001': None}},
+            {'planOverrides': {f'00000000-0000-4000-8000-{i:012d}': None for i in range(501)}},
+            {'planOverrides': {P1: {'autoOptimizeHabs': True, 'visitationMaterialExclusions': ['ABCD']}}},
+            {'planOverrides': {P1: {'autoOptimizeHabs': True, 'visitationMaterialExclusions': ['DW'] * 501}}},
+            {'locale': 'x' * 17},
+            {'burnOrigin': 'x' * 101},
+        ],
+    )
+    def test_update_rejects_unbounded_preferences(self, api_client, user_factory, data):
+        user = user_factory(id=1)
+        baker.make('planning.PlanningPlan', user=user, uuid=P1)
+
+        response = api_client.as_user(user).patch(reverse('user:user_preferences'), data=data, format='json')
+
+        assert response.status_code == 400
+        assert not UserPreference.objects.filter(user=user).exists()
 
     def test_partial_update_null_plan_override_deletes_only_that_plan(self, api_client, user_factory):
         user = user_factory(id=1)
         override = {'include_cm': False, 'visitation_material_exclusions': [], 'auto_optimize_habs': True}
-        baker.make(UserPreference, user=user, preferences={'plan_overrides': {'p1': override, 'p2': override}})
+        baker.make(UserPreference, user=user, preferences={'plan_overrides': {P1: override, P2: override}})
 
         response = api_client.as_user(user).patch(
-            reverse('user:user_preferences'), data={'planOverrides': {'p1': None, 'p3': None}}, format='json'
+            reverse('user:user_preferences'), data={'planOverrides': {P1: None, P3: None}}, format='json'
         )
 
         assert response.status_code == 200
-        assert list(response.data['planOverrides']) == ['p2']
-        assert UserPreference.objects.get(user=user).preferences['plan_overrides'] == {'p2': override}
+        assert list(response.data['planOverrides']) == [P2]
+        assert UserPreference.objects.get(user=user).preferences['plan_overrides'] == {P2: override}
 
     def test_partial_update_one_key_keeps_the_others(self, api_client, user_factory):
         user = user_factory(id=1)
@@ -1218,7 +1265,7 @@ class TestFIORepairPreferences:
 
     def test_plan_links_merge_per_site(self, api_client, user_factory):
         user = user_factory(id=1)
-        baker.make(UserPreference, user=user, preferences={'burn_days_red': 3, 'plan_overrides': {'p1': None}})
+        baker.make(UserPreference, user=user, preferences={'burn_days_red': 3, 'plan_overrides': {P1: None}})
 
         self._patch(api_client, user, {'fioRepairPlanLinks': {self.SITE_A: {'planUuid': self.PLAN}}})
         response = self._patch(api_client, user, {'fioRepairPlanLinks': {self.SITE_B: {'planUuid': None}}})
@@ -1235,7 +1282,7 @@ class TestFIORepairPreferences:
         assert response.data['fioRepairPlanLinks'] == {self.SITE_B: {'planUuid': None}}
         stored = UserPreference.objects.get(user=user).preferences
         assert stored['fio_repair_plan_links'] == {self.SITE_B: {'plan_uuid': None}}
-        assert (stored['burn_days_red'], stored['plan_overrides']) == (3, {'p1': None})
+        assert (stored['burn_days_red'], stored['plan_overrides']) == (3, {P1: None})
 
 
 class TestProfileEmail:

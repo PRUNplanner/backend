@@ -85,7 +85,8 @@ class CXExchangeTickerPreferences_Legacy(BaseModel):
 class CXTickerPreference_V1(BaseModel):
     ticker: str = Field(..., min_length=1)
     type: CX_TYPES
-    value: float
+    # NaN/inf would reach Postgres JSON and fail there
+    value: float = Field(..., allow_inf_nan=False)
 
 
 class CXExchangePreference_V1(BaseModel):
