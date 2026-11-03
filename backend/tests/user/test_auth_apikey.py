@@ -1,4 +1,3 @@
-import base64
 from datetime import timedelta
 
 import pytest
@@ -10,7 +9,7 @@ from rest_framework import exceptions
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
 from rest_framework_simplejwt.tokens import AccessToken
-from user.auth_apikey import LoggedBasicAuthentication, LoggedJWTAuthentication, UserAPIKeyAuthentication
+from user.auth_apikey import LoggedJWTAuthentication, UserAPIKeyAuthentication
 from user.models import UserAPIKey
 
 pytestmark = pytest.mark.django_db
@@ -140,21 +139,10 @@ class TestLoggedAuthentication:
         assert LoggedJWTAuthentication().authenticate(request)[0] == user
         assert request._request._auth == 'jwt'
 
-    def test_basic_marks_the_request(self):
-        user = baker.make('user.User', username='basic')
-        user.set_password('pw')
-        user.save()
-        credentials = base64.b64encode(b'basic:pw').decode()
-        request = Request(APIRequestFactory().get('/', HTTP_AUTHORIZATION=f'Basic {credentials}'))
-
-        assert LoggedBasicAuthentication().authenticate(request)[0] == user
-        assert request._request._auth == 'basic'
-
-    @pytest.mark.parametrize('cls', [LoggedJWTAuthentication, LoggedBasicAuthentication])
-    def test_no_credentials_leave_the_request_unmarked(self, cls):
+    def test_no_credentials_leave_the_request_unmarked(self):
         request = Request(APIRequestFactory().get('/'))
 
-        assert cls().authenticate(request) is None
+        assert LoggedJWTAuthentication().authenticate(request) is None
         assert not hasattr(request._request, '_auth')
 
 

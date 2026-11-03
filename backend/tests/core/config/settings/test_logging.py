@@ -245,16 +245,19 @@ class TestRequestAuthLog:
         assert response.status_code == 200
         assert self.finished(caplog)['auth'] == 'jwt'
 
-    def test_basic_request(self, api_client: APIClient, caplog: pytest.LogCaptureFixture) -> None:
+    def test_basic_request_is_not_authenticated(self, api_client: APIClient, caplog: pytest.LogCaptureFixture) -> None:
         user = baker.make('user.User', username='basic')
         user.set_password('pw')
         user.save()
         credentials = base64.b64encode(b'basic:pw').decode()
 
-        response = api_client.get(reverse('planning:empire'), HTTP_AUTHORIZATION=f'Basic {credentials}')
+        with patch('bcrypt.hashpw') as hashpw, patch('bcrypt.checkpw') as checkpw:
+            response = api_client.get(reverse('planning:empire'), HTTP_AUTHORIZATION=f'Basic {credentials}')
 
-        assert response.status_code == 200
-        assert self.finished(caplog)['auth'] == 'basic'
+        assert response.status_code == 401
+        assert self.finished(caplog)['auth'] == 'none'
+        hashpw.assert_not_called()
+        checkpw.assert_not_called()
 
     def test_api_key_in_header(
         self, api_client: APIClient, caplog: pytest.LogCaptureFixture, key: tuple[UserAPIKey, str]

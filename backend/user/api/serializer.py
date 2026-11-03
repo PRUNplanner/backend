@@ -4,7 +4,7 @@ from datetime import datetime
 
 import structlog
 from api.mixins import JSONSafeSerializerMixin
-from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth import password_validation
 from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
 from gamedata.fio.services import get_fio_service
@@ -59,7 +59,8 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     new_password = serializers.CharField(write_only=True, style={'input_type': 'password'})
 
     def validate_new_password(self, value):
-        validate_password(value)
+        # without the user: the code isn't checked yet; the viewset validates again with the user after the code
+        password_validation.validate_password(value)
         return value
 
 
@@ -83,9 +84,19 @@ PLANET_CHECKLIST = {
 }
 
 
+def _validate_signup_password(value: str, field: serializers.Field) -> None:
+    # a field validator (its errors come with min_length's), against an unsaved user, so the similarity
+    # validator compares with the chosen username and email
+    data = field.parent.initial_data  # ty:ignore[unresolved-attribute]
+    password_validation.validate_password(value, User(username=data.get('username'), email=data.get('email')))
+
+
+_validate_signup_password.requires_context = True  # ty:ignore[unresolved-attribute]
+
+
 class UserRegisterSerializer(serializers.ModelSerializer):
     username = serializers.CharField(required=True, min_length=3)
-    password = serializers.CharField(write_only=True, min_length=8, validators=[validate_password])
+    password = serializers.CharField(write_only=True, min_length=8, validators=[_validate_signup_password])
     email = serializers.EmailField(required=False, allow_null=True, allow_blank=True)
 
     # "captcha" stuff
@@ -358,10 +369,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 class UserChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)
-    new_password = serializers.CharField(required=True, validators=[validate_password])
+    new_password = serializers.CharField(required=True)
 
     def validate_old_password(self, value):
         user = self.context['request'].user
         if not user.check_password(value):
             raise serializers.ValidationError('Old password is not correct')
+        return value
+
+    def validate_new_password(self, value):
+        password_validation.validate_password(value, self.context['request'].user)
         return value
