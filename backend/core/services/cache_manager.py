@@ -87,10 +87,14 @@ class CacheManager:
         *parts: str | int | UUID | None,
         build: Callable[[], object],
         scope: int | str | None = None,
+        force: bool = False,
     ) -> bool:
-        """Builds the JSON entry `respond` serves for these parts, unless it is cached. True when it built one."""
+        """
+        Builds the JSON entry `respond` serves for these parts, unless it is cached. True when it built one.
+        `force` rebuilds a cached entry too, so a schedule shorter than the ttl keeps it from ever expiring.
+        """
         key = cls.key(ns, endpoint, *parts, scope=scope)
-        if cache.get(key) is not None:
+        if not force and cache.get(key) is not None:
             return False
         cls._rebuild(key, build, ns.ttl, 'json', None)
         return True

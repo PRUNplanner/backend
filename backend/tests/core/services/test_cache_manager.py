@@ -201,3 +201,18 @@ class TestHttpCaching:
             ('gamedata:materials', False),
             ('gamedata:materials', True),
         ]
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestWarmForce:
+    def test_force_rebuilds_a_cached_entry(self) -> None:
+        builds: list[int] = []
+
+        def build() -> dict[str, int]:
+            builds.append(1)
+            return {'n': len(builds)}
+
+        assert CacheManager.warm(PUBLIC, 'endpoint', build=build) is True
+        assert CacheManager.warm(PUBLIC, 'endpoint', build=build, force=True) is True
+
+        assert orjson.loads(_respond(build=build).content) == {'n': 2}

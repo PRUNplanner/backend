@@ -6,6 +6,7 @@ from django.urls import reverse
 from planning.api.viewsets.shared_viewset import SharedViewSet
 from planning.models import PlanningShared
 from rest_framework.renderers import BrowsableAPIRenderer
+from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
 from user.models import UserAPIKey
@@ -189,6 +190,31 @@ class TestSharedViewSetOwnership:
 
         assert response.status_code == 200
         assert [row['uuid'] for row in response.data] == [str(share.uuid)]
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestSharedViewSetThrottle:
+    @pytest.fixture
+    def url(self, user_factory, plan_factory, shared_factory):
+        user = user_factory()
+        share = shared_factory(user=user, plan=plan_factory(user=user, plan_data=plan_data_vallis))
+        return reverse('planning:shared-detail', kwargs={'pk': share.uuid})
+
+    def test_anonymous_views_are_limited_per_ip(self, url):
+        client = APIClient(REMOTE_ADDR='10.0.0.1')
+        for _ in range(120):
+            assert client.get(url).status_code == 200
+
+        throttled = client.get(url)
+
+        assert throttled.status_code == 429
+        assert int(throttled['Retry-After']) > 0
+        assert APIClient(REMOTE_ADDR='10.0.0.2').get(url).status_code == 200
+
+    def test_logged_in_viewers_keep_their_user_ceiling(self, api_client, user_factory, url):
+        client = api_client.as_user(user_factory())
+        for _ in range(121):
+            assert client.get(url).status_code == 200
 
 
 class TestSharedHtml:

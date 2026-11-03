@@ -50,6 +50,13 @@ class SharedViewSet(
             return [AllowAny()]
         return [IsAuthenticated()]
 
+    @property
+    def throttle_scope(self) -> str | None:
+        # per IP for anonymous viewers of a shared link; logged-in viewers count against their user ceiling
+        if self.action == 'retrieve' and not self.request.user.is_authenticated:
+            return 'shared_view'
+        return None
+
     @extend_schema(summary='List all shared plans of the user')
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -68,7 +75,7 @@ class SharedViewSet(
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 
-    @extend_schema(auth=[], summary='Share a plan')
+    @extend_schema(summary='Share a plan')
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

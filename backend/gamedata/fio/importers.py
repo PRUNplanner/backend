@@ -250,6 +250,10 @@ def import_all_planets() -> bool:
         planets = fio.get_all_planets()
 
     save_planets(planets)
+    # rebuilds the list and search index the import just invalidated, before a visitor has to
+    from gamedata.tasks import gamedata_warm_planet_caches
+
+    gamedata_warm_planet_caches.delay()
     return True
 
 

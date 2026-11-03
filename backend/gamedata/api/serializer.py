@@ -282,9 +282,11 @@ class GameExchangeSerializer(serializers.ModelSerializer):
 
 
 class PlanetSearchSerializer(serializers.Serializer):
-    materials = serializers.ListSerializer(child=serializers.CharField(min_length=1, max_length=3))
+    # a planet has far fewer resources than 20, so a longer ALL-of list can only match nothing
+    materials = serializers.ListSerializer(child=serializers.CharField(min_length=1, max_length=3), max_length=20)
     cogc_programs = serializers.ListSerializer(
-        child=serializers.ChoiceField(choices=GamePlanetCOGCProgramChoices.choices)
+        child=serializers.ChoiceField(choices=GamePlanetCOGCProgramChoices.choices),
+        max_length=len(GamePlanetCOGCProgramChoices.choices),
     )
     must_be_fertile = serializers.BooleanField()
 

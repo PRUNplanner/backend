@@ -15,15 +15,24 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from gamedata.api.serializer import GamePlanetSerializer, PlanetSearchSerializer
 from gamedata.fio.schemas.fio_sites import FIOUserSiteSchema
 from gamedata.gamedata_cache_manager import PLANET
 from gamedata.models.game_exchange import GameExchange
-from gamedata.models.game_planet import GamePlanet, GamePlanetCOGCProgramChoices
+from gamedata.models.game_planet import (
+    GamePlanet,
+    GamePlanetCOGCProgramChoices,
+    GamePlanetCOGCStatusChoices,
+    queryset_gameplanet,
+)
+from gamedata.services.planet_search import GamePlanetSearchService
 from gamedata.tasks import refresh_exchange_analytics
 from model_bakery import baker
+from rest_framework.response import Response
 from rest_framework.test import APIClient
 from rest_framework_csv.renderers import CSVRenderer
 from rest_framework_simplejwt.tokens import AccessToken
+from structlog.testing import capture_logs
 from tests.fixtures.fxt_fio_ship_data import fio_ship_data
 from tests.fixtures.fxt_fio_sites_data import fio_sites_data
 from tests.fixtures.fxt_fio_storage_data import fio_storage_data
@@ -989,3 +998,134 @@ class TestGameStorageRowsViewSet:
 
         assert response.status_code == 200
         assert response['Content-Type'] == 'text/csv; charset=utf-8'
+
+
+SEARCH_BODIES = {
+    'resource': _search_payload(materials=['FEO']),
+    'cogc': _search_payload(cogc_programs=[GamePlanetCOGCProgramChoices.Agriculture]),
+    'fertile_rocky': _search_payload(must_be_fertile=True, environment_gaseous=False),
+}
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestGamePlanetSearchCached:
+    @pytest.fixture(autouse=True)
+    def _planets(self, planet_factory: Callable[..., GamePlanet]) -> None:
+        for i in range(6):
+            planet = planet_factory(planet_natural_id=f'ZZ-{i:03}a', fertility_type=i % 2 == 0, surface=i < 4)
+            if i % 3 == 0:
+                baker.make('gamedata.GamePlanetResource', planet=planet, material_ticker='FEO', _bulk_create=True)
+            if i in (1, 2):
+                baker.make(
+                    'gamedata.GamePlanetCOGCProgram',
+                    planet=planet,
+                    program_type=GamePlanetCOGCProgramChoices.Agriculture,
+                    start_epochms=0,
+                    end_epochms=2**62,
+                )
+        GamePlanet.objects.update(cogc_program_status=GamePlanetCOGCStatusChoices.Active)
+
+    def test_no_filter_search_is_unchanged_and_served_from_the_cache(
+        self, api_client: APIClient, django_assert_num_queries
+    ) -> None:
+        url = reverse('data:planet-search')
+        # what the endpoint returned before: every planet serialized in one go
+        _, before = CacheManager._encode(GamePlanetSerializer(queryset_gameplanet(), many=True).data)
+
+        first = api_client.post(url, data=_search_payload(), format='json')
+        # the id query only; every planet comes from its cache entry
+        with django_assert_num_queries(1):
+            second = api_client.post(url, data=_search_payload(), format='json')
+
+        assert first.status_code == second.status_code == 200
+        assert orjson.loads(first.content) == orjson.loads(gzip.decompress(before)) == orjson.loads(second.content)
+        assert len(orjson.loads(first.content)) == 6
+        assert (first['X-Cache-Hit'], second['X-Cache-Hit']) == ('0', '1')
+
+    @pytest.mark.parametrize('body', SEARCH_BODIES.values(), ids=SEARCH_BODIES.keys())
+    def test_search_returns_the_same_planets_in_the_same_order(self, api_client: APIClient, body: dict) -> None:
+        serializer = PlanetSearchSerializer(data=body)
+        assert serializer.is_valid()
+        before = [planet.planet_natural_id for planet in GamePlanetSearchService.filtered(serializer.validated_data)]
+
+        response = api_client.post(reverse('data:planet-search'), data=body, format='json')
+
+        assert response.status_code == 200
+        assert before
+        assert [planet['planet_natural_id'] for planet in orjson.loads(response.content)] == before
+
+    def test_search_single_serves_the_detail_entries(self, api_client: APIClient) -> None:
+        response = api_client.get(reverse('data:planet-search-single', kwargs={'search_term': 'ZZ-00'}))
+        detail = api_client.get(reverse('data:planet-detail', kwargs={'planet_natural_id': 'ZZ-001a'}))
+
+        planets = orjson.loads(response.content)
+        assert response.status_code == 200
+        assert len(planets) == 6
+        assert orjson.loads(detail.content) in planets
+        assert detail['X-Cache-Hit'] == '1'
+
+    def test_search_logs_counts_not_lists(self, api_client: APIClient) -> None:
+        body = _search_payload(materials=['FEO', 'H2O'], cogc_programs=[])
+        with capture_logs() as logs:
+            api_client.post(reverse('data:planet-search'), data=body, format='json')
+
+        [event] = [log for log in logs if log['event'] == 'planet_search_completed']
+        assert (event['materials'], event['cogc_programs'], event['results']) == (2, 0, 0)
+        assert 'search_request' not in event
+
+    @pytest.mark.parametrize(
+        'overrides',
+        [
+            {'materials': [f'M{i:02}' for i in range(21)]},
+            {'cogc_programs': [c for c, _ in GamePlanetCOGCProgramChoices.choices] * 2},
+        ],
+        ids=['materials', 'cogc_programs'],
+    )
+    def test_search_lists_are_capped(self, api_client: APIClient, overrides: dict) -> None:
+        response = api_client.post(reverse('data:planet-search'), data=_search_payload(**overrides), format='json')
+
+        assert response.status_code == 400
+        assert set(response.data) == set(overrides)
+
+
+# (scope rate, url name, url kwargs, POST body or None for GET), each in its own scope
+ANONYMOUS_LIMITS: list[tuple[int, str, dict[str, str], object | None]] = [
+    (30, 'planet-search', {}, _search_payload()),
+    (30, 'planet-search-single', {'search_term': PLANET_ID}, None),
+    (10, 'planet-list', {}, None),
+    (10, 'planet-search-index', {}, None),
+    (300, 'cxpc-sparklines', {'exchange_code': 'UNIVERSE'}, None),
+]
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestPublicEndpointThrottles:
+    @pytest.mark.parametrize(
+        ('limit', 'name', 'kwargs', 'body'), ANONYMOUS_LIMITS, ids=[route[1] for route in ANONYMOUS_LIMITS]
+    )
+    def test_anonymous_requests_are_limited_per_ip(
+        self, limit: int, name: str, kwargs: dict[str, str], body: object | None
+    ) -> None:
+        url = reverse(f'data:{name}', kwargs=kwargs)
+
+        def call(client: APIClient) -> Response:
+            response = client.get(url) if body is None else client.post(url, data=body, format='json')
+            return response
+
+        client = APIClient(REMOTE_ADDR='10.0.0.1')
+        for _ in range(limit):
+            assert call(client).status_code == 200
+        throttled = call(client)
+
+        assert throttled.status_code == 429
+        assert int(throttled['Retry-After']) > 0
+        assert call(APIClient(REMOTE_ADDR='10.0.0.2')).status_code == 200
+
+    def test_search_and_search_single_share_the_scope(self, api_client: APIClient) -> None:
+        for _ in range(15):
+            api_client.post(reverse('data:planet-search'), data=_search_payload(), format='json')
+            api_client.get(reverse('data:planet-search-single', kwargs={'search_term': PLANET_ID}))
+
+        response = api_client.post(reverse('data:planet-search'), data=_search_payload(), format='json')
+
+        assert response.status_code == 429

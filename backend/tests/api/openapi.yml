@@ -1719,6 +1719,10 @@ paths:
             schema:
               $ref: '#/components/schemas/PlanningSharedCreate'
         required: true
+      security:
+      - jwtAuth: []
+      - ApiKeyAuth: []
+      - ApiKeyQuery: []
       responses:
         '201':
           content:

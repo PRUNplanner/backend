@@ -124,6 +124,8 @@ def build_endpoints() -> list[Endpoint]:
         Endpoint('data.planet_search_single', 'get', f'/data/planets/{planet[:4]}/'),
         Endpoint('data.planets_multiple', 'post', '/data/planets/multiple/', body=planet_ids),
         Endpoint('data.planets_search', 'post', '/data/planets/search/', body=search),
+        Endpoint('data.planets_search_all', 'post', '/data/planets/search/', body={**search, 'materials': []}),
+        Endpoint('data.planets_search_index', 'get', '/data/planets/search-index/'),
         Endpoint('data.cxpc_ticker', 'get', f'/data/cxpc/{ticker}/'),
         Endpoint('analytics.planet_insights', 'get', f'/analytics/planet_insights/{insights_planet}/'),
         Endpoint('analytics.materials', 'get', '/analytics/planning_insights/materials/'),

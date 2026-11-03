@@ -28,6 +28,13 @@ REST_FRAMEWORK = {
         # per IP, data/cxpc/<ticker>/ and data/cxpc/<ticker>/<exchange>/ together; daily JSON and CSV together
         'cxpc_ticker': '120/min',
         'cxpc_daily': '30/min',
+        # per IP on public endpoints, several times the busiest real IP-minute (30 days):
+        # planets/search/ and planets/<term>/ (9), planets/ and planets/search-index/ (3),
+        # cxpc/spark/<exchange>/ (123), the shared plan view (19)
+        'planet_search': '30/min',
+        'planet_list': '10/min',
+        'cxpc_spark': '300/min',
+        'shared_view': '120/min',
         # every request of a logged-in user; ~4x the busiest normal minute (p99.99 65)
         'user': '240/min',
         # data/storage/ with rows/ and csv/; ~2x the busiest normal minute (p99.99 14)

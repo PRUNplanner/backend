@@ -5,7 +5,7 @@ from typing import Any, cast
 import structlog
 from core.services.cache_manager import CacheManager
 from django.db import connection
-from django.db.models import Case, CharField, F, OuterRef, Prefetch, Q, QuerySet, Subquery, Value, When
+from django.db.models import Case, CharField, F, OuterRef, Q, QuerySet, Subquery, Value, When
 from django.db.models.functions import Concat
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -56,13 +56,13 @@ from gamedata.models import (
     GameFIOPlayerData,
     GameMaterial,
     GamePlanet,
-    GamePlanetCOGCProgram,
     GamePlanetInfrastructureReport,
     GameRecipe,
     queryset_gameplanet,
 )
 from gamedata.services.cxpc_sparklines import DAY_MS, build_sparklines, utc_today_epoch
 from gamedata.services.market_summary import MARKET_SUMMARY_ENDPOINT, build_market_summary
+from gamedata.services.planet_cache import build_planet_list, build_planet_search_index
 from gamedata.services.planet_search import GamePlanetSearchService
 from gamedata.tasks import gamedata_process_fio_webhook
 from pydantic import TypeAdapter, ValidationError as PydanticValidationError
@@ -129,16 +129,34 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
     serializer_class = GamePlanetSerializer
     lookup_field = 'planet_natural_id'
 
+    @property
+    def throttle_scope(self) -> str | None:
+        # per IP (no authentication here), several times the busiest real IP-minute
+        if self.action in ('search', 'search_single'):
+            return 'planet_search'
+        if self.action in ('list', 'search_index'):
+            return 'planet_list'
+        return None
+
     def get_queryset(self) -> QuerySet[GamePlanet]:
         # built per request: the active cogc subquery compares against the current time
         return queryset_gameplanet()
 
+    def _build_planets(self, missing: list[str]) -> dict[str, object]:
+        planets = list(self.get_queryset().filter(planet_natural_id__in=missing))
+        return {
+            planet.planet_natural_id: data
+            for planet, data in zip(planets, self.get_serializer(planets, many=True).data, strict=True)
+        }
+
+    def _respond_planets(self, request: Request, planet_natural_ids: list[str]) -> HttpResponse:
+        # the same entries as retrieve, so a planet is cached once for every endpoint that returns it
+        return CacheManager.respond_many(request, PLANET, 'retrieve', planet_natural_ids, self._build_planets)
+
     @extend_schema(auth=[], summary='List all planets')
     def list(self, request, *args, **kwargs):
-        def fetch_data() -> Any:
-            return self.get_serializer(self.get_queryset(), many=True).data
-
-        return CacheManager.respond(request, PLANET_LIST, 'list', build=fetch_data)
+        # warmed by gamedata_warm_planet_caches
+        return CacheManager.respond(request, PLANET_LIST, 'list', build=build_planet_list)
 
     @extend_schema(
         auth=[],
@@ -146,15 +164,8 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         summary='Slim index of all planets for the client-side planet search',
     )
     def search_index(self, request, *args, **kwargs):
-        def fetch_data() -> object:
-            now_ms = int(timezone.now().timestamp() * 1000)
-            queryset = GamePlanet.objects.prefetch_related(
-                'resources',
-                Prefetch('cogc_programs', queryset=GamePlanetCOGCProgram.objects.filter(end_epochms__gte=now_ms)),
-            )
-            return PlanetSearchIndexSerializer(queryset, many=True).data
-
-        return CacheManager.respond(request, PLANET_SEARCH_INDEX, 'index', build=fetch_data)
+        # warmed by gamedata_warm_planet_caches
+        return CacheManager.respond(request, PLANET_SEARCH_INDEX, 'index', build=build_planet_search_index)
 
     @extend_schema(auth=[], summary='Fetch a single planet by its Planet Natural Id')
     def retrieve(self, request, *args, **kwargs):
@@ -173,8 +184,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         if not search_term or len(search_term.strip()) < 3:
             raise ValidationError({'search_term': 'Search term must be at least 3 characters long.'})
 
-        result = GamePlanetSearchService.search_by_term(search_term)
-        return Response(self.get_serializer(result, many=True).data)
+        return self._respond_planets(request, GamePlanetSearchService.search_by_term(search_term))
 
     @extend_schema(
         auth=[],
@@ -186,16 +196,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         serializer = PlanetIdsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        def build_many(missing: list[str]) -> dict[str, object]:
-            planets = list(self.get_queryset().filter(planet_natural_id__in=missing))
-            return {
-                planet.planet_natural_id: data
-                for planet, data in zip(planets, self.get_serializer(planets, many=True).data, strict=True)
-            }
-
-        # the same entries as retrieve, so a planet is cached once for both endpoints
-        planet_natural_ids = list(dict.fromkeys(serializer.validated_data))
-        return CacheManager.respond_many(request, PLANET, 'retrieve', planet_natural_ids, build_many)
+        return self._respond_planets(request, list(dict.fromkeys(serializer.validated_data)))
 
     @extend_schema(
         auth=[],
@@ -207,8 +208,7 @@ class GamePlanetViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewse
         serializer = PlanetSearchSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        result = GamePlanetSearchService.search(serializer.validated_data)
-        return Response(GamePlanetSerializer(result, many=True).data)
+        return self._respond_planets(request, GamePlanetSearchService.search(serializer.validated_data))
 
     @extend_schema(
         auth=[],
@@ -556,6 +556,8 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
             return 'cxpc_ticker'
         if self.action in ('cxpc_daily', 'cxpc_daily_csv'):
             return 'cxpc_daily'
+        if self.action == 'cxpc_sparklines':
+            return 'cxpc_spark'
         return None
 
     def _get_cxpc_response(self, ticker, exchange_code=None):
