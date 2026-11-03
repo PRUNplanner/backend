@@ -5,8 +5,11 @@ from django.utils import timezone
 from rest_framework import authentication, exceptions
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer as SimpleJWTTokenRefreshSerializer
+from rest_framework_simplejwt.tokens import Token
 
-from user.models import UserAPIKey
+from user.models import User, UserAPIKey
 
 
 def _mark(request: Request, **fields: str) -> None:
@@ -42,6 +45,10 @@ class UserAPIKeyAuthentication(authentication.BaseAuthentication):
             api_key: UserAPIKey = UserAPIKey.objects.get_from_key(key)
 
             user = api_key.user
+            # a deactivated user's or an expired key reads as an unknown key
+            if not user.is_active or api_key.has_expired:
+                raise UserAPIKey.DoesNotExist
+
             now = timezone.now()
             one_hour_ago = now - timedelta(hours=1)
 
@@ -76,3 +83,25 @@ class LoggedJWTAuthentication(JWTAuthentication):
         if result is not None:
             _mark(request, auth='jwt')
         return result
+
+    def get_user(self, validated_token: Token) -> User:
+        # the row super() loads anyway, so the cutoff costs no query
+        user = super().get_user(validated_token)
+        if user.issued_before_cutoff(validated_token['iat']):
+            raise InvalidToken()
+        return user
+
+
+# refresh that honours User.tokens_valid_after, and a deleted user is a 401, not a 500
+# (a comment, not a docstring: spectacular would publish it in the schema)
+class TokenRefreshSerializer(SimpleJWTTokenRefreshSerializer):
+    def validate(self, attrs: dict[str, str]) -> dict[str, str]:
+        refresh = self.token_class(attrs['refresh'])  # ty: ignore[invalid-argument-type]  # simplejwt's hint omits str
+        user = User.objects.filter(pk=refresh.payload.get('user_id')).first()
+        if user is None or not user.is_active:
+            raise AuthenticationFailed(self.error_messages['no_active_account'], 'no_active_account')
+        if user.issued_before_cutoff(refresh['iat']):
+            raise InvalidToken()
+        # ponytail: replaces super().validate(), which would load the user again; no ROTATE_REFRESH_TOKENS
+        # support (off in SIMPLE_JWT), call super() instead if rotation is ever turned on
+        return {'access': str(refresh.access_token)}

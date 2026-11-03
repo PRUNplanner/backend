@@ -1,6 +1,6 @@
-from drf_spectacular.contrib.rest_framework_simplejwt import SimpleJWTScheme
+from drf_spectacular.contrib.rest_framework_simplejwt import SimpleJWTScheme, TokenRefreshSerializerExtension
 from drf_spectacular.extensions import OpenApiAuthenticationExtension
-from user.auth_apikey import LoggedJWTAuthentication, UserAPIKeyAuthentication
+from user.auth_apikey import LoggedJWTAuthentication, TokenRefreshSerializer, UserAPIKeyAuthentication
 
 
 class UserAPIKeySchema(OpenApiAuthenticationExtension):
@@ -31,3 +31,7 @@ class UserAPIKeySchema(OpenApiAuthenticationExtension):
 # spectacular matches authenticators by exact class, so the logging subclasses need their own entries
 class LoggedJWTScheme(SimpleJWTScheme):
     target_class = LoggedJWTAuthentication
+
+
+class TokenRefreshSchema(TokenRefreshSerializerExtension):
+    target_class = TokenRefreshSerializer

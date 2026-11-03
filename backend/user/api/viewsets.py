@@ -330,6 +330,8 @@ class UserProfileViewSet(viewsets.GenericViewSet):
 
         # set new password
         user.set_password(serializer.validated_data['new_password'])
+        # every session, this one included, logs in again
+        user.cut_off_tokens()
         user.save()
 
         return Response({'detail': 'Password updated successfully'}, status=status.HTTP_200_OK)
