@@ -32,6 +32,7 @@ REST_FRAMEWORK = {
         'auth_verify_email': '5/min',
         'auth_password_reset': '5/min',
         'profile_update': '10/min',
+        'auth_change_password': '10/min',  # nosec B105: a rate, not a password
         'client_error': '30/min',
         'cxpc_ticker': '100000/min',
         'cxpc_daily': '100000/min',

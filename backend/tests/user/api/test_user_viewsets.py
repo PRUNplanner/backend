@@ -1391,3 +1391,69 @@ class TestEmailFlowLogs:
         dumped = str(logs).lower()
         assert email not in dumped
         assert code.lower() not in dumped
+
+
+class TestPasswordChecks:
+    @override_settings(CACHES=LOCMEM_CACHES)
+    def test_change_password_is_throttled_after_limit(self, api_client, user_factory):
+        cache.clear()
+        user = user_factory(id=1)
+        user.set_password('CorrectHorse1!')
+        user.save()
+        client = api_client.as_user(user)
+        url = reverse('user:user_change_password')
+
+        for _ in range(throttle_limit('auth_change_password')):
+            response = client.post(url, data={'old_password': 'wrong', 'new_password': 'Xk7!qzR9pLm2'}, format='json')
+            assert response.status_code == 400
+
+        response = client.post(
+            url, data={'old_password': 'CorrectHorse1!', 'new_password': 'Xk7!qzR9pLm2'}, format='json'
+        )
+        assert response.status_code == 429
+        assert int(response['Retry-After']) > 0
+
+    def test_signup_rejects_a_password_equal_to_the_username(self, api_client):
+        response = api_client.post(
+            reverse('user:user_signup'),
+            data={
+                'username': 'starpilot77',
+                'password': 'starpilot77',
+                'planet_id': 'OT-580b',
+                'planet_input': 'montem',
+            },
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert 'password' in response.data
+        assert not User.objects.filter(username='starpilot77').exists()
+
+    def test_change_password_rejects_a_password_equal_to_the_username(self, api_client, user_factory):
+        user = user_factory(id=1, username='starpilot77')
+        user.set_password('CorrectHorse1!')
+        user.save()
+
+        response = api_client.as_user(user).post(
+            reverse('user:user_change_password'),
+            data={'old_password': 'CorrectHorse1!', 'new_password': 'starpilot77'},
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert 'new_password' in response.data
+
+    def test_password_reset_rejects_a_password_equal_to_the_username(self, api_client, user_factory):
+        user = user_factory(id=1, username='starpilot77', email='pilot@example.com', is_email_verified=True)
+        code = _make_code(user, VerificationeCodeChoices.PASSWORD_RESET, 'RESET123')
+
+        response = api_client.post(
+            reverse('user:user_password_reset'),
+            data={'email': user.email, 'code': 'RESET123', 'new_password': 'starpilot77'},
+            format='json',
+        )
+
+        assert response.status_code == 400
+        assert 'new_password' in response.data
+        code.refresh_from_db()
+        assert code.is_used is False

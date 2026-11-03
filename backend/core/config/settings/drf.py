@@ -10,7 +10,6 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'user.auth_apikey.LoggedJWTAuthentication',
         'user.auth_apikey.UserAPIKeyAuthentication',
-        'user.auth_apikey.LoggedBasicAuthentication',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_THROTTLE_CLASSES': [
@@ -24,6 +23,7 @@ REST_FRAMEWORK = {
         'auth_verify_email': '5/min',
         'auth_password_reset': '5/min',
         'profile_update': '10/min',
+        'auth_change_password': '10/min',
         'client_error': '30/min',
         # per IP, data/cxpc/<ticker>/ and data/cxpc/<ticker>/<exchange>/ together; daily JSON and CSV together
         'cxpc_ticker': '120/min',
@@ -44,7 +44,6 @@ REST_FRAMEWORK = {
     },
     'DEFAULT_RENDERER_CLASSES': [
         'api.renderers.OrjsonRenderer',
-        'rest_framework.renderers.BrowsableAPIRenderer',
     ],
     'COERCE_DECIMAL_TO_STRING': False,
 }

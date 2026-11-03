@@ -1,5 +1,7 @@
 import structlog
+from django.contrib.auth import password_validation
 from django.core.cache import cache
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
@@ -277,6 +279,11 @@ class UserPasswordResetViewSet(viewsets.ViewSet):
         data = serializer.validated_data
 
         user, code_obj = VerificationService.get_valid_code_or_raise(data['email'], data['code'])
+        # with the user only now: before the code check its errors would tell whether the address has an account
+        try:
+            password_validation.validate_password(data['new_password'], user)
+        except DjangoValidationError as exc:
+            raise ValidationError({'new_password': exc.messages}) from exc
         VerificationService.execute_password_reset(user, code_obj, data['new_password'])
 
         return _coded('reset', status.HTTP_200_OK)
@@ -293,7 +300,11 @@ class UserProfileViewSet(viewsets.GenericViewSet):
     @property
     def throttle_scope(self) -> str | None:
         # saving FIO credentials calls FIO, so it must not become a key tester
-        return 'profile_update' if self.action == 'update_profile' else None
+        # and change_password hashes the old password, so it must not become a password tester
+        return {
+            'update_profile': 'profile_update',
+            'change_password': 'auth_change_password',  # nosec B105: a throttle scope, not a password
+        }.get(self.action)
 
     def get_serializer_class(self):
         if self.action == 'change_password':
