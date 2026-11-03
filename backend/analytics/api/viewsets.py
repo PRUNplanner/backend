@@ -12,6 +12,7 @@ from gamedata.models.game_planet import GamePlanet
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 
@@ -19,6 +20,7 @@ class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AnalyticsPlanAggregate.objects.all()
     lookup_field = 'planet_natural_id'
     serializer_class = AnalyticsPlanAggregateSerializer
+    permission_classes = [AllowAny]
 
     @extend_schema(auth=[], summary='Fetch planet insights by Planet Natural Id')
     def retrieve(self, request, *args, **kwargs):
@@ -42,6 +44,8 @@ class AnalyticsPlanAggregateViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class AnalyticsMarketInsightViewSet(viewsets.ViewSet):
+    permission_classes = [AllowAny]
+
     @extend_schema(
         auth=[],
         summary='Fetch planning insights for materials',
