@@ -3,6 +3,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import structlog
+from core.middleware import GZipMiddleware
+from django.http import HttpResponseBase, JsonResponse, StreamingHttpResponse
+from django.test import RequestFactory
 from django.urls import reverse
 from gamedata.tasks import gamedata_clean_user_fiodata
 from rest_framework.test import APIClient
@@ -95,3 +98,19 @@ class TestCors:
         allowed = response['Access-Control-Allow-Headers']
         assert 'x-request-id' in allowed
         assert 'x-correlation-id' in allowed
+
+
+class TestGZip:
+    def gzip(self, response: HttpResponseBase) -> HttpResponseBase:
+        request = RequestFactory().get('/', headers={'Accept-Encoding': 'gzip, deflate'})
+        return GZipMiddleware(lambda r: response).process_response(request, response)
+
+    def test_event_stream_is_not_compressed(self) -> None:
+        response = self.gzip(StreamingHttpResponse(iter([': \n\n']), content_type='text/event-stream'))
+
+        assert not response.has_header('Content-Encoding')
+
+    def test_json_is_still_compressed(self) -> None:
+        response = self.gzip(JsonResponse({'materials': ['x' * 50] * 10}))
+
+        assert response['Content-Encoding'] == 'gzip'

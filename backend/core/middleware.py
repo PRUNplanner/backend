@@ -3,6 +3,7 @@ from collections.abc import Callable
 
 from django.http import HttpRequest
 from django.http.response import HttpResponseBase
+from django.middleware.gzip import GZipMiddleware as DjangoGZipMiddleware
 from django.utils.cache import patch_cache_control
 
 # set by the frontend; django_structlog logs them as request_id / correlation_id
@@ -47,3 +48,12 @@ def default_cache_control(get_response: Callable[[HttpRequest], HttpResponseBase
         return response
 
     return middleware
+
+
+class GZipMiddleware(DjangoGZipMiddleware):
+    """Django's gzip, except for SSE: its async compressor never flushes, so events would never reach the browser."""
+
+    def process_response(self, request: HttpRequest, response: HttpResponseBase) -> HttpResponseBase:
+        if response.get('Content-Type', '').startswith('text/event-stream'):
+            return response
+        return super().process_response(request, response)
