@@ -37,6 +37,7 @@ class UserAPIKeyCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAPIKey
         fields = ['id', 'name', 'key']
+        extra_kwargs = {'name': {'required': True, 'allow_blank': False}}
 
 
 class CodeGenericResponseSerializer(serializers.Serializer):

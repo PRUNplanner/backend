@@ -157,7 +157,7 @@ class PlanningPlanAdmin(SummaryStripMixin, ChangeHeaderMixin[PlanningPlan], Mode
         super().save_model(request, obj, form, change)
         plan_version_service.record_save(obj, before=before, kind=PlanVersionKind.ADMIN, keep_draft=True)
         if 'user' in form.changed_data:
-            plan_version_service.move_versions(obj)
+            plan_version_service.change_owner(obj, old_user_id=before.user_id)  # ty: ignore[unresolved-attribute]
 
     def get_summary(self, request: HttpRequest) -> Summary:
         total = PlanningPlan.objects.count()

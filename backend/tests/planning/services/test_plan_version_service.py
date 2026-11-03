@@ -247,6 +247,21 @@ class TestClone:
 
         assert clone.plan_name == f'Base ({version.created_at:%Y-%m-%d})'
 
+    def test_clone_plan_is_a_fresh_plan_with_the_name_cut_to_fit(self, plan: PlanningPlan) -> None:
+        """READ-02: one rule for every clone path, plan and shared clones included."""
+        PlanningPlan.objects.filter(pk=plan.pk).update(plan_name='x' * 200)
+        plan.refresh_from_db()
+        other = baker.make(User)
+
+        clone = plan_version_service.clone_plan(plan, other)
+
+        assert clone.pk != plan.pk
+        assert clone.user == other
+        assert clone.plan_name == f'{"x" * 192} (Clone)'
+        assert {**snapshot(clone), 'plan_name': plan.plan_name} == snapshot(plan)
+        assert [v.kind for v in versions(clone)] == ['save']
+        assert not PlanningPlan.objects.filter(pk=clone.pk, empires__isnull=False).exists()
+
     def test_longest_names_fit(self, plan: PlanningPlan) -> None:
         PlanningPlan.objects.filter(pk=plan.pk).update(plan_name='x' * 200)
         plan.refresh_from_db()

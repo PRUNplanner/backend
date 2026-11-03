@@ -68,7 +68,13 @@ class PlanViewSet(
         responses={200: PlanningPlanDetailSerializer, 409: PlanningSaveConflictSerializer},
     )
     def update(self, request, *args, **kwargs):
-        return super().update(request, *args, **kwargs)
+        # UpdateModelMixin.update without its prefetch reset: a save never changes the plan's empires, and the reset
+        # re-read them with empire_state and one CX query each
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=kwargs.pop('partial', False))
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response(serializer.data)
 
     @extend_schema(summary='Delete a specific plan')
     def destroy(self, request, *args, **kwargs):
@@ -77,19 +83,8 @@ class PlanViewSet(
     @extend_schema(summary='Clone an existing plan', request=None, responses={201: PlanningPlanDetailSerializer})
     @action(detail=True, methods=['post'])
     def clone(self, request, pk=None):
-        original_plan = self.get_object()
-
-        new_plan = original_plan
-        new_plan.pk = None
-        new_plan.uuid = None
-
-        new_plan.plan_name = f'{original_plan.plan_name} (Clone)'
-        with transaction.atomic():
-            new_plan.save()
-            plan_version_service.record_created(new_plan)
-
-        serializer = self.get_serializer(new_plan)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        new_plan = plan_version_service.clone_plan(self.get_object(), request.user)
+        return Response(self.get_serializer(new_plan).data, status=status.HTTP_201_CREATED)
 
     # will also lead to the signals
     def perform_create(self, serializer):
