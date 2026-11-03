@@ -607,6 +607,17 @@ class TestUserAPIKeyViewSet:
         assert response.data['name'] == 'my key'
         assert 'api_key' in response.data and response.data['api_key']
 
+    @pytest.mark.parametrize('data', [{}, {'name': ''}])
+    def test_create_without_a_name_is_rejected(self, api_client, user_factory, data):
+        """READ-21: was a 500."""
+        user = user_factory(id=1)
+
+        response = api_client.as_user(user).post(reverse('user:user_apikey_list'), data=data, format='json')
+
+        assert response.status_code == 400
+        assert 'name' in response.data
+        assert not UserAPIKey.objects.filter(user=user).exists()
+
     def test_list_only_returns_own_keys(self, api_client, user_factory):
         user = user_factory(id=1)
         other_user = user_factory(id=2)

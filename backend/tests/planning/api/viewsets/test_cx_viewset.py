@@ -200,6 +200,26 @@ class TestCXViewSetQueries:
 
         assert len(ctx.captured_queries) == 3
 
+    @pytest.mark.parametrize('endpoint', ['planning:cx', 'planning:cx-detail'])
+    def test_plans_prefetch_skips_plan_data(
+        self, endpoint, api_client, user_factory, cx_factory, empire_factory, plan_factory
+    ):
+        """PERF-04: the empires' plans are uuid, name and planet; plan_data stays in the database."""
+        user = user_factory(id=1)
+        cx = cx_factory(user=user)
+        plan = plan_factory(user=user, plan_name='Vallis')
+        empire_factory(user=user, cx=cx).plans.add(plan, through_defaults={'user': user})
+        url = reverse(endpoint, kwargs={'pk': str(cx.uuid)}) if endpoint.endswith('detail') else reverse(endpoint)
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = api_client.as_user(user).get(url)
+
+        body = response.data if endpoint.endswith('detail') else response.data[0]
+        assert body['empires'][0]['plans'] == [
+            {'uuid': str(plan.uuid), 'plan_name': 'Vallis', 'planet_natural_id': plan.planet_natural_id}
+        ]
+        assert not any('plan_data' in q['sql'] for q in ctx.captured_queries)
+
     def test_list_does_not_load_empire_state(self, api_client, user_factory, cx_factory, empire_factory):
         user = user_factory(id=1)
         empire_factory(user=user, cx=cx_factory(user=user))

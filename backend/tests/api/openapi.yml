@@ -1864,6 +1864,7 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/UserAPIKeyCreate'
+        required: true
       security:
       - jwtAuth: []
       - ApiKeyAuth: []
@@ -5808,6 +5809,7 @@ components:
           maxLength: 50
       required:
       - id
+      - name
     UserAPIKeyCreated:
       type: object
       description: 'Docs only: the create response, the only time the key is shown.'

@@ -1,4 +1,3 @@
-from django.db import transaction
 from django.db.models import F
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
@@ -8,7 +7,7 @@ from planning.api.serializers import (
     PlanningSharedDetailSerializer,
     PlanningSharedSerializer,
 )
-from planning.models import PlanningPlan, PlanningShared
+from planning.models import PlanningShared
 from planning.services import plan_version_service
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -100,19 +99,5 @@ class SharedViewSet(
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def clone(self, request, pk=None):
         shared_instance = self.get_object()
-        original_plan = shared_instance.plan
-
-        with transaction.atomic():
-            cloned_plan = PlanningPlan.objects.create(
-                user=request.user,
-                plan_name=f'{original_plan.plan_name[:192]} (Clone)',
-                planet_natural_id=original_plan.planet_natural_id,
-                plan_permits_used=original_plan.plan_permits_used,
-                plan_cogc=original_plan.plan_cogc,
-                plan_corphq=original_plan.plan_corphq,
-                plan_data=original_plan.plan_data,
-                schema_version=original_plan.schema_version,
-            )
-            plan_version_service.record_created(cloned_plan)
-
+        cloned_plan = plan_version_service.clone_plan(shared_instance.plan, request.user)
         return Response(PlanningPlanDetailSerializer(cloned_plan).data, status=status.HTTP_201_CREATED)

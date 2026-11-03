@@ -12,7 +12,8 @@ from planning.api.serializers import (
     PlanningCXJunctionUpdateSerializer,
 )
 from planning.api.serializers.conflict import PlanningSaveConflictSerializer
-from planning.models import PlanningCX, PlanningEmpire
+from planning.api.serializers.minimal import MINIMAL_PLAN_FIELDS
+from planning.models import PlanningCX, PlanningEmpire, PlanningPlan
 from planning.planning_cache_manager import PLANNING
 from planning.services.junction_service import JunctionRejected, sync_cx_empires
 from rest_framework import mixins, viewsets
@@ -35,7 +36,8 @@ class CXViewSet(
     serializer_class = PlanningCXDetailSerializer
 
     def get_queryset(self):
-        empires = PlanningEmpire.objects.defer('empire_state').prefetch_related('plans')
+        plans = PlanningPlan.objects.filter(user=self.request.user).only(*MINIMAL_PLAN_FIELDS)
+        empires = PlanningEmpire.objects.defer('empire_state').prefetch_related(Prefetch('plans', queryset=plans))
         return (
             PlanningCX.objects.filter(user=self.request.user)
             .prefetch_related(Prefetch('cxs', queryset=empires))

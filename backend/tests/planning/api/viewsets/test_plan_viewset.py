@@ -179,8 +179,56 @@ class TestPlanViewSetClone:
         assert response.data['uuid'] != str(plan.uuid)
         assert PlanningPlan.objects.filter(user=user).count() == 2
 
+    def test_clone_keeps_long_names_within_limit(self, api_client, user_factory, plan_factory):
+        user = user_factory(id=1)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis, plan_name='x' * 200)
+
+        response = api_client.as_user(user).post(reverse('planning:plan-clone', kwargs={'pk': str(plan.uuid)}))
+
+        assert response.status_code == 201
+        assert response.data['plan_name'] == f'{"x" * 192} (Clone)'
+
+    def test_clone_response_is_the_clone(self, api_client, user_factory, plan_factory, empire_factory):
+        """READ-02: the response showed the source's empires; the clone has none, as its GET says."""
+        user = user_factory(id=1)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+        empire_factory(user=user).plans.add(plan, through_defaults={'user': user})
+
+        response = api_client.as_user(user).post(reverse('planning:plan-clone', kwargs={'pk': str(plan.uuid)}))
+        detail = api_client.as_user(user).get(reverse('planning:plan-detail', kwargs={'pk': response.data['uuid']}))
+
+        assert response.status_code == 201
+        assert response.data['empires'] == []
+        assert response.data == detail.data
+
 
 class TestPlanViewSetQueries:
+    @staticmethod
+    def _put(api_client, user, plan_factory, empire_factory, cx_factory, empire_count: int) -> list[str]:
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+        for _ in range(empire_count):
+            empire_factory(user=user, cx=cx_factory(user=user)).plans.add(plan, through_defaults={'user': user})
+        url = reverse('planning:plan-detail', kwargs={'pk': str(plan.uuid)})
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = api_client.as_user(user).put(url, data=_plan_payload(), format='json')
+
+        assert response.status_code == 200
+        assert len(response.data['empires']) == empire_count
+        return [q['sql'] for q in ctx.captured_queries]
+
+    def test_update_reuses_the_empires_prefetch(
+        self, api_client, user_factory, plan_factory, empire_factory, cx_factory
+    ):
+        """PERF-04: the response re-read empires with empire_state and one CX query per empire."""
+        user = user_factory(id=1)
+
+        one = self._put(api_client, user, plan_factory, empire_factory, cx_factory, 1)
+        three = self._put(api_client, user, plan_factory, empire_factory, cx_factory, 3)
+
+        assert len(three) == len(one)
+        assert not any('empire_state' in sql for sql in three)
+
     def test_list_query_count_is_constant(
         self, api_client, user_factory, plan_factory, empire_factory, cx_factory, django_assert_num_queries
     ):

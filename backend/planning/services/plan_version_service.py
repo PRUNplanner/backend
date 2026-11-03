@@ -2,8 +2,10 @@ from datetime import datetime
 
 import orjson
 import structlog
+from core.services.cache_manager import CacheManager
 from django.db import transaction
-from planning.models import PlanningPlan, PlanningPlanVersion, PlanVersionKind
+from planning.models import PlanningEmpirePlan, PlanningPlan, PlanningPlanVersion, PlanningShared, PlanVersionKind
+from planning.planning_cache_manager import PLANNING
 from user.models import User
 
 logger = structlog.get_logger(__name__)
@@ -111,15 +113,20 @@ def rename_version(version: PlanningPlanVersion, name: str) -> PlanningPlanVersi
     return version
 
 
-def clone_version(version: PlanningPlanVersion, user: User) -> PlanningPlan:
-    label = version.name or f'{version.created_at:%Y-%m-%d}'
-    suffix = f' ({label})'
-    snapshot = {field: getattr(version, field) for field in SNAPSHOT_FIELDS}
-    snapshot['plan_name'] = f'{version.plan_name[: PLAN_NAME_MAX_LENGTH - len(suffix)]}{suffix}'
+def clone_plan(source: PlanningPlan | PlanningPlanVersion, user: User, suffix: str = ' (Clone)') -> PlanningPlan:
+    """Every clone path: a fresh plan for user, the name cut so name and suffix fit, no empire links."""
+    snapshot = {field: getattr(source, field) for field in SNAPSHOT_FIELDS}
+    snapshot['plan_name'] = f'{source.plan_name[: PLAN_NAME_MAX_LENGTH - len(suffix)]}{suffix}'
 
     with transaction.atomic():
         plan = PlanningPlan.objects.create(user=user, **snapshot)
         record_created(plan)
+    return plan
+
+
+def clone_version(version: PlanningPlanVersion, user: User) -> PlanningPlan:
+    label = version.name or f'{version.created_at:%Y-%m-%d}'
+    plan = clone_plan(version, user, f' ({label})')
     logger.info('plan_version_cloned', plan_uuid=str(version.plan_id))
     return plan
 
@@ -199,6 +206,13 @@ def delete_draft(plan: PlanningPlan) -> None:
     PlanningPlanVersion.drafts.filter(plan=plan).only('pk').delete()
 
 
-def move_versions(plan: PlanningPlan) -> None:
-    """After a plan changes owner: versions cascade from their user, so the old owner's deletion would take them."""
+def change_owner(plan: PlanningPlan, old_user_id: int) -> None:
+    """
+    After a plan changes owner. Versions cascade from their user, so the old owner's deletion would take them. The
+    old owner's empire links and share go: they would keep plan_data readable and block the new owner's share.
+    """
     PlanningPlanVersion.all_objects.filter(plan=plan).update(user_id=plan.user_id)
+    # per-row delete signals bump the old owner's planning caches; the plan's own save bumped the new owner's
+    PlanningEmpirePlan.objects.filter(plan=plan).delete()
+    PlanningShared.objects.filter(plan=plan).delete()
+    CacheManager.invalidate_on_commit(PLANNING, old_user_id)
