@@ -1,9 +1,11 @@
 from decimal import ROUND_HALF_UP, Decimal
 
 from analytics.models import AnalyticsEmpireMaterialSnapshot
+from core.services.cache_manager import CacheManager
 from django.db import transaction
 from django.utils import timezone
 from planning.models import PlanningEmpire
+from planning.planning_cache_manager import PLANNING
 
 
 class EmpireStateService:
@@ -11,13 +13,16 @@ class EmpireStateService:
     def update_state(empire: PlanningEmpire, state_data: dict) -> None:
         """Updates the empires state JSON dict only and sets the needs_state_sync flag to True"""
 
+        was_pending = empire.needs_state_sync
         empire.empire_state = state_data
         empire.needs_state_sync = True
         empire.modified_at = timezone.now()
-        # queryset update fires no post_save: the state is in no cached payload
+        # queryset update fires no post_save: the state is in no cached payload, only the flag is
         PlanningEmpire.objects.filter(pk=empire.pk).update(
             empire_state=empire.empire_state, needs_state_sync=True, modified_at=empire.modified_at
         )
+        if not was_pending:
+            CacheManager.invalidate_on_commit(PLANNING, empire.user_id)  # ty: ignore[unresolved-attribute]
 
     @staticmethod
     def sync_snapshot(empire: PlanningEmpire) -> None:

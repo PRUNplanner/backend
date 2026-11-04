@@ -27,16 +27,20 @@ class TestBulkMaterializeEmpireSnapshots:
         assert float(snapshot.production) == 5.0
 
     @pytest.mark.usefixtures('locmem_cache')
-    def test_leaves_planning_caches_alone(self, api_client, user_factory, django_capture_on_commit_callbacks) -> None:
+    def test_cached_empire_list_shows_the_cleared_flag(self, api_client, user_factory) -> None:
         user = user_factory()
+        other = user_factory()
         baker.make('planning.PlanningEmpire', user=user, empire_state=_state(5.0), needs_state_sync=True)
+        baker.make('planning.PlanningEmpire', user=other, empire_state=_state(5.0), needs_state_sync=False)
         url = reverse('planning:empire')
-        api_client.as_user(user).get(url)
+        assert api_client.as_user(user).get(url).json()[0]['needs_state_sync'] is True
+        api_client.as_user(other).get(url)
 
-        with django_capture_on_commit_callbacks(execute=True):
-            analytics_bulk_materialize_empire_snapshots()
+        analytics_bulk_materialize_empire_snapshots()
 
-        assert api_client.as_user(user).get(url)['X-Cache-Hit'] == '1'
+        assert api_client.as_user(user).get(url).json()[0]['needs_state_sync'] is False
+        # only the owners of cleared empires lose their caches
+        assert api_client.as_user(other).get(url)['X-Cache-Hit'] == '1'
 
     @pytest.mark.usefixtures('locmem_cache')
     def test_refreshes_the_global_tracker_only_when_something_changed(self, api_client) -> None:

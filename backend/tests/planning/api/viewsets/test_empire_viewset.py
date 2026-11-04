@@ -259,11 +259,11 @@ class TestEmpireViewSetSyncState:
         assert empire.empire_state['empire_total']['H2O']['p'] == 10.0
 
     @pytest.mark.usefixtures('locmem_cache')
-    def test_sync_state_keeps_planning_caches(
+    def test_sync_state_keeps_planning_caches_while_a_sync_is_pending(
         self, api_client, user_factory, empire_factory, plan_factory, django_capture_on_commit_callbacks
     ):
         user = user_factory(id=1)
-        empire = empire_factory(user=user)
+        empire = empire_factory(user=user, needs_state_sync=True)
         plan = plan_factory(user=user, plan_data=plan_data_vallis, planet_natural_id='OT-580b')
 
         list_url = reverse('planning:empire')
@@ -275,6 +275,26 @@ class TestEmpireViewSetSyncState:
 
         assert response.status_code == 200
         assert api_client.as_user(user).get(list_url)['X-Cache-Hit'] == '1'
+
+    @pytest.mark.usefixtures('locmem_cache')
+    def test_sync_state_shows_the_pending_sync_in_the_cached_list(
+        self, api_client, user_factory, empire_factory, plan_factory, django_capture_on_commit_callbacks
+    ):
+        user = user_factory(id=1)
+        empire = empire_factory(user=user, needs_state_sync=False)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis, planet_natural_id='OT-580b')
+
+        list_url = reverse('planning:empire')
+        detail_url = reverse('planning:empire-detail', kwargs={'pk': str(empire.uuid)})
+        api_client.as_user(user).get(list_url)
+        api_client.as_user(user).get(detail_url)
+
+        url = reverse('planning:empire-sync-state', kwargs={'pk': str(empire.uuid)})
+        with django_capture_on_commit_callbacks(execute=True):
+            api_client.as_user(user).patch(url, data=_state_payload(str(plan.uuid)), format='json')
+
+        assert api_client.as_user(user).get(list_url).json()[0]['needs_state_sync'] is True
+        assert api_client.as_user(user).get(detail_url).json()['needs_state_sync'] is True
 
 
 class TestEmpireViewSetQueries:

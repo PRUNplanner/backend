@@ -47,8 +47,8 @@ def _state_export(
     rows: Callable[[PlanningEmpire], list[Row]],
     csv_header: list[str] | None = None,
 ) -> HttpResponse:
-    # modified_at moves on every state sync (which doesn't invalidate PLANNING), so it goes into the key;
-    # empire_state is deferred and only loads on a cache miss
+    # modified_at moves on every state sync (which invalidates PLANNING only when needs_state_sync flips), so it goes
+    # into the key; empire_state is deferred and only loads on a cache miss
     empire = get_object_or_404(PlanningEmpire.objects.filter(user=request.user).only('uuid', 'modified_at'), pk=pk)
 
     def fetch_data():

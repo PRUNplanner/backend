@@ -19,6 +19,7 @@ from gamedata.models import (
     GameRecipeOutput,
 )
 from planning.models import PlanningCX, PlanningEmpire, PlanningEmpirePlan, PlanningPlan
+from planning.planning_cache_manager import PLANNING
 from planning.services.empire_state_service import EmpireStateService
 from user.models import User
 
@@ -120,13 +121,18 @@ def analytics_bulk_materialize_empire_snapshots():
 
     processed_count = 0
     error_count = 0
+    cleared_users: set[int] = set()
 
     for empire in dirty_empires:
         try:
             EmpireStateService.sync_snapshot(empire)
 
-            # clear the flag only if no newer state landed meanwhile; a queryset update fires no signals
-            PlanningEmpire.objects.filter(pk=empire.pk, modified_at=empire.modified_at).update(needs_state_sync=False)
+            # clear the flag only if no newer state landed meanwhile; a queryset update fires no signals,
+            # so the owner's cached empire payloads (which carry the flag) are dropped by hand
+            if PlanningEmpire.objects.filter(pk=empire.pk, modified_at=empire.modified_at).update(
+                needs_state_sync=False
+            ):
+                cleared_users.add(empire.user_id)  # ty: ignore[unresolved-attribute]
 
             processed_count += 1
 
@@ -136,5 +142,7 @@ def analytics_bulk_materialize_empire_snapshots():
 
     if processed_count:
         CacheManager.invalidate(MATERIALS_INSIGHT)
+    for user_id in cleared_users:
+        CacheManager.invalidate(PLANNING, user_id)
 
     logger.info('empire_snapshots_materialized', processed=processed_count, errors=error_count)
