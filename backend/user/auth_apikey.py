@@ -45,8 +45,8 @@ class UserAPIKeyAuthentication(authentication.BaseAuthentication):
             api_key: UserAPIKey = UserAPIKey.objects.get_from_key(key)
 
             user = api_key.user
-            # a deactivated user's or an expired key reads as an unknown key
-            if not user.is_active or api_key.has_expired:
+            # a deactivated user's, an expired key or one from before the token cutoff reads as an unknown key
+            if not user.is_active or api_key.has_expired or user.issued_before_cutoff(api_key.created.timestamp()):
                 raise UserAPIKey.DoesNotExist
 
             now = timezone.now()

@@ -34,7 +34,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     prun_username = models.CharField(max_length=255, null=True, blank=True, default=None)  # noqa: DJ001
     fio_apikey = models.CharField(max_length=255, null=True, blank=True, default=None)  # noqa: DJ001
 
-    # JWTs issued before this are rejected (password change, reset, deactivation); empty: all tokens count
+    # JWTs and API keys issued before this are rejected (password change, reset, deactivation); empty: all count
     tokens_valid_after = models.DateTimeField(null=True, blank=True)
 
     objects = CustomUserManager()
@@ -46,7 +46,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         """Ends every session issued before now; the caller saves."""
         self.tokens_valid_after = token_cutoff()
 
-    def issued_before_cutoff(self, iat: int) -> bool:
+    def issued_before_cutoff(self, iat: float) -> bool:
         return self.tokens_valid_after is not None and iat < self.tokens_valid_after.timestamp()
 
     def _has_fio_credentials(self) -> bool:

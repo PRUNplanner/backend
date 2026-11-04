@@ -189,6 +189,31 @@ class TestKeyOfInactiveUserOrExpired:
             assert request._request._auth_error == 'api_key_invalid'
 
 
+class TestKeyCutoff:
+    @pytest.mark.parametrize(
+        ('cutoff_offset', 'ok'),
+        [
+            (None, True),  # no cutoff
+            (timedelta(seconds=-10), True),  # key made after the cutoff
+            (timedelta(seconds=10), False),  # key made before the cutoff (password change, reset, deactivation)
+        ],
+    )
+    def test_key_against_the_cutoff(self, cutoff_offset, ok):
+        user = baker.make('user.User')
+        api_key, key = UserAPIKey.objects.create_key(name='script', user=user)
+        if cutoff_offset is not None:
+            user.tokens_valid_after = api_key.created + cutoff_offset
+            user.save()
+        request = Request(APIRequestFactory().get('/', {'api_key': key}))
+
+        if ok:
+            assert UserAPIKeyAuthentication().authenticate(request)[0] == user
+        else:
+            with pytest.raises(exceptions.AuthenticationFailed, match='Invalid API Key'):
+                UserAPIKeyAuthentication().authenticate(request)
+            assert request._request._auth_error == 'api_key_invalid'
+
+
 class TestJWTCutoff:
     def _auth(self, token: AccessToken):
         request = Request(APIRequestFactory().get('/', HTTP_AUTHORIZATION=f'Bearer {token}'))

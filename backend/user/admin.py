@@ -19,6 +19,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.models import Group
 from django.db.models import Count, IntegerField, JSONField, Max, OuterRef, Prefetch, Q, QuerySet, Subquery, Value
 from django.db.models.functions import Coalesce
+from django.forms import Form
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils import timezone
@@ -172,6 +173,13 @@ class UserAPIKeyInline(ReadOnlyAdminMixin, TabularInline):
     verbose_name_plural = 'API keys'
 
 
+class CutoffPasswordChangeForm(AdminPasswordChangeForm):
+    def save(self, commit: bool = True) -> User:
+        # a password set by staff ends every older session and API key, like the user's own change
+        self.user.cut_off_tokens()
+        return super().save(commit)
+
+
 @admin.register(User)
 class UserAdmin(SummaryStripMixin, ChangeHeaderMixin[User], BaseUserAdmin, ModelAdmin):
     list_display = [
@@ -209,7 +217,7 @@ class UserAdmin(SummaryStripMixin, ChangeHeaderMixin[User], BaseUserAdmin, Model
 
     form = UserChangeForm
     add_form = UserCreationForm
-    change_password_form = AdminPasswordChangeForm
+    change_password_form = CutoffPasswordChangeForm
 
     actions = [
         'action_refresh_fio',
@@ -219,6 +227,12 @@ class UserAdmin(SummaryStripMixin, ChangeHeaderMixin[User], BaseUserAdmin, Model
         'action_resend_verification',
     ]
     actions_detail = ['action_detail_clear_fio']
+
+    def save_model(self, request: HttpRequest, obj: User, form: Form, change: bool) -> None:  # ty: ignore[invalid-method-override]
+        # unticking is_active ends the sessions like the Deactivate action, so ticking it again doesn't revive them
+        if change and 'is_active' in form.changed_data and not obj.is_active:
+            obj.cut_off_tokens()
+        super().save_model(request, obj, form, change)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[User]:
         queryset = super().get_queryset(request)
