@@ -1,15 +1,18 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 from django.contrib import admin
 from django.contrib.admin.models import LogEntry
 from django.db import connection
-from django.test import Client
+from django.test import Client, RequestFactory
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 from model_bakery import baker
+from rest_framework_simplejwt.tokens import RefreshToken
 from user.admin import UserAdmin
-from user.models import User, VerificationCode
+from user.models import User, UserAPIKey, VerificationCode
 from user.models.verification_codes import VerificationeCodeChoices
 
 CHANGELIST = reverse('admin:user_user_changelist')
@@ -237,3 +240,65 @@ class TestUserPages:
             'Email verified',
         }
         assert summary['charts'][0]['title'] == 'Signups per day, last 90 days'
+
+
+@pytest.mark.django_db
+class TestTokenCutoff:
+    """Staff ending a user's access in the admin ends their older sessions and API keys too."""
+
+    def _profile(self, access: str) -> int:
+        return Client().get(reverse('user:user_profile'), HTTP_AUTHORIZATION=f'Bearer {access}').status_code
+
+    def test_password_form_ends_older_sessions(self, admin_client: Client, monkeypatch: pytest.MonkeyPatch) -> None:
+        user = baker.make(User)
+        old = RefreshToken.for_user(user)
+        access = str(old.access_token)
+        # tokens are whole seconds: set the password a second after they were issued
+        later = timezone.now() + timedelta(seconds=1)
+        monkeypatch.setattr('user.models.user.timezone.now', lambda: later)
+
+        response = admin_client.post(
+            reverse('admin:auth_user_password_change', args=[user.pk]),
+            {'password1': 'Xk7!qzR9pLm2', 'password2': 'Xk7!qzR9pLm2'},
+        )
+
+        user.refresh_from_db()
+        assert response.status_code == 302 and user.check_password('Xk7!qzR9pLm2')
+        assert self._profile(access) == 401
+        with patch('user.api.viewsets.user_handle_post_refresh.delay'):
+            assert Client().post(reverse('user:token_refresh'), {'refresh': str(old)}).status_code == 401
+
+    def test_unticking_is_active_sets_the_cutoff(self, superuser: User) -> None:
+        user = baker.make(User, username='pilot')
+        model_admin = UserAdmin(User, admin.site)
+        request = RequestFactory().post('/')
+        request.user = superuser
+
+        def save(is_active: bool) -> None:
+            form = model_admin.get_form(request, user, change=True)(
+                instance=user, data={'username': 'pilot', 'is_active': is_active}
+            )
+            assert form.is_valid(), form.errors
+            model_admin.save_model(request, form.save(commit=False), form, change=True)  # ty: ignore[invalid-argument-type]
+
+        save(is_active=False)
+        user.refresh_from_db()
+        cutoff = user.tokens_valid_after
+        assert cutoff is not None
+
+        # ticking it again keeps the cutoff, so the old sessions stay dead
+        save(is_active=True)
+        user.refresh_from_db()
+        assert (user.is_active, user.tokens_valid_after) == (True, cutoff)
+
+    def test_deactivate_then_reactivate_keeps_older_keys_dead(self, admin_client: Client) -> None:
+        user = baker.make(User)
+        _, key = UserAPIKey.objects.create_key(name='script', user=user)
+        # the Deactivate cutoff is whole seconds: make the key a second older
+        UserAPIKey.objects.filter(user=user).update(created=timezone.now() - timedelta(seconds=1))
+
+        for action in ('action_deactivate', 'action_reactivate'):
+            admin_client.post(CHANGELIST, {'action': action, '_selected_action': [user.pk]})
+
+        response = Client().get(reverse('user:user_profile'), HTTP_AUTHORIZATION=f'Api-Key {key}')
+        assert response.status_code == 401

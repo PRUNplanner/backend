@@ -1698,9 +1698,13 @@ class TestTokenCutoff:
         user.save()
         return user
 
+    def _profile_with_key(self, client, key: str) -> int:
+        return client.get(reverse('user:user_profile'), HTTP_AUTHORIZATION=f'Api-Key {key}').status_code
+
     def test_change_password_ends_older_sessions(self, api_client, user, monkeypatch):
         with patch('user.api.urls.request_fio_refresh'):
             other_tab = self._login(api_client, user)
+        _, old_key = UserAPIKey.objects.create_key(name='stolen', user=user)
         # tokens are whole seconds: put the change a second later than the other tab's login
         later = timezone.now() + timedelta(seconds=1)
         monkeypatch.setattr('user.models.user.timezone.now', lambda: later)
@@ -1715,6 +1719,9 @@ class TestTokenCutoff:
         assert response.status_code == 200
         assert self._refresh(api_client, other_tab['refresh']) == 401
         assert self._profile(api_client, other_tab['access']) == 401
+        # API keys too: an older one is dead, one made after the change works
+        _, new_key = UserAPIKey.objects.create_key(name='fresh', user=user)
+        assert (self._profile_with_key(api_client, old_key), self._profile_with_key(api_client, new_key)) == (401, 200)
 
     def test_tokens_issued_after_the_cutoff_work(self, api_client, user):
         user.tokens_valid_after = timezone.now() - timedelta(minutes=1)
