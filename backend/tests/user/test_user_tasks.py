@@ -195,8 +195,9 @@ class TestCodeEmails:
         used = _pilot_code(purpose)
         VerificationCode.objects.filter(pk=used.pk).update(is_used=True)
 
-        assert task(used.pk) is False
-        assert task(used.pk + 1000) is False
+        # a skip, not a failure: task health counts only False as one
+        assert task(used.pk) is None
+        assert task(used.pk + 1000) is None
         assert mail.outbox == []
 
 
@@ -235,6 +236,10 @@ class TestEmailChangedNotice:
         assert mimetype == 'text/html'
         assert 'pilot' in message.body
         assert 'someone else knows your password' in message.body
+
+    def test_a_deleted_user_is_a_skip(self) -> None:
+        assert send_email_changed_notice(10**9, 'old@example.com') is None
+        assert mail.outbox == []
 
     def test_a_failed_send_is_retried(self) -> None:
         user = baker.make('user.User')

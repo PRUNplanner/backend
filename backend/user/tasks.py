@@ -46,10 +46,10 @@ def _pending_code(code_id: int, purpose: VerificationeCodeChoices) -> Verificati
 
 
 @shared_task(name='user_send_email_verification_code', bind=True, max_retries=EMAIL_MAX_RETRIES)
-def send_email_verification_code(self: Task, code_id: int) -> bool:
+def send_email_verification_code(self: Task, code_id: int) -> bool | None:
     code = _pending_code(code_id, VerificationeCodeChoices.EMAIL_VERIFICATION)
     if code is None or not code.user.email:
-        return False
+        return None
     user = code.user
     log = logger.bind(user_id=user.pk, email_kind='verification')
 
@@ -74,10 +74,10 @@ def send_email_verification_code(self: Task, code_id: int) -> bool:
 
 
 @shared_task(name='user_send_password_reset_code', bind=True, max_retries=EMAIL_MAX_RETRIES)
-def send_password_reset_code(self: Task, code_id: int) -> bool:
+def send_password_reset_code(self: Task, code_id: int) -> bool | None:
     code = _pending_code(code_id, VerificationeCodeChoices.PASSWORD_RESET)
     if code is None or not code.user.email:
-        return False
+        return None
     user = code.user
     log = logger.bind(user_id=user.pk, email_kind='password_reset')
 
@@ -102,11 +102,11 @@ def send_password_reset_code(self: Task, code_id: int) -> bool:
 
 
 @shared_task(name='user_send_email_changed_notice', bind=True, max_retries=EMAIL_MAX_RETRIES)
-def send_email_changed_notice(self: Task, user_id: int, old_email: str):
+def send_email_changed_notice(self: Task, user_id: int, old_email: str) -> bool | None:
     # old_email is the one address passed along: after the change it is in no table
     user = User.objects.filter(pk=user_id).only('username').first()
     if user is None:
-        return False
+        return None
     log = logger.bind(user_id=user_id, email_kind='email_changed')
 
     html_content = render_to_string('emails/email_changed.html', {'username': user.username})
