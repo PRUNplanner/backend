@@ -3968,6 +3968,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        planLayout:
+          allOf:
+          - $ref: '#/components/schemas/PlanLayout_V1'
+          nullable: true
     PatchedUserProfile:
       type: object
       properties:
@@ -4019,6 +4023,259 @@ components:
         current_password:
           type: string
           writeOnly: true
+    PlanLayoutCustom_V1:
+      additionalProperties: false
+      description: The one Custom Layout; without phone a phone stacks wide.
+      properties:
+        wide:
+          $ref: '#/components/schemas/PlanLayoutWide_V1'
+        phone:
+          allOf:
+          - $ref: '#/components/schemas/PlanLayoutPhone_V1'
+          default: null
+          nullable: true
+        known:
+          default: null
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 64
+          nullable: true
+          title: Known
+          type: array
+      required:
+      - wide
+      title: PlanLayoutCustom_V1
+      type: object
+    PlanLayoutFolded_V1:
+      additionalProperties: false
+      description: Folded items by their first element, per arrangement.
+      properties:
+        wide:
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 40
+          title: Wide
+          type: array
+        phone:
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 40
+          title: Phone
+          type: array
+      title: PlanLayoutFolded_V1
+      type: object
+    PlanLayoutItem_V1:
+      additionalProperties: false
+      description: 'A box on the grid: one element, or several as tabs.'
+      properties:
+        id:
+          pattern: ^[a-z0-9_-]{1,40}$
+          title: Id
+          type: string
+        els:
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 40
+          minItems: 1
+          title: Els
+          type: array
+        active:
+          pattern: ^[a-z][a-z0-9_-]{0,31}$
+          title: Active
+          type: string
+        x:
+          minimum: 0
+          title: X
+          type: integer
+        w:
+          minimum: 1
+          title: W
+          type: integer
+        y:
+          maximum: 999
+          minimum: 0
+          title: Y
+          type: integer
+        hm:
+          enum:
+          - fit
+          - cap
+          - fixed
+          title: Hm
+          type: string
+        h:
+          maximum: 4000
+          minimum: 0
+          title: H
+          type: integer
+        pin:
+          title: Pin
+          type: boolean
+        follow:
+          default: null
+          enum:
+          - true
+          nullable: true
+          title: Follow
+          type: boolean
+        join:
+          additionalProperties:
+            enum:
+            - below
+            - beside
+            type: string
+          default: null
+          nullable: true
+          title: Join
+          type: object
+        joinSize:
+          additionalProperties:
+            type: integer
+          default: null
+          nullable: true
+          title: Joinsize
+          type: object
+      required:
+      - id
+      - els
+      - active
+      - x
+      - w
+      - y
+      - hm
+      - h
+      - pin
+      title: PlanLayoutItem_V1
+      type: object
+    PlanLayoutPhone_V1:
+      additionalProperties: false
+      properties:
+        cols:
+          enum:
+          - 2
+          title: Cols
+          type: integer
+        gap:
+          enum:
+          - 8
+          - 12
+          - 16
+          - 24
+          title: Gap
+          type: integer
+        items:
+          items:
+            $ref: '#/components/schemas/PlanLayoutItem_V1'
+          maxItems: 40
+          minItems: 1
+          title: Items
+          type: array
+        open:
+          default: null
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 40
+          nullable: true
+          title: Open
+          type: array
+        table:
+          default: null
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 40
+          nullable: true
+          title: Table
+          type: array
+      required:
+      - cols
+      - gap
+      - items
+      title: PlanLayoutPhone_V1
+      type: object
+    PlanLayoutWide_V1:
+      additionalProperties: false
+      properties:
+        cols:
+          maximum: 24
+          minimum: 4
+          title: Cols
+          type: integer
+        gap:
+          enum:
+          - 8
+          - 12
+          - 16
+          - 24
+          title: Gap
+          type: integer
+        items:
+          items:
+            $ref: '#/components/schemas/PlanLayoutItem_V1'
+          maxItems: 40
+          minItems: 1
+          title: Items
+          type: array
+        open:
+          default: null
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 40
+          nullable: true
+          title: Open
+          type: array
+        table:
+          default: null
+          items:
+            pattern: ^[a-z][a-z0-9_-]{0,31}$
+            type: string
+          maxItems: 40
+          nullable: true
+          title: Table
+          type: array
+      required:
+      - cols
+      - gap
+      - items
+      title: PlanLayoutWide_V1
+      type: object
+    PlanLayout_V1:
+      additionalProperties: false
+      properties:
+        v:
+          enum:
+          - 1
+          title: V
+          type: integer
+        preset:
+          enum:
+          - standard
+          - custom
+          title: Preset
+          type: string
+        custom:
+          allOf:
+          - $ref: '#/components/schemas/PlanLayoutCustom_V1'
+          default: null
+          nullable: true
+        folded:
+          $ref: '#/components/schemas/PlanLayoutFolded_V1'
+        tinted:
+          default: null
+          nullable: true
+          title: Tinted
+          type: boolean
+      required:
+      - v
+      - preset
+      title: PlanLayout_V1
+      type: object
     PlanOverride:
       type: object
       properties:
@@ -5940,6 +6197,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        planLayout:
+          $ref: '#/components/schemas/PlanLayout_V1'
       required:
       - burnDaysRed
       - burnDaysYellow
@@ -5958,6 +6217,7 @@ components:
       - layoutNavigationStyle
       - locale
       - marketCardTrigger
+      - planLayout
       - planOverrides
       - planSuggestions
       - supplyCartDays

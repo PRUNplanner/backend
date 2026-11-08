@@ -2,12 +2,16 @@ from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.plumbing import ResolvedComponent
 from pydantic import BaseModel, ValidationError
+from pydantic.json_schema import GenerateJsonSchema, JsonSchemaValue
+from pydantic_core import core_schema
 from rest_framework import serializers
 
 
 class PydanticJSONField(serializers.JSONField):
-    def __init__(self, pydantic_model: type[BaseModel], **kwargs):
+    def __init__(self, pydantic_model: type[BaseModel], exclude_unset: bool = False, **kwargs):
         self.pydantic_model = pydantic_model
+        # True: keys the payload left out stay out, instead of stored as their defaults
+        self.exclude_unset = exclude_unset
         super().__init__(**kwargs)
 
     def to_internal_value(self, data):
@@ -16,7 +20,7 @@ class PydanticJSONField(serializers.JSONField):
 
         try:
             model_instance = self.pydantic_model.model_validate(data)
-            return model_instance.model_dump()
+            return model_instance.model_dump(exclude_unset=self.exclude_unset)
         except ValidationError as exc:
             # paths and messages only: str(exc) echoes the submitted values back
             raise serializers.ValidationError(
@@ -27,6 +31,29 @@ class PydanticJSONField(serializers.JSONField):
         return value
 
 
+class _OpenAPI30JsonSchema(GenerateJsonSchema):
+    """Pydantic writes JSON Schema 2020-12; OpenAPI 3.0 has no null type and no const."""
+
+    def nullable_schema(self, schema: core_schema.NullableSchema) -> JsonSchemaValue:
+        inner = self.generate_inner(schema['schema'])
+        # a $ref takes no siblings in 3.0
+        return {'allOf': [inner], 'nullable': True} if '$ref' in inner else {**inner, 'nullable': True}
+
+    def dict_schema(self, schema: core_schema.DictSchema) -> JsonSchemaValue:
+        result = super().dict_schema(schema)
+        # the key pattern can't be expressed in 3.0; the values can
+        patterns = result.pop('patternProperties', None)
+        if patterns:
+            result['additionalProperties'] = next(iter(patterns.values()))
+        return result
+
+    def literal_schema(self, schema: core_schema.LiteralSchema) -> JsonSchemaValue:
+        result = super().literal_schema(schema)
+        if 'const' in result:
+            result['enum'] = [result.pop('const')]
+        return result
+
+
 class PydanticJSONFieldExtension(OpenApiSerializerFieldExtension):
     """Documents a PydanticJSONField with its model's JSON schema, as a component, instead of any value."""
 
@@ -34,7 +61,9 @@ class PydanticJSONFieldExtension(OpenApiSerializerFieldExtension):
 
     def map_serializer_field(self, auto_schema: AutoSchema, direction: str) -> dict[str, str]:
         model: type[BaseModel] = self.target.pydantic_model
-        schema = model.model_json_schema(ref_template='#/components/schemas/{model}')
+        schema = model.model_json_schema(
+            ref_template='#/components/schemas/{model}', schema_generator=_OpenAPI30JsonSchema
+        )
         for name, sub_schema in schema.pop('$defs', {}).items():
             auto_schema.registry.register_on_missing(
                 ResolvedComponent(name=name, type=ResolvedComponent.SCHEMA, object=name, schema=sub_schema)
