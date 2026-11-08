@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping, MutableMapping
 from datetime import timedelta
 from unittest.mock import patch
@@ -15,6 +16,8 @@ from planning.models import PlanningCX, PlanningEmpire
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from structlog.testing import capture_logs
+from tests.fixtures.fxt_plan_layout import CUSTOM, DEFAULT, at_limits_items, at_limits_pairs, layout, variants
+from tests.user.schemas.test_plan_layout import INVALID
 from user.api.serializer import UserChangePasswordSerializer, UserProfileSerializer, UserRegisterSerializer
 from user.api.viewsets import RESET_RESEND_WINDOW, UserProfileViewSet
 from user.models import User, UserAPIKey, UserPreference
@@ -1762,3 +1765,110 @@ class TestTokenCutoff:
         # the cutoff is read from the user row JWT auth loads anyway
         with django_assert_num_queries(1):
             assert self._profile(api_client, access) == 200
+
+
+class TestPlanLayoutPreferences:
+    URL = 'user:user_preferences'
+
+    def _patch(self, client, value: object):
+        return client.patch(reverse(self.URL), data={'planLayout': value}, format='json')
+
+    def test_default_without_the_key(self, api_client, user_factory):
+        response = api_client.as_user(user_factory(id=1)).get(reverse(self.URL))
+
+        assert response.status_code == 200
+        assert response.json()['planLayout'] == DEFAULT
+
+    def test_standard_is_stored_and_other_keys_stay(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'burn_days_red': 2, 'color_palette': 'colorblind'})
+        value = {'v': 1, 'preset': 'standard', 'custom': None, 'folded': {'wide': ['housing'], 'phone': []}}
+
+        response = self._patch(api_client.as_user(user), value)
+
+        assert response.status_code == 200
+        assert response.json()['planLayout'] == value
+        assert UserPreference.objects.get(user=user).preferences == {
+            'burn_days_red': 2,
+            'color_palette': 'colorblind',
+            'plan_layout': value,
+        }
+
+    @pytest.mark.parametrize('make', [at_limits_items, at_limits_pairs, lambda: layout(CUSTOM)])
+    def test_values_at_the_limits_are_stored_unchanged(self, api_client, user_factory, make):
+        user, value = user_factory(id=1), make()
+
+        response = self._patch(api_client.as_user(user), value)
+
+        assert response.status_code == 200
+        assert response.json()['planLayout'] == value
+        assert UserPreference.objects.get(user=user).preferences['plan_layout'] == value
+
+    def test_the_largest_body_fits_the_request_limits(self, api_client, user_factory, settings):
+        value = at_limits_items()
+        body = json.dumps({'planLayout': value})
+        assert len(body) < settings.DATA_UPLOAD_MAX_MEMORY_SIZE
+
+        assert self._patch(api_client.as_user(user_factory(id=1)), value).status_code == 200
+
+    @pytest.mark.parametrize(('make', 'expected'), [(m, e) for _, m, e in INVALID], ids=[c for c, _, _ in INVALID])
+    def test_invalid_values_are_rejected_naming_the_path(self, api_client, user_factory, make, expected: str):
+        user = user_factory(id=1)
+
+        response = self._patch(api_client.as_user(user), make())
+
+        assert response.status_code == 400
+        assert any(expected in message for message in response.json()['planLayout'])
+        assert not UserPreference.objects.filter(user=user).exists()
+
+    def test_null_resets_to_the_default(self, api_client, user_factory):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'plan_layout': layout(CUSTOM)})
+
+        response = self._patch(api_client.as_user(user), None)
+
+        assert response.status_code == 200
+        assert response.json()['planLayout'] == DEFAULT
+        assert UserPreference.objects.get(user=user).preferences['plan_layout'] == DEFAULT
+
+    @pytest.mark.parametrize(
+        ('stored', 'expected'),
+        [
+            ('not a layout', DEFAULT),
+            ({'v': 1, 'preset': 'custom', 'custom': {'wide': {'cols': 99}}}, DEFAULT),
+            ({'v': 1, 'preset': 'custom', 'custom': None}, DEFAULT),
+            # an unknown preset reads as Custom when there is one, else as Standard
+            ({**CUSTOM, 'preset': 'compact'}, CUSTOM),
+            ({'v': 1, 'preset': 'compact', 'custom': None}, DEFAULT),
+            # a missing folded list reads as empty
+            ({'v': 1, 'preset': 'standard', 'custom': None, 'folded': {'wide': ['housing']}},
+             {'v': 1, 'preset': 'standard', 'custom': None, 'folded': {'wide': ['housing'], 'phone': []}}),
+        ],
+    )  # fmt: skip
+    def test_stored_values_are_fixed_up_on_read(self, api_client, user_factory, stored: object, expected: dict):
+        user = user_factory(id=1)
+        baker.make(UserPreference, user=user, preferences={'plan_layout': stored, 'burn_days_red': 2})
+
+        data = api_client.as_user(user).get(reverse(self.URL)).json()
+
+        assert data['planLayout'] == expected
+        assert data['burnDaysRed'] == 2
+
+    def test_another_key_keeps_the_layout(self, api_client, user_factory):
+        user = user_factory(id=1)
+        client = api_client.as_user(user)
+        self._patch(client, layout(CUSTOM))
+
+        response = client.patch(reverse(self.URL), data={'burnDaysRed': 4}, format='json')
+
+        assert response.status_code == 200
+        assert response.json()['planLayout'] == CUSTOM
+        assert UserPreference.objects.get(user=user).preferences['plan_layout'] == CUSTOM
+
+    def test_every_save_of_plan_layouts_01_reads_back_unchanged(self, api_client, user_factory):
+        # folds, unfolds, tab switches, Standard and Custom in turn, each saved whole as 01 does
+        client = api_client.as_user(user_factory(id=1))
+
+        for value in variants():
+            assert self._patch(client, value).status_code == 200
+            assert client.get(reverse(self.URL)).json()['planLayout'] == value

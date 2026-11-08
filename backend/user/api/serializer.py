@@ -5,6 +5,7 @@ from typing import cast
 
 import structlog
 from api.mixins import JSONSafeSerializerMixin
+from api.serializer import PydanticJSONField
 from django.contrib.auth import password_validation
 from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
@@ -12,8 +13,10 @@ from gamedata.fio.services import get_fio_service
 from gamedata.services.fio_refresh import FIO_STATUSES, FioStatus, fio_connection
 from planning.models import PlanningCX, PlanningEmpire, PlanningPlan
 from planning.signup_defaults import SIGNUP_CX_DATA, SIGNUP_CX_NAME, SIGNUP_EMPIRE
+from pydantic import ValidationError
 from rest_framework import serializers
 from user.models import User, UserAPIKey
+from user.schemas.plan_layout import PlanLayout_V1
 
 logger = structlog.get_logger(__name__)
 
@@ -173,6 +176,9 @@ COLOR_PALETTES = ['default', 'colorblind']
 MARKET_CARD_TRIGGERS = ['hover', 'click']
 EMAIL_NUDGE_DISMISSALS = ['later', 'never']
 
+# what a player without the key reads, and what null resets to
+DEFAULT_PLAN_LAYOUT: dict = {'v': 1, 'preset': 'standard', 'custom': None, 'folded': {'wide': [], 'phone': []}}
+
 DEFAULT_PREFERENCES = {
     'locale': 'en_US',
     'default_empire_uuid': None,
@@ -194,6 +200,7 @@ DEFAULT_PREFERENCES = {
     'fio_repair_plan_links': {},
     'email_nudge_dismissal': None,
     'email_nudge_dismissed_at': None,
+    'plan_layout': DEFAULT_PLAN_LAYOUT,
 }
 
 
@@ -231,6 +238,19 @@ class PlanOverrideSerializer(serializers.Serializer):
 class FIORepairPlanLinkSerializer(serializers.Serializer):
     # null: the user chose "no plan" for the site
     planUuid = serializers.UUIDField(source='plan_uuid', allow_null=True)
+
+
+def _read_plan_layout(value: object) -> object:
+    """The stored layout (missing parts already filled from the default), or the default when it isn't valid."""
+    if isinstance(value, dict):
+        stored = cast(dict, value)
+        if stored.get('preset') not in ('standard', 'custom'):
+            value = {**stored, 'preset': 'custom' if stored.get('custom') else 'standard'}
+    try:
+        PlanLayout_V1.model_validate(value)
+    except ValidationError:
+        return copy.deepcopy(DEFAULT_PLAN_LAYOUT)
+    return value
 
 
 class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
@@ -278,6 +298,13 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
     emailNudgeDismissedAt = serializers.DateTimeField(
         source='email_nudge_dismissed_at', allow_null=True, required=False
     )
+    # replaced whole on PATCH, null resets it
+    planLayout = PydanticJSONField(
+        PlanLayout_V1, source='plan_layout', allow_null=True, required=False, exclude_unset=True
+    )
+
+    def validate_planLayout(self, value: dict | None) -> dict:
+        return copy.deepcopy(DEFAULT_PLAN_LAYOUT) if value is None else value
 
     def validate_fioRepairPlanLinks(self, value: dict[str, dict | None]) -> dict[str, dict | None]:
         if len(value) > MAX_FIO_REPAIR_PLAN_LINKS:
@@ -321,6 +348,7 @@ class UserPreferenceSerializer(JSONSafeSerializerMixin, serializers.Serializer):
             merged['color_palette'] = 'default'
         if merged['market_card_trigger'] not in MARKET_CARD_TRIGGERS:
             merged['market_card_trigger'] = 'hover'
+        merged['plan_layout'] = _read_plan_layout(merged['plan_layout'])
         return super().to_representation(merged)
 
 
@@ -329,6 +357,7 @@ class UserPreferenceResponseSerializer(UserPreferenceSerializer):
 
     planOverrides = serializers.DictField(source='plan_overrides', child=PlanOverrideSerializer())
     fioRepairPlanLinks = serializers.DictField(source='fio_repair_plan_links', child=FIORepairPlanLinkSerializer())
+    planLayout = PydanticJSONField(PlanLayout_V1, source='plan_layout')
 
     def get_fields(self) -> dict[str, serializers.Field]:
         fields = super().get_fields()
