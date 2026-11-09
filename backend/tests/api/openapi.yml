@@ -4296,6 +4296,136 @@ components:
           additionalProperties:
             type: integer
             minimum: 0
+    PlanSummaryOutput_V1:
+      additionalProperties: false
+      properties:
+        ticker:
+          maxLength: 3
+          minLength: 1
+          title: Ticker
+          type: string
+        per_day:
+          maximum: 1000000000000000.0
+          minimum: 0
+          title: Per Day
+          type: number
+      required:
+      - ticker
+      - per_day
+      title: PlanSummaryOutput_V1
+      type: object
+    PlanSummary_V1:
+      additionalProperties: false
+      description: The plan's numbers as the frontend calculated them at save time.
+        All money in ȼ per day.
+      properties:
+        v:
+          enum:
+          - 1
+          title: V
+          type: integer
+        profit:
+          maximum: 1000000000000000.0
+          minimum: -1000000000000000.0
+          title: Profit
+          type: number
+        revenue:
+          maximum: 1000000000000000.0
+          minimum: -1000000000000000.0
+          title: Revenue
+          type: number
+        cost:
+          maximum: 1000000000000000.0
+          minimum: -1000000000000000.0
+          title: Cost
+          type: number
+        payback_days:
+          maximum: 1000000.0
+          minimum: 0
+          nullable: true
+          title: Payback Days
+          type: number
+        plan_cost:
+          maximum: 1000000000000000.0
+          minimum: 0
+          title: Plan Cost
+          type: number
+        area_used:
+          maximum: 1000000000000
+          minimum: 0
+          title: Area Used
+          type: integer
+        area_total:
+          maximum: 1000000000000
+          minimum: 0
+          title: Area Total
+          type: integer
+        outputs:
+          items:
+            $ref: '#/components/schemas/PlanSummaryOutput_V1'
+          maxItems: 4
+          title: Outputs
+          type: array
+        price_basis:
+          anyOf:
+          - enum:
+            - AI1_7D
+            - NC1_7D
+            - CI1_7D
+            - IC1_7D
+            - UNIVERSE_7D
+            - AI1_30D
+            - NC1_30D
+            - CI1_30D
+            - IC1_30D
+            - UNIVERSE_30D
+            - AI1_ASK
+            - AI1_BID
+            - NC1_ASK
+            - NC1_BID
+            - CI1_ASK
+            - CI1_BID
+            - IC1_ASK
+            - IC1_BID
+            type: string
+          - enum:
+            - CUSTOM
+            type: string
+          nullable: true
+          title: Price Basis
+        cogc:
+          enum:
+          - AGRICULTURE
+          - CHEMISTRY
+          - CONSTRUCTION
+          - ELECTRONICS
+          - FOOD_INDUSTRIES
+          - FUEL_REFINING
+          - MANUFACTURING
+          - METALLURGY
+          - RESOURCE_EXTRACTION
+          - PIONEERS
+          - SETTLERS
+          - TECHNICIANS
+          - ENGINEERS
+          - SCIENTISTS
+          nullable: true
+          title: Cogc
+          type: string
+      required:
+      - v
+      - profit
+      - revenue
+      - cost
+      - payback_days
+      - plan_cost
+      - area_used
+      - area_total
+      - outputs
+      - price_basis
+      - cogc
+      title: PlanSummary_V1
+      type: object
     PlanetProductionFeeSchema:
       type: object
       properties:
@@ -5270,6 +5400,13 @@ components:
           type: boolean
         plan_data:
           $ref: '#/components/schemas/PlanningPlanData_V1'
+        plan_summary:
+          $ref: '#/components/schemas/PlanSummary_V1'
+        plan_summary_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
         empires:
           type: array
           items:
@@ -5308,6 +5445,7 @@ components:
       - plan_data
       - plan_name
       - plan_permits_used
+      - plan_summary_at
       - planet_natural_id
       - uuid
     PlanningPlanDetailResponse:
@@ -5369,6 +5507,13 @@ components:
           type: boolean
         plan_data:
           $ref: '#/components/schemas/PlanningPlanData_V1'
+        plan_summary:
+          $ref: '#/components/schemas/PlanSummary_V1'
+        plan_summary_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
         empires:
           type: array
           items:
@@ -5408,6 +5553,7 @@ components:
       - plan_data
       - plan_name
       - plan_permits_used
+      - plan_summary_at
       - planet_natural_id
       - uuid
     PlanningPlanDraft:
@@ -5867,6 +6013,10 @@ components:
         plan:
           type: string
           format: uuid
+        plan_summary:
+          allOf:
+          - $ref: '#/components/schemas/PlanSummary_V1'
+          writeOnly: true
       required:
       - plan
     PlanningSharedDetail:

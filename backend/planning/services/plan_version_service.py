@@ -137,6 +137,9 @@ def _restore(version: PlanningPlanVersion, seen_draft: datetime | None = None, *
     plan = PlanningPlan.objects.get(pk=before.pk)
     for field in SNAPSHOT_FIELDS:
         setattr(plan, field, getattr(version, field))
+    # the summary was calculated for the replaced content; previews go without numbers until the next save
+    plan.plan_summary = None
+    plan.plan_summary_at = None
     plan.save()
 
     # a save may have pruned it while this waited for the lock; its content is already in hand

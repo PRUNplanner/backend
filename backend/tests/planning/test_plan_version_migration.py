@@ -8,6 +8,8 @@ from user.models import User
 BEFORE = [('planning', '0009_empire_config_modified_at_backfill')]
 AFTER = [('planning', '0010_planningplanversion')]
 TABLE = 'prunplanner_planning_plan_versions'
+# columns later migrations add, absent at BEFORE and AFTER
+LATER_COLUMNS = {'plan_summary', 'plan_summary_at'}
 
 
 def migrate(targets: list[tuple[str, str]]) -> None:
@@ -18,15 +20,17 @@ def migrate(targets: list[tuple[str, str]]) -> None:
 @pytest.mark.django_db(transaction=True)
 def test_only_creates_the_table_and_leaves_plans_alone() -> None:
     plan = baker.make(PlanningPlan, user=baker.make(User), plan_permits_used=1, plan_data={'a': 1})
-    row = PlanningPlan.objects.filter(pk=plan.pk).values().get()
+    columns = [field.attname for field in PlanningPlan._meta.concrete_fields if field.attname not in LATER_COLUMNS]
+    row = PlanningPlan.objects.filter(pk=plan.pk).values(*columns).get()
+    latest = MigrationExecutor(connection).loader.graph.leaf_nodes('planning')
 
     try:
         migrate(BEFORE)
         assert TABLE not in connection.introspection.table_names()
-        assert PlanningPlan.objects.filter(pk=plan.pk).values().get() == row
+        assert PlanningPlan.objects.filter(pk=plan.pk).values(*columns).get() == row
 
         migrate(AFTER)
         assert TABLE in connection.introspection.table_names()
-        assert PlanningPlan.objects.filter(pk=plan.pk).values().get() == row
+        assert PlanningPlan.objects.filter(pk=plan.pk).values(*columns).get() == row
     finally:
-        migrate(AFTER)
+        migrate(latest)

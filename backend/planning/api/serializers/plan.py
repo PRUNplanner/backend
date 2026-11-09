@@ -39,6 +39,11 @@ COGC_MAP: dict[GamePlanetCOGCProgramChoices, PlanningCOGCChoices] = {
 }
 
 
+def _stamp_summary(validated_data: dict[str, object]) -> None:
+    if 'plan_summary' in validated_data:
+        validated_data['plan_summary_at'] = timezone.now()
+
+
 class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerializer):
     empires = PlanningEmpireListSerializer(many=True, read_only=True)
 
@@ -51,6 +56,9 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
     draft_updated_at = serializers.DateTimeField(write_only=True, required=False, allow_null=True)
 
     plan_data = PydanticJSONField(pydantic_model=LATEST_SCHEMA['PLANNING_DATA'])
+    # left out: the stored summary stays (old clients, drafts)
+    plan_summary = PydanticJSONField(pydantic_model=LATEST_SCHEMA['PLAN_SUMMARY'], required=False)
+    plan_summary_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
     # COGC: must allow null, if so: populate from planets running cogc
     plan_cogc = serializers.ChoiceField(choices=PlanningCOGCChoices.choices, allow_null=True, required=False)
@@ -65,6 +73,8 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
             'plan_cogc',
             'plan_corphq',
             'plan_data',
+            'plan_summary',
+            'plan_summary_at',
             'empires',
             'empire_uuid',
             'version_name',
@@ -120,6 +130,7 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
         validated_data.pop('version_name', None)
         validated_data.pop('restored_from', None)
         validated_data.pop('draft_updated_at', None)
+        _stamp_summary(validated_data)
 
         # create plan
         plan = PlanningPlan.objects.create(user=user, **validated_data)
@@ -138,6 +149,7 @@ class PlanningPlanDetailSerializer(SaveConflictMixin, serializers.ModelSerialize
         version_name = validated_data.pop('version_name', '')
         restored_from = validated_data.pop('restored_from', None)
         seen_draft = validated_data.pop('draft_updated_at', None)
+        _stamp_summary(validated_data)
 
         # also without base_modified_at: saves must reach the versions in the order they reach the row
         before = get_object_or_404(PlanningPlan.objects.select_for_update(), pk=instance.pk)
@@ -244,9 +256,12 @@ class PlanningSharedDetailSerializer(serializers.ModelSerializer):
 
 
 class PlanningSharedCreateSerializer(serializers.ModelSerializer):
+    # stored on the plan, so a share of a plan last saved before summaries existed gets a card with numbers
+    plan_summary = PydanticJSONField(pydantic_model=LATEST_SCHEMA['PLAN_SUMMARY'], required=False, write_only=True)
+
     class Meta:
         model = PlanningShared
-        fields = ['plan']
+        fields = ['plan', 'plan_summary']
 
     def get_fields(self) -> dict[str, serializers.Field]:
         fields = super().get_fields()

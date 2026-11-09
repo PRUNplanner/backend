@@ -39,6 +39,8 @@ REST_FRAMEWORK = {
         'user': '240/min',
         # data/storage/ with rows/ and csv/; ~2x the busiest normal minute (p99.99 14)
         'fio_storage': '30/min',
+        # per IP, link preview HTML and images together (chat apps' crawlers)
+        'og': '60/min',
         # autosave of the plan editor: one write per 3 s of editing, per user
         'plan_draft': '60/min',
     },

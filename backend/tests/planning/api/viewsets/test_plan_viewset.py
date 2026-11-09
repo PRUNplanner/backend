@@ -1,8 +1,12 @@
+from datetime import timedelta
+
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 from planning.models import PlanningEmpirePlan, PlanningPlan
+from tests.fixtures.planning.fxt_plan_summary import plan_summary
 from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
 
 pytestmark = pytest.mark.django_db
@@ -263,3 +267,52 @@ class TestPlanViewSetCacheHeaders:
 
         assert 'private' in response['Cache-Control']
         assert 'public' not in response['Cache-Control']
+
+
+class TestPlanSummary:
+    def test_save_stores_summary(self, api_client, user_factory, plan_factory):
+        user = user_factory()
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+        url = reverse('planning:plan-detail', kwargs={'pk': str(plan.uuid)})
+
+        response = api_client.as_user(user).put(url, data=_plan_payload(plan_summary=plan_summary), format='json')
+
+        assert response.status_code == 200
+        assert response.data['plan_summary']['profit'] == plan_summary['profit']
+        assert response.data['plan_summary_at'] is not None
+        plan.refresh_from_db()
+        assert plan.plan_summary == plan_summary
+        assert plan.plan_summary_at is not None
+
+    def test_create_stores_summary(self, api_client, user_factory):
+        user = user_factory()
+        response = api_client.as_user(user).post(
+            reverse('planning:plan'), data=_plan_payload(plan_summary=plan_summary), format='json'
+        )
+
+        assert response.status_code == 201
+        assert PlanningPlan.objects.get(uuid=response.data['uuid']).plan_summary == plan_summary
+
+    def test_save_without_summary_keeps_it(self, api_client, user_factory, plan_factory):
+        user = user_factory()
+        stamp = timezone.now() - timedelta(days=3)
+        plan = plan_factory(user=user, plan_data=plan_data_vallis, plan_summary=plan_summary, plan_summary_at=stamp)
+        url = reverse('planning:plan-detail', kwargs={'pk': str(plan.uuid)})
+
+        response = api_client.as_user(user).put(url, data=_plan_payload(plan_name='Renamed'), format='json')
+
+        assert response.status_code == 200
+        plan.refresh_from_db()
+        assert plan.plan_summary == plan_summary
+        assert plan.plan_summary_at == stamp
+
+    @pytest.mark.parametrize('summary', [None, {'v': 1}, {**plan_summary, 'profit': 'lots'}])
+    def test_invalid_summary_is_rejected(self, api_client, user_factory, plan_factory, summary):
+        user = user_factory()
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+        url = reverse('planning:plan-detail', kwargs={'pk': str(plan.uuid)})
+
+        response = api_client.as_user(user).put(url, data=_plan_payload(plan_summary=summary), format='json')
+
+        assert response.status_code == 400
+        assert 'plan_summary' in response.data
