@@ -15,6 +15,7 @@ def build_planet_search_index() -> object:
     now_ms = int(timezone.now().timestamp() * 1000)
     queryset = GamePlanet.objects.prefetch_related(
         'resources',
+        'production_fees',
         Prefetch('cogc_programs', queryset=GamePlanetCOGCProgram.objects.filter(end_epochms__gte=now_ms)),
     )
     return PlanetSearchIndexSerializer(queryset, many=True).data

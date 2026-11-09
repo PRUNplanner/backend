@@ -687,9 +687,11 @@ class TestGamePlanetSearchIndex:
             'cogc_program_status',
             'cogc_programs',
             'resources',
+            'production_fees',
             *GamePlanet.PLOT_FIELDS,
         }
         assert entry['cogc_program_status'] is None
+        assert entry['production_fees'] is None
         # no plots refresh yet: unknown, not zero
         assert all(entry[f] is None for f in GamePlanet.PLOT_FIELDS)
         assert entry['resources'] == [
@@ -770,10 +772,58 @@ class TestGamePlanetSearchIndex:
                 'gamedata.GamePlanetResource', planet=planet, material_ticker='FEO', _quantity=2, _bulk_create=True
             )
             baker.make('gamedata.GamePlanetCOGCProgram', planet=planet, end_epochms=2**62)
+            baker.make(
+                'gamedata.GamePlanetProductionFee',
+                planet=planet,
+                category='AGRICULTURE',
+                workforce_level='PIONEER',
+                fee_amount=10.0,
+                fee_currency='NCC',
+            )
 
-        # planets, resources, cogc programs
-        with django_assert_num_queries(3):
+        # planets, resources, cogc programs, production fees
+        with django_assert_num_queries(4):
             api_client.get(self.URL)
+
+    def test_serves_the_production_fees_of_a_planet_that_charges_any(
+        self, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet = planet_factory(planet_natural_id='OT-580b', currency_code='NCC')
+        for level, amount in [('PIONEER', 25.0), ('SCIENTIST', 385.0)]:
+            baker.make(
+                'gamedata.GamePlanetProductionFee',
+                planet=planet,
+                category='METALLURGY',
+                workforce_level=level,
+                fee_amount=amount,
+                fee_currency='NCC',
+            )
+
+        entry = api_client.get(self.URL).data[0]
+
+        assert entry['production_fees'] == {'currency': 'NCC', 'fees': {'METALLURGY': [25.0, 0.0, 0.0, 0.0, 385.0]}}
+
+    @pytest.mark.parametrize('url', [URL, '/data/planet/KW-688c/'])
+    def test_all_zero_fees_are_null_in_the_index_only(
+        self, url: str, api_client: APIClient, planet_factory: Callable[..., GamePlanet]
+    ) -> None:
+        planet = planet_factory(planet_natural_id='KW-688c', currency_code='CIS')
+        baker.make(
+            'gamedata.GamePlanetProductionFee',
+            planet=planet,
+            category='RESOURCE_EXTRACTION',
+            workforce_level='PIONEER',
+            fee_amount=0.0,
+            fee_currency='CIS',
+        )
+
+        data = api_client.get(url).json()
+
+        if url == self.URL:
+            assert data[0]['production_fees'] is None
+        else:
+            # the planet endpoints keep serving the zeros, unchanged
+            assert data['production_fees'] == {'currency': 'CIS', 'fees': {'RESOURCE_EXTRACTION': [0.0] * 5}}
 
 
 PLANET_ID = 'AB-001c'

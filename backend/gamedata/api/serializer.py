@@ -122,48 +122,11 @@ class GamePlanetCOGCProgramSerializer(serializers.ModelSerializer):
         extra_kwargs = {'program_type': {'allow_blank': False}}
 
 
-class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
-    blank_as_null_fields = ('faction_code', 'faction_name', 'cogc_program_status')
-    resources = GamePlanetResourceSerializer(many=True, read_only=True)
-    cogc_programs = GamePlanetCOGCProgramSerializer(many=True, read_only=True)
+class ProductionFeesMixin:
+    # `production_fees` from the prefetched fee rows; declare the field as a SerializerMethodField
 
-    active_cogc_program_type = serializers.CharField(read_only=True, allow_null=True)
-
-    production_fees = serializers.SerializerMethodField()
-
-    class Meta:
-        model = GamePlanet
-        fields = [
-            'planet_id',
-            'planet_natural_id',
-            'planet_name',
-            'system_id',
-            'has_localmarket',
-            'has_chamberofcommerce',
-            'has_warehouse',
-            'has_administrationcenter',
-            'has_shipyard',
-            'pressure',
-            'surface',
-            'gravity',
-            'temperature',
-            'fertility',
-            'faction_code',
-            'faction_name',
-            'cogc_program_status',
-            'resources',
-            'cogc_programs',
-            'active_cogc_program_type',
-            'production_fees',
-            *GamePlanet.PLOT_FIELDS,
-        ]
-        # output only: these document the response (always sent, '' served as null)
-        extra_kwargs = {
-            'planet_name': {'required': True},
-            'faction_code': {'allow_blank': False},
-            'faction_name': {'allow_blank': False},
-            'cogc_program_status': {'allow_blank': False},
-        }
+    # the search index serves null for a planet whose fees are all 0, to stay small
+    production_fees_all_zero_as_null = False
 
     @extend_schema_field(
         inline_serializer(
@@ -208,7 +171,54 @@ class GamePlanetSerializer(BlankAsNullMixin, serializers.ModelSerializer):
             except KeyError:
                 continue
 
+        if self.production_fees_all_zero_as_null and not any(any(levels) for levels in fee_map.values()):
+            return None
+
         return {'currency': obj.currency_code, 'fees': fee_map}
+
+
+class GamePlanetSerializer(ProductionFeesMixin, BlankAsNullMixin, serializers.ModelSerializer):
+    blank_as_null_fields = ('faction_code', 'faction_name', 'cogc_program_status')
+    resources = GamePlanetResourceSerializer(many=True, read_only=True)
+    cogc_programs = GamePlanetCOGCProgramSerializer(many=True, read_only=True)
+
+    active_cogc_program_type = serializers.CharField(read_only=True, allow_null=True)
+
+    production_fees = serializers.SerializerMethodField()
+
+    class Meta:
+        model = GamePlanet
+        fields = [
+            'planet_id',
+            'planet_natural_id',
+            'planet_name',
+            'system_id',
+            'has_localmarket',
+            'has_chamberofcommerce',
+            'has_warehouse',
+            'has_administrationcenter',
+            'has_shipyard',
+            'pressure',
+            'surface',
+            'gravity',
+            'temperature',
+            'fertility',
+            'faction_code',
+            'faction_name',
+            'cogc_program_status',
+            'resources',
+            'cogc_programs',
+            'active_cogc_program_type',
+            'production_fees',
+            *GamePlanet.PLOT_FIELDS,
+        ]
+        # output only: these document the response (always sent, '' served as null)
+        extra_kwargs = {
+            'planet_name': {'required': True},
+            'faction_code': {'allow_blank': False},
+            'faction_name': {'allow_blank': False},
+            'cogc_program_status': {'allow_blank': False},
+        }
 
 
 class RoundedFloatField(serializers.FloatField):
@@ -227,13 +237,15 @@ class PlanetSearchIndexResourceSerializer(serializers.ModelSerializer):
         fields = ['material_ticker', 'resource_type', 'daily_extraction', 'max_daily_extraction']
 
 
-class PlanetSearchIndexSerializer(BlankAsNullMixin, serializers.ModelSerializer):
+class PlanetSearchIndexSerializer(ProductionFeesMixin, BlankAsNullMixin, serializers.ModelSerializer):
     """Slim planet shape for the client-side planet search; cogc_programs are expected prefetched unexpired."""
 
     blank_as_null_fields = ('cogc_program_status',)
+    production_fees_all_zero_as_null = True
     fertility = RoundedFloatField(read_only=True)
     resources = PlanetSearchIndexResourceSerializer(many=True, read_only=True)
     cogc_programs = GamePlanetCOGCProgramSerializer(many=True, read_only=True)
+    production_fees = serializers.SerializerMethodField()
 
     class Meta:
         model = GamePlanet
@@ -254,6 +266,7 @@ class PlanetSearchIndexSerializer(BlankAsNullMixin, serializers.ModelSerializer)
             'cogc_program_status',
             'cogc_programs',
             'resources',
+            'production_fees',
             *GamePlanet.PLOT_FIELDS,
         ]
         # output only: these document the response (always sent, '' served as null)
