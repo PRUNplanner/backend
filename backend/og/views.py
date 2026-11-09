@@ -112,7 +112,8 @@ class _SharedPlan:
     def version(self) -> str:
         """Changes with everything the card shows, so a new ?v= makes Discord load the new image."""
         parts = (self.plan.modified_at, self.summary_at, self.plan.plan_name, self.planet, self.username)
-        return hashlib.sha1('|'.join(map(str, parts)).encode()).hexdigest()[:12]
+        # a cache-busting key, not a security check
+        return hashlib.sha1('|'.join(map(str, parts)).encode(), usedforsecurity=False).hexdigest()[:12]
 
     @property
     def app_url(self) -> str:
