@@ -15,7 +15,7 @@ PLANET = CacheNamespace('gamedata:planet:v3', HOUR)
 # single planet refreshes (~9 s apart) rely on the short ttl, full imports invalidate
 PLANET_LIST = CacheNamespace('gamedata:planet-list:v2', 15 * 60)
 # same ttl as the planet list; full imports invalidate, single refreshes rely on the ttl
-PLANET_SEARCH_INDEX = CacheNamespace('gamedata:planet-search-index:v2', 15 * 60)
+PLANET_SEARCH_INDEX = CacheNamespace('gamedata:planet-search-index:v3', 15 * 60)
 # bump the version when the response shape changes, so cached old shapes aren't served until the ttl ends
 STORAGE = CacheNamespace('gamedata:storage:v2', 3 * HOUR, private=True)
 

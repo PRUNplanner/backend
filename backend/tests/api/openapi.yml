@@ -4499,6 +4499,11 @@ components:
           items:
             $ref: '#/components/schemas/PlanetSearchIndexResource'
           readOnly: true
+        production_fees:
+          allOf:
+          - $ref: '#/components/schemas/PlanetProductionFeeSchema'
+          nullable: true
+          readOnly: true
         plots_total:
           type: integer
           maximum: 2147483647
@@ -4534,6 +4539,7 @@ components:
       - planet_name
       - planet_natural_id
       - pressure_type
+      - production_fees
       - resources
       - surface
       - system_id

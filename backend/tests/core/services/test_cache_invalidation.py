@@ -171,7 +171,7 @@ CASES = [
     Case('gamedata:planet:v3', False, _planet),
     Case('gamedata:planet:v3 (popr)', False, _planet_popr),
     Case('gamedata:planet-list:v2', False, _planet_list),
-    Case('gamedata:planet-search-index:v2', False, _planet_search_index),
+    Case('gamedata:planet-search-index:v3', False, _planet_search_index),
     Case('gamedata:storage:v2', True, _storage),
     Case('planning', True, _planning),
     Case('analytics:materials', False, _materials_insight),
