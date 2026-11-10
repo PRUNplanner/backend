@@ -22,6 +22,8 @@ from core.env import settings
 
 urlpatterns = [
     path(settings.admin_url, admin.site.urls),
+    # link previews for chat apps' crawlers, outside the API schema
+    path('og/', include('og.urls', namespace='og')),
     # API
     path('', include('api.urls')),
 ]

@@ -29,6 +29,32 @@ While the [Frontend](https://github.com/PRUNplanner/frontend) handles all your p
 - PostgreSQL database
 - Resend to handle communications via email
 
+# Link previews (deploy)
+
+Chat apps unfurl a shared plan link (`https://prunplanner.org/shared/<uuid>`) from the Open Graph tags of that URL,
+but the frontend is static files with one set of tags. `og/` serves per-plan tags and a 1200×630 card image:
+`GET /og/shared/<uuid>/` (HTML) and `GET /og/shared/<uuid>.png?v=<hash>`, throttled per IP (`og`, 60/min).
+
+The server's Traefik sends link-preview crawlers on the frontend host to the backend; people keep getting the app.
+Labels on the backend service in the server compose file (`/root/PRUNplanner/docker-compose.yml`):
+
+```yaml
+- traefik.http.routers.og-preview.rule=Host(`prunplanner.org`) && PathPrefix(`/shared/`) && HeaderRegexp(`User-Agent`, `(?i)(discordbot|slackbot|twitterbot|telegrambot|facebookexternalhit|whatsapp|linkedinbot|redditbot|mastodon|bluesky|skypeuripreview|embedly)`)
+- traefik.http.routers.og-preview.priority=100
+- traefik.http.routers.og-preview.entrypoints=websecure
+- traefik.http.routers.og-preview.tls=true
+- traefik.http.routers.og-preview.service=backend
+- traefik.http.routers.og-preview.middlewares=og-path,og-host
+- traefik.http.middlewares.og-path.replacepathregex.regex=^/shared/([^/]+)/?$$
+- traefik.http.middlewares.og-path.replacepathregex.replacement=/og/shared/$$1/
+# the API host: Django's ALLOWED_HOSTS stays as it is, and og:image points at the API, where the PNG is served
+- traefik.http.middlewares.og-host.headers.customrequestheaders.Host=api.prunplanner.org
+```
+
+`priority` must be above the frontend router's; `service` is the backend's Traefik service name. Check after a
+deploy: `curl -A "Discordbot/2.0" https://prunplanner.org/shared/<uuid>` returns the tags, a browser user agent the
+app.
+
 # 🛠 Developer Setup
 
 All setups read their configuration from a `.env` file in the repository root. Start from the example:

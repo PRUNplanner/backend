@@ -49,6 +49,10 @@ class PlanningPlan(UUIDModel, ChangeTrackedModel):
     plan_data = models.JSONField(default=dict)
     schema_version = models.PositiveIntegerField(default=1, validators=[MinValueValidator(1)], db_index=True)
 
+    # the frontend's calculated numbers at the last save (PlanSummary schema), for link previews; not versioned
+    plan_summary = models.JSONField(null=True, blank=True)
+    plan_summary_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self) -> str:
         return f'{self.plan_name} ({self.uuid})'
 

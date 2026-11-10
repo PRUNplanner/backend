@@ -25,6 +25,7 @@ dependencies = [
     "httpx>=0.28.1",
     "markdown>=3.9",
     "orjson>=3.11.5",
+    "pillow>=13.0.0",
     "psycopg[binary,pool]>=3.2.10",
     "pydantic>=2.11.10",
     "pydantic-settings>=2.15.0",

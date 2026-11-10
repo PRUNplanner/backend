@@ -1,4 +1,5 @@
 from django.db.models import F
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from planning.api.serializers import (
     PlanningPlanDetailResponseSerializer,
@@ -84,6 +85,12 @@ class SharedViewSet(
         serializer.is_valid(raise_exception=True)
 
         plan = serializer.validated_data['plan']
+        summary = serializer.validated_data.get('plan_summary')
+        if summary is not None:
+            plan.plan_summary = summary
+            plan.plan_summary_at = timezone.now()
+            # a save, so the post_save signal drops the owner's planning caches
+            plan.save(update_fields=['plan_summary', 'plan_summary_at'])
 
         # get existing or create new one
         instance, created = PlanningShared.objects.get_or_create(plan=plan, user=request.user)

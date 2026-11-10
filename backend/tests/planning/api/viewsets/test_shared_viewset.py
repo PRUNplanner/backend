@@ -8,6 +8,7 @@ from planning.models import PlanningShared
 from rest_framework.renderers import BrowsableAPIRenderer
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
+from tests.fixtures.planning.fxt_plan_summary import plan_summary
 from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
 from user.models import UserAPIKey
 
@@ -82,6 +83,45 @@ class TestSharedViewSet:
         response_list = api_client.as_user(user_1).get(url_list)
         assert response_list.status_code == 200
         assert len(response_list.data) == 1
+
+    def test_create_stores_summary_on_plan(self, api_client, user_factory, plan_factory):
+        user = user_factory()
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+
+        response = api_client.as_user(user).post(
+            reverse('planning:shared'), data={'plan': str(plan.uuid), 'plan_summary': plan_summary}, format='json'
+        )
+
+        assert response.status_code == 201
+        plan.refresh_from_db()
+        assert plan.plan_summary == plan_summary
+        assert plan.plan_summary_at is not None
+        # the public payload stays without it
+        shared_url = reverse('planning:shared-detail', kwargs={'pk': response.data['uuid']})
+        assert 'plan_summary' not in api_client.get(shared_url).data['plan_details']
+
+    def test_create_without_summary_keeps_plan_summary(self, api_client, user_factory, plan_factory):
+        user = user_factory()
+        plan = plan_factory(user=user, plan_data=plan_data_vallis, plan_summary=plan_summary)
+
+        response = api_client.as_user(user).post(
+            reverse('planning:shared'), data={'plan': str(plan.uuid)}, format='json'
+        )
+
+        assert response.status_code == 201
+        plan.refresh_from_db()
+        assert plan.plan_summary == plan_summary
+
+    def test_create_rejects_invalid_summary(self, api_client, user_factory, plan_factory):
+        user = user_factory()
+        plan = plan_factory(user=user, plan_data=plan_data_vallis)
+
+        response = api_client.as_user(user).post(
+            reverse('planning:shared'), data={'plan': str(plan.uuid), 'plan_summary': {'v': 1}}, format='json'
+        )
+
+        assert response.status_code == 400
+        assert not PlanningShared.objects.exists()
 
     def test_shared_clone(self, api_client, user_factory, plan_factory, shared_factory):
 

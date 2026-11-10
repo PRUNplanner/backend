@@ -295,6 +295,15 @@ class TestRestore:
             'log_level': 'info',
         } in logs
 
+    def test_clears_the_summary(self, plan: PlanningPlan) -> None:
+        source = save(plan)
+        PlanningPlan.objects.filter(pk=plan.pk).update(plan_summary={'v': 1}, plan_summary_at=NOW)
+
+        plan_version_service.restore_version(source)
+
+        plan.refresh_from_db()
+        assert (plan.plan_summary, plan.plan_summary_at) == (None, None)
+
     def test_keeps_the_users_draft(self, plan: PlanningPlan) -> None:
         source = save(plan)
         draft = plan_version_service.save_draft(plan, snapshot(plan), NOW)
