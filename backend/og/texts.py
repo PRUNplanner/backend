@@ -73,7 +73,8 @@ def planet_label(planet_name: str, planet_natural_id: str) -> str:
 
 
 def plan_title(plan_name: str, planet: str) -> str:
-    return f'{plan_name} · {planet}'
+    # the planet leads: players look for where a plan is before what it is called
+    return f'{planet} · {plan_name}'
 
 
 def plan_data_facts(plan_data: object) -> tuple[int, list[str]]:

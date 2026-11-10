@@ -166,9 +166,12 @@ def render_plan_card(card: PlanCard) -> bytes:
     # lime edge, as Discord's colour bar
     draw.rectangle((0, 0, 11, HEIGHT), fill=LIME)
 
-    # baselines (anchor 'ls'): name, planet and owner
-    _text(draw, (PAD, 112), _fit(card.name, 60, True, inner), 60, TEXT, bold=True)
-    _text(draw, (PAD, 162), _fit(f'{card.planet} · shared by {card.username}', 30, False, inner), 30, MUTED)
+    # baselines (anchor 'ls'): planet first, as large as it gets, then the plan's name and its owner
+    _text(draw, (PAD, 108), _fit(card.planet, 60, True, inner), 60, TEXT, bold=True)
+    owner = f'  · shared by {card.username}'
+    owner_width = min(_width(owner, 30, False), inner / 3)
+    name_width = _text(draw, (PAD, 168), _fit(card.name, 44, True, inner - owner_width), 44, LIME, bold=True)
+    _text(draw, (PAD + name_width, 168), _fit(owner, 30, False, inner - name_width), 30, MUTED)
 
     y = 220
     if card.profit is not None:

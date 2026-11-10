@@ -62,7 +62,7 @@ class TestPreviewHtml:
         assert response['Content-Type'].startswith('text/html')
         assert response['Cache-Control'] == 'public, max-age=300'
         assert 'User-Agent' in response['Vary']
-        assert _meta(html, 'og:title') == 'Steel mill · Montem (OT-580b)'
+        assert _meta(html, 'og:title') == 'Montem (OT-580b) · Steel mill'
         assert _meta(html, 'og:description').startswith('Shared by scorpio · 27,740 ȼ/day · pays back in 45 days')
         assert _meta(html, 'og:url') == f'https://prunplanner.org/shared/{share.uuid}'
         assert re.fullmatch(rf'/og/shared/{share.uuid}\.png\?v=[0-9a-f]{{12}}', _image_url(html))
