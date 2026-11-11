@@ -62,14 +62,24 @@ class PlanLayoutItem_V1(_Strict):
         for el in join:
             if el not in self.els or el == self.els[0]:
                 raise ValueError(f'join.{el}: must be one of els, not the first')
-            if self.els[self.els.index(el) - 1] in join:
-                raise ValueError(f'join.{el}: a tab holds two elements at most')
+            prev = self.els[self.els.index(el) - 1]
+            if prev in join and join[prev] != join[el]:
+                raise ValueError(f"join.{el}: a tab's parts are all below or all beside")
         for el, size in (self.joinSize or {}).items():
             if el not in join:
                 raise ValueError(f'joinSize.{el}: needs a join')
             low, high = (1, self.w - 1) if join[el] == 'beside' else (H_MIN, H_MAX)
             if not low <= size <= high:
                 raise ValueError(f'joinSize.{el}: must be {low}-{high}')
+        # beside: the parts of one tab share its columns, the last keeps at least one
+        cols, last = 0, ''
+        for el in [*self.els, '']:
+            if join.get(el) == 'beside':
+                cols, last = cols + (self.joinSize or {}).get(el, 0), el
+                continue
+            if cols > self.w - 1:
+                raise ValueError(f"joinSize.{last}: a tab's beside parts must add up to at most {self.w - 1}")
+            cols = 0
         return self
 
 

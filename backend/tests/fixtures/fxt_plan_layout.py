@@ -108,3 +108,16 @@ def variants() -> list[dict]:
 
 def layout(value: dict) -> dict:
     return copy.deepcopy(value)
+
+
+def at_limits_chains() -> dict:
+    """40 element ids in four tabs of ten parts: below at the largest height, beside sharing all but one column."""
+    below = [{**_item(_IDS[10 * n : 10 * n + 10], 0, 24, n), 'hm': 'fit', 'h': 0,
+              'join': dict.fromkeys(_IDS[10 * n + 1 : 10 * n + 10], 'below'),
+              'joinSize': dict.fromkeys(_IDS[10 * n + 1 : 10 * n + 10], 4000)} for n in range(2)]  # fmt: skip
+    beside = [{**_item(_IDS[10 * n : 10 * n + 10], 0, 24, n), 'hm': 'fit', 'h': 0,
+               'join': dict.fromkeys(_IDS[10 * n + 1 : 10 * n + 10], 'beside'),
+               'joinSize': {**dict.fromkeys(_IDS[10 * n + 1 : 10 * n + 9], 2), _IDS[10 * n + 9]: 7}}
+              for n in (2, 3)]  # fmt: skip
+    return {'v': 1, 'preset': 'custom', 'custom': {'wide': {'cols': 24, 'gap': 8, 'items': below + beside}},
+            'folded': {'wide': [], 'phone': []}}  # fmt: skip
