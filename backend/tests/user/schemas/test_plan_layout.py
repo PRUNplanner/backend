@@ -8,6 +8,7 @@ from tests.fixtures.fxt_plan_layout import (
     DEFAULT,
     STANDARD_PHONE,
     STANDARD_WIDE,
+    at_limits_chains,
     at_limits_items,
     at_limits_pairs,
     variants,
@@ -27,6 +28,7 @@ def _unchanged(value: dict) -> None:
         {'v': 1, 'preset': 'custom', 'custom': {'wide': STANDARD_WIDE, 'phone': STANDARD_PHONE}},
         at_limits_items(),
         at_limits_pairs(),
+        at_limits_chains(),
         # Standard with folds and Tinted parts, no Custom Layout yet
         {'v': 1, 'preset': 'standard', 'custom': None, 'folded': {'wide': ['production'], 'phone': []}, 'tinted': True},
         # Standard active, Custom kept for switching back
@@ -129,6 +131,11 @@ INVALID = [
         'joinSize.material-io-totals',
     ),  # fmt: skip
     ('joinSize beside 0', _from_custom(lambda v: _it(v, 2)['joinSize'].update(experts=0)), 'joinSize.experts'),
+    (
+        'joinSize beside chain over w - 1',
+        _limit(at_limits_chains, lambda v: _wide(v)['items'][2]['joinSize'].update(e29=8)),
+        'joinSize.e29: a tab',
+    ),  # fmt: skip
     # shape
     ('unknown top key', _from_custom(lambda v: v.update(extra=1)), 'extra'),
     ('unknown item key', _from_custom(_set(_it, extra=1)), 'custom.wide.items.1.extra'),
@@ -152,7 +159,7 @@ INVALID = [
         'join.production',
     ),
     (
-        'join after another',
+        'join mixed sides in a tab',
         _from_custom(lambda v: _it(v)['join'].update({'construction-cart': 'beside'})),
         'join.material-io-totals',
     ),  # fmt: skip
