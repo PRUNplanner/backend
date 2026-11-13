@@ -46,6 +46,14 @@ def test_periodic_tasks_expire_before_their_next_run() -> None:
         assert 0 < annotations[task]['expires'] < interval, task
 
 
+def test_planet_refresh_expires_just_before_the_next_tick() -> None:
+    # backend#124: 5 s dropped runs that had waited 5-8 s for a busy worker, losing ticks for nothing
+    assert (
+        settings.CELERY_TASK_ANNOTATIONS['gamedata_refresh_planet']['expires']
+        == BEAT_INTERVALS['gamedata_refresh_planet'] - 1
+    )
+
+
 def test_dead_config_is_gone() -> None:
     assert not hasattr(settings, 'CELERY_WORKER_CONCURRENCY')
     assert settings.CELERY_TASK_ANNOTATIONS['gamedata_refresh_cxpc'].keys() == {'priority', 'rate_limit'}
