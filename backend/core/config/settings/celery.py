@@ -58,7 +58,8 @@ CELERY_TASK_ANNOTATIONS = {
     'gamedata_refresh_planet': {
         'priority': 5,
         'rate_limit': '2/s',
-        'expires': 5,
+        # just under the 9 s beat interval: a run that waited 5-8 s for a busy worker still refreshes its planet
+        'expires': 8,
     },
     'gamedata_refresh_planet_infrastructure': {
         'priority': 5,
