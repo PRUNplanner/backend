@@ -144,7 +144,7 @@ INVALID = [
     ('bad element id', _from_custom(lambda v: _it(v)['els'].append('Bad Id')), 'custom.wide.items.1.els.3'),
     ('bad item id', _from_custom(_set(_it, id='I X')), 'custom.wide.items.1.id'),
     ('duplicate item id', _from_custom(_set(_it, id='i-kpi-profit')), 'item id at most once'),
-    ('duplicate element', _from_custom(lambda v: _it(v, 3)['els'].append('production')), 'each element at most once'),
+    ('duplicate element', _from_custom(lambda v: _it(v, 0)['els'].append('production')), 'each element at most once'),
     ('active not in els', _from_custom(_set(_it, active='housing')), 'active must be one of els'),
     ('active joined', _from_custom(_set(_it, active='material-io-totals')), 'active must not be a joined'),
     ('x + w > cols', _from_custom(_set(_it, x=6)), 'items.1: x + w'),
@@ -153,6 +153,8 @@ INVALID = [
     ('h 0 with cap', _from_custom(_set(_it, hm='cap', h=0)), 'h must be 64-4000'),
     ('follow with pin', _from_custom(_set(_it, pin=True)), 'follow is not allowed with pin'),
     ('follow false', _from_custom(_set(_it, follow=False)), 'custom.wide.items.1.follow'),
+    ('bare with 2 tabs', _from_custom(_set(_it, bare=True)), 'bare: a card with tabs'),
+    ('bare false', _from_custom(lambda v: _it(v, 3).update(bare=False)), 'custom.wide.items.3.bare'),
     (
         'join on the first',
         _from_custom(lambda v: (_it(v)['join'].update(production='below'), _it(v).update(active='construction-cart'))),

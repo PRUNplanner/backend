@@ -43,7 +43,7 @@ STANDARD_PHONE: dict = {
 
 DEFAULT: dict = {'v': 1, 'preset': 'standard', 'custom': None, 'folded': {'wide': [], 'phone': []}}
 
-# a customised layout: a below and a beside pair with sizes, follow, a cap and a fixed height, open and table
+# a customised layout: a below and a beside pair with sizes, follow, bare, a cap and a fixed height, open and table
 CUSTOM: dict = {
     'v': 1,
     'preset': 'custom',
@@ -61,8 +61,13 @@ CUSTOM: dict = {
                     'join': {'material-io-totals': 'below'},
                     'joinSize': {'material-io-totals': 360},
                 },  # fmt: skip
-                {**_item(['workforce', 'experts'], 0, 4, 2), 'join': {'experts': 'beside'}, 'joinSize': {'experts': 2}},
-                {**_item(['material-io'], 9, 3, 3), 'hm': 'cap', 'h': 640},
+                {
+                    **_item(['workforce', 'experts'], 0, 4, 2),
+                    'join': {'experts': 'beside'},
+                    'joinSize': {'experts': 2},
+                    'bare': True,
+                },
+                {**_item(['material-io'], 9, 3, 3), 'hm': 'cap', 'h': 640, 'bare': True},
             ],
             'open': ['experts'],
             'table': ['workforce'],

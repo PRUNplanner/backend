@@ -42,6 +42,8 @@ class PlanLayoutItem_V1(_Strict):
     h: int = Field(ge=0, le=H_MAX)
     pin: bool
     follow: Literal[True] | None = None
+    # no title bar, like a results tile; only on a card of one tab
+    bare: Literal[True] | None = None
     # an element shown in the tab of the element before it in els
     join: dict[ElementId, Literal['below', 'beside']] | None = None
     # beside: columns of the part before it; below: its height in px
@@ -57,6 +59,8 @@ class PlanLayoutItem_V1(_Strict):
         # with fit, h may keep the height of an earlier cap/fixed, so switching back restores it
         if (self.hm != 'fit' and self.h == 0) or 0 < self.h < H_MIN:
             raise ValueError('h must be 64-4000, or 0 with hm fit')
+        if self.bare and len([e for e in self.els if e not in join]) > 1:
+            raise ValueError('bare: a card with tabs keeps its title bar')
         if self.follow and self.pin:
             raise ValueError('follow is not allowed with pin')
         for el in join:
