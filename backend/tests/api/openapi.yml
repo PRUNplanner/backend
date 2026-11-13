@@ -4122,6 +4122,13 @@ components:
           nullable: true
           title: Follow
           type: boolean
+        bare:
+          default: null
+          enum:
+          - true
+          nullable: true
+          title: Bare
+          type: boolean
         join:
           additionalProperties:
             enum:
