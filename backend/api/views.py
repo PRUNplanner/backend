@@ -28,6 +28,10 @@ class ClientErrorView(APIView):
 
     @extend_schema(auth=[], summary='Report a frontend error', request=ClientErrorSerializer, responses={204: None})
     def post(self, request: Request) -> Response:
+        # every real report carries the tab's session id; reports without one come from old checkouts running the
+        # frontend tests or from Swagger (backend#125). 204 like a logged one: the sender learns nothing
+        if 'HTTP_X_CORRELATION_ID' not in request.META:
+            return Response(status=204)
         serializer = ClientErrorSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
