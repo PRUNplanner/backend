@@ -32,6 +32,11 @@ class CacheNamespace:
     name: str
     ttl: int
     private: bool = False  # per-user payloads, the scope must be the user id
+    edge_max_age: int | None = None  # seconds a shared cache (Cloudflare) may keep public responses, as s-maxage
+
+    def __post_init__(self) -> None:
+        if self.private and self.edge_max_age:
+            raise ValueError(f'{self.name} is private, a shared cache must never keep it')
 
 
 class CacheManager:
@@ -173,8 +178,14 @@ class CacheManager:
         if ns.private:
             patch_cache_control(response, private=True, no_cache=True)
         else:
-            patch_cache_control(response, public=True, max_age=PUBLIC_MAX_AGE)
+            cls._patch_public(response, ns)
         return response
+
+    @staticmethod
+    def _patch_public(response: HttpResponse, ns: CacheNamespace) -> None:
+        # browsers ignore s-maxage and keep max-age; the edge keeps the copy for edge_max_age
+        edge = {'s_maxage': ns.edge_max_age} if ns.edge_max_age else {}
+        patch_cache_control(response, public=True, max_age=PUBLIC_MAX_AGE, **edge)
 
     @classmethod
     def respond_many(
@@ -220,5 +231,5 @@ class CacheManager:
 
         response['ETag'] = etag
         response['X-Cache-Hit'] = '0' if missing else '1'
-        patch_cache_control(response, public=True, max_age=PUBLIC_MAX_AGE)
+        cls._patch_public(response, ns)
         return response
