@@ -48,6 +48,9 @@ REST_FRAMEWORK = {
         'api.renderers.OrjsonRenderer',
     ],
     'COERCE_DECIMAL_TO_STRING': False,
+    # Cloudflare and Traefik each append one X-Forwarded-For entry, so get_ident() takes the second to last: the
+    # client. Leading entries a client sends itself are ignored; without the header it uses REMOTE_ADDR.
+    'NUM_PROXIES': 2,
 }
 
 
