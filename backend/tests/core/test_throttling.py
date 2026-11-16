@@ -4,10 +4,11 @@ from unittest.mock import patch
 import pytest
 from core.throttling import AuthenticatedUserRateThrottle
 from django.core.cache.backends.locmem import LocMemCache
+from django.test import RequestFactory
 from django.urls import reverse
 from model_bakery import baker
 from rest_framework.test import APIClient
-from rest_framework.throttling import SimpleRateThrottle
+from rest_framework.throttling import BaseThrottle, SimpleRateThrottle
 from rest_framework_simplejwt.tokens import AccessToken
 from structlog.testing import capture_logs
 from user.models import User, UserAPIKey
@@ -139,3 +140,32 @@ class TestLoggedScopedRateThrottle:
             statuses = [api_client.post(url, {'Data': []}, format='json').status_code for _ in range(21)]
 
         assert statuses == [202] * 20 + [429]
+
+
+class TestGetIdent:
+    """NUM_PROXIES = 2: Cloudflare and Traefik each append one X-Forwarded-For entry."""
+
+    @pytest.mark.parametrize(
+        ('forwarded_for', 'ident'),
+        [
+            ('1.2.3.4', '1.2.3.4'),  # direct to Traefik, which replaces the header
+            ('1.2.3.4, 172.64.0.1', '1.2.3.4'),  # through Cloudflare
+            ('9.9.9.9, 1.2.3.4, 172.64.0.1', '1.2.3.4'),  # through Cloudflare, forged
+            (None, '10.0.0.7'),  # no proxy: REMOTE_ADDR
+        ],
+    )
+    def test_client_ip_for_each_header_shape(self, forwarded_for: str | None, ident: str) -> None:
+        headers = {'X-Forwarded-For': forwarded_for} if forwarded_for else {}
+        request = RequestFactory().get('/', headers=headers, REMOTE_ADDR='10.0.0.7')
+
+        assert BaseThrottle().get_ident(request) == ident
+
+    def test_forged_entries_share_one_scoped_bucket(self, api_client: APIClient, locmem_cache: LocMemCache) -> None:
+        url = reverse('client-errors')
+        body = {'kind': 'network', 'method': 'GET', 'path_template': '/data/storage/', 'release': '1.2.3'}
+
+        def post(forwarded_for: str) -> int:
+            return api_client.post(url, body, format='json', HTTP_X_FORWARDED_FOR=forwarded_for).status_code
+
+        assert [post(f'9.9.9.{i}, 1.2.3.4, 172.64.0.1') for i in range(31)] == [204] * 30 + [429]
+        assert post('1.2.3.5, 172.64.0.1') == 204

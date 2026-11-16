@@ -69,8 +69,12 @@ def fake_redis() -> Iterator[None]:
         yield
 
 
-async def open_stream(ip: str = '10.0.0.1', channels: str = 'cx', last_event_id: str | None = None) -> HttpResponseBase:
+async def open_stream(
+    ip: str = '10.0.0.1', channels: str = 'cx', last_event_id: str | None = None, forwarded_for: str | None = None
+) -> HttpResponseBase:
     headers = {'Last-Event-ID': last_event_id} if last_event_id else {}
+    if forwarded_for:
+        headers['X-Forwarded-For'] = forwarded_for
     request = RequestFactory().get('/data/stream/', {'channels': channels}, headers=headers, REMOTE_ADDR=ip)
     return await sse.sse_stream_view(request)
 
@@ -156,6 +160,16 @@ class TestCaps:
 
         assert asyncio.run(scenario()) == (429, 200, 200)
         assert sse._open_streams == 0
+
+    def test_forged_forwarded_for_entries_share_one_ip_slot(self) -> None:
+        async def scenario() -> list[int]:
+            return [
+                (await open_stream(forwarded_for=f'9.9.9.{i}, 1.2.3.4, 172.64.0.1')).status_code
+                for i in range(sse.MAX_STREAMS_PER_IP + 1)
+            ]
+
+        assert asyncio.run(scenario()) == [200] * sse.MAX_STREAMS_PER_IP + [429]
+        assert list(FakeRedis.sets) == ['stream:ip:1.2.3.4']
 
     def test_stale_streams_do_not_count(self) -> None:
         FakeRedis.sets['stream:ip:10.0.0.1'] = {f'dead-{i}': 1.0 for i in range(sse.MAX_STREAMS_PER_IP)}

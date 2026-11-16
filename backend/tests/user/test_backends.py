@@ -181,6 +181,20 @@ class TestFailedLoginCounter:
             attempt('someone-else', '10.9.9.9')
         attempt('someone-else', '10.9.9.8')
 
+    def test_forged_forwarded_for_entries_share_one_ident(self, locmem_cache) -> None:
+        # behind Cloudflare and Traefik: anything a client puts in front of the last two entries is ignored
+        def attempt(username: str, forwarded_for: str) -> None:
+            request = Request(RequestFactory().post('/', HTTP_X_FORWARDED_FOR=forwarded_for))
+            user = authenticate(request, username=username, password='wrong-password')  # ty:ignore[invalid-argument-type]
+            assert user is None
+
+        for i in range(10):
+            attempt(f'user{i}', f'9.9.9.{i}, 1.2.3.4, 172.64.0.1')
+
+        with pytest.raises(Throttled):
+            attempt('someone-else', '8.8.8.8, 1.2.3.4, 172.70.0.2')
+        attempt('someone-else', '1.2.3.5, 172.64.0.1')
+
     def test_admin_login_shares_the_counter(self, client, locmem_cache) -> None:
         baker.make('user.User', username='pilot', password=make_password(PASSWORD), is_staff=True, is_superuser=True)
         self._fail(APIClient(), 10)
