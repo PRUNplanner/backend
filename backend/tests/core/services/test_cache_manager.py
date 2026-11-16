@@ -216,3 +216,21 @@ class TestWarmForce:
         assert CacheManager.warm(PUBLIC, 'endpoint', build=build, force=True) is True
 
         assert orjson.loads(_respond(build=build).content) == {'n': 2}
+
+
+EDGE = CacheNamespace('test:edge', 60, edge_max_age=300)
+
+
+class TestEdgeMaxAge:
+    def test_private_namespace_rejects_edge_max_age(self) -> None:
+        with pytest.raises(ValueError, match='private'):
+            CacheNamespace('test:private-edge', 60, private=True, edge_max_age=60)
+
+    @pytest.mark.parametrize(
+        ('ns', 'expected'), [(EDGE, 'public, max-age=60, s-maxage=300'), (PUBLIC, 'public, max-age=60')]
+    )
+    def test_respond_and_respond_many_send_s_maxage(self, ns: CacheNamespace, expected: str) -> None:
+        many = CacheManager.respond_many(
+            RequestFactory().post('/'), ns, 'endpoint', ['a'], lambda scopes: {s: {'s': s} for s in scopes}
+        )
+        assert _respond(ns)['Cache-Control'] == many['Cache-Control'] == expected

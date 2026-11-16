@@ -293,7 +293,7 @@ class TestGamePlanetViewSetMultiple:
         planet = planet_factory(planet_natural_id='OT-580b', planet_name='Old')
         url = reverse('data:planet-multiple')
         old = api_client.post(url, data=['OT-580b'], format='json')
-        assert old['Cache-Control'] == 'public, max-age=60'
+        assert old['Cache-Control'] == 'public, max-age=60, s-maxage=10800'
 
         GamePlanet.objects.filter(pk=planet.pk).update(planet_name='New')
         CacheManager.invalidate(PLANET, 'OT-580b')
@@ -1179,3 +1179,54 @@ class TestPublicEndpointThrottles:
         response = api_client.post(reverse('data:planet-search'), data=_search_payload(), format='json')
 
         assert response.status_code == 429
+
+
+class TestEdgeCacheControl:
+    @pytest.mark.parametrize(
+        ('route', 'kwargs', 'edge_max_age'),
+        [
+            ('data:material-list', {}, 86400),
+            ('data:recipe-list', {}, 86400),
+            ('data:building-list', {}, 86400),
+            ('data:exchange-list', {}, 300),
+            ('data:exchanges-list-csv', {}, 300),
+            ('data:cxpc-sparklines', {'exchange_code': 'UNIVERSE'}, 900),
+            ('data:market-summary', {}, 900),
+            ('data:planet-detail', {'planet_natural_id': 'OT-580b'}, 10800),
+            ('data:planet-list', {}, 10800),
+            ('data:planet-search-index', {}, 10800),
+        ],
+    )
+    def test_public_routes_send_their_s_maxage(
+        self,
+        api_client: APIClient,
+        planet_factory: Callable[..., GamePlanet],
+        route: str,
+        kwargs: dict[str, str],
+        edge_max_age: int,
+    ) -> None:
+        planet_factory(planet_natural_id='OT-580b')
+
+        response = api_client.get(reverse(route, kwargs=kwargs))
+
+        assert response.status_code == 200
+        assert response['Cache-Control'] == f'public, max-age=60, s-maxage={edge_max_age}'
+
+    def test_errors_and_storage_stay_private(
+        self, api_client: APIClient, user_factory: Callable[..., User], fio_playerdata_factory: Callable[..., object]
+    ) -> None:
+        user = user_factory()
+        fio_playerdata_factory(
+            user=user,
+            storage_data=fio_storage_data,
+            site_data=fio_sites_data,
+            warehouse_data=fio_warehouse_data,
+            ship_data=fio_ship_data,
+        )
+
+        storage = api_client.as_user(user).get(reverse('data:storage-retrieve'))  # ty:ignore[unresolved-attribute]
+        error = api_client.get(reverse('data:cxpc-sparklines', kwargs={'exchange_code': 'XX1'}))
+
+        assert storage.status_code == 200
+        assert error.status_code == 400
+        assert storage['Cache-Control'] == error['Cache-Control'] == 'private, no-cache'
