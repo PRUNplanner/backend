@@ -157,7 +157,7 @@ def add_request_duration(request, logger, response, log_kwargs, **kwargs):
 
     # set by the authentication classes (user/auth_apikey.py)
     log_kwargs['auth'] = getattr(request, '_auth', 'none')
-    for field in ('api_key_prefix', 'api_key_via', 'auth_error'):
+    for field in ('api_key_prefix', 'api_key_via', 'api_key_scope', 'auth_error'):
         if value := getattr(request, f'_{field}', None):
             log_kwargs[field] = value
 

@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.http import HttpRequest
 from django.utils import timezone
 from rest_framework import authentication, exceptions
+from rest_framework.permissions import SAFE_METHODS
 from rest_framework.request import Request
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, InvalidToken
@@ -10,6 +11,27 @@ from rest_framework_simplejwt.serializers import TokenRefreshSerializer as Simpl
 from rest_framework_simplejwt.tokens import Token
 
 from user.models import User, UserAPIKey
+
+# 403 bodies for keys used beyond what they may do; the code is logged as auth_error
+SCOPE_ERRORS = {
+    'api_key_not_allowed': 'API keys cannot manage keys or change account settings. Log in to do this.',
+    'api_key_in_url': 'An API key in the URL can only read. Send it in the Authorization header to change data.',
+    'api_key_read_only': 'This API key is read-only. Create a read-write key to change data.',
+}
+
+
+def _scope_error(request: Request, api_key: UserAPIKey, via: str) -> str | None:
+    # views opt out with api_key_allowed = False (a property where it depends on the action)
+    view = request.parser_context.get('view') if request.parser_context else None
+    if not getattr(view, 'api_key_allowed', True):
+        return 'api_key_not_allowed'
+    if request.method in SAFE_METHODS:
+        return None
+    if via == 'query':
+        return 'api_key_in_url'
+    if api_key.scope != UserAPIKey.Scope.READ_WRITE:
+        return 'api_key_read_only'
+    return None
 
 
 def _mark(request: Request, **fields: str) -> None:
@@ -63,8 +85,13 @@ class UserAPIKeyAuthentication(authentication.BaseAuthentication):
                 api_key.save(update_fields=['last_used'])
 
             # the prefix is the non-secret part shown on the API Keys page
-            _mark(request, auth='api_key', api_key_prefix=api_key.prefix, api_key_via=via)
-            return (api_key.user, None)
+            _mark(request, auth='api_key', api_key_prefix=api_key.prefix, api_key_via=via, api_key_scope=api_key.scope)
+            # in the auth class, not a permission: views that set permission_classes would drop a default one
+            if code := _scope_error(request, api_key, via):
+                _mark(request, auth_error=code)
+                raise exceptions.PermissionDenied({'detail': SCOPE_ERRORS[code], 'code': code})
+            # request.auth is the key, so views can tell a key request from a login
+            return (api_key.user, api_key)
 
         except UserAPIKey.DoesNotExist as exc:
             # get_from_key only searches usable keys; tell a revoked key from an unknown one (failures only)

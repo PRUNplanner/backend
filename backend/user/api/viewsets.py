@@ -135,6 +135,8 @@ class UserRegisterViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
 @extend_schema(tags=['user : api'])
 class UserAPIKeyViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
+    # a key must not mint or revoke keys (user/auth_apikey.py)
+    api_key_allowed = False
 
     def get_queryset(self):
         return UserAPIKey.objects.filter(user=self.request.user)
@@ -149,8 +151,12 @@ class UserAPIKeyViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        api_key, key = UserAPIKey.objects.create_key(name=serializer.validated_data['name'], user=request.user)
-        logger.info('api_key_created', user_id=request.user.pk, api_key_prefix=api_key.prefix)
+        api_key, key = UserAPIKey.objects.create_key(
+            name=serializer.validated_data['name'], scope=serializer.validated_data['scope'], user=request.user
+        )
+        logger.info(
+            'api_key_created', user_id=request.user.pk, api_key_prefix=api_key.prefix, api_key_scope=api_key.scope
+        )
 
         return Response(
             {
@@ -158,6 +164,7 @@ class UserAPIKeyViewSet(viewsets.ModelViewSet):
                 'name': api_key.name,
                 'api_key': key,
                 'prefix': api_key.prefix,
+                'scope': api_key.scope,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -171,6 +178,7 @@ class UserAPIKeyViewSet(viewsets.ModelViewSet):
 @extend_schema(tags=['user : authentication'])
 class UserEmailVerificationViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
+    api_key_allowed = False
     throttle_scope = 'auth_verify_email'
 
     @extend_schema(
@@ -327,6 +335,11 @@ class UserProfileViewSet(viewsets.GenericViewSet):
         return self.request.user
 
     @property
+    def api_key_allowed(self) -> bool:
+        # a key may read the profile, never change it or the password (user/auth_apikey.py)
+        return self.action == 'retrieve'
+
+    @property
     def throttle_scope(self) -> str | None:
         # saving FIO credentials calls FIO, so it must not become a key tester
         # and change_password hashes the old password, so it must not become a password tester
@@ -368,5 +381,8 @@ class UserProfileViewSet(viewsets.GenericViewSet):
     @extend_schema(summary='Get profile password')
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = UserProfileSerializer(instance)
-        return Response(serializer.data)
+        data = UserProfileSerializer(instance).data
+        if isinstance(request.auth, UserAPIKey):
+            # the FIO key is the user's secret for another service, not data a key needs
+            data['fio_apikey'] = None
+        return Response(data)

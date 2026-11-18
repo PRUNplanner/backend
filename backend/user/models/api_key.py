@@ -10,8 +10,14 @@ class UserAPIKeyManager(APIKeyManager):
 
 
 class UserAPIKey(AbstractAPIKey):
+    class Scope(models.TextChoices):
+        READ = 'read', 'Read-only'
+        READ_WRITE = 'read_write', 'Read & write'
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='api_keys')
     last_used = models.DateTimeField(null=True, blank=True)
+    # read: safe methods only, enforced in UserAPIKeyAuthentication; keys from before 0019 are read_write
+    scope = models.CharField(max_length=10, choices=Scope.choices, default=Scope.READ)
 
     objects: APIKeyManager['UserAPIKey'] = UserAPIKeyManager()
 

@@ -24,15 +24,16 @@ logger = structlog.get_logger(__name__)
 class UserAPIKeySerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAPIKey
-        fields = ['id', 'name', 'prefix', 'created', 'last_used']
-        read_only_fields = ['prefix', 'created', 'last_used']
+        fields = ['id', 'name', 'prefix', 'scope', 'created', 'last_used']
+        read_only_fields = ['prefix', 'scope', 'created', 'last_used']
 
 
 class UserAPIKeyCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAPIKey
-        fields = ['id', 'name']
-        extra_kwargs = {'name': {'required': True, 'allow_blank': False}}
+        fields = ['id', 'name', 'scope']
+        # scope: optional, a new key is read-only unless asked otherwise
+        extra_kwargs = {'name': {'required': True, 'allow_blank': False}, 'scope': {'default': UserAPIKey.Scope.READ}}
 
 
 class UserAPIKeyCreatedSerializer(serializers.Serializer):
@@ -42,6 +43,7 @@ class UserAPIKeyCreatedSerializer(serializers.Serializer):
     name = serializers.CharField()
     api_key = serializers.CharField()
     prefix = serializers.CharField()
+    scope = serializers.ChoiceField(choices=UserAPIKey.Scope.choices)
 
 
 class DetailResponseSerializer(serializers.Serializer):

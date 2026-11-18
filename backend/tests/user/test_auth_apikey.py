@@ -3,8 +3,10 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
 from model_bakery import baker
+from planning.models import PlanningPlan
 from rest_framework import exceptions
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
@@ -253,3 +255,170 @@ class TestJWTCutoff:
 
         with django_assert_num_queries(1):
             assert self._auth(token)[0] == user
+
+
+class TestKeyScope:
+    """Through the real views: scope, ?api_key= and JWT-only endpoints (user/auth_apikey.py)."""
+
+    @pytest.fixture
+    def user(self):
+        return baker.make('user.User', prun_username='PILOT', fio_apikey='fio-secret')
+
+    @pytest.fixture
+    def read_key(self, user):
+        return UserAPIKey.objects.create_key(name='sheet', user=user)
+
+    @pytest.fixture
+    def write_key(self, user):
+        return UserAPIKey.objects.create_key(name='script', user=user, scope=UserAPIKey.Scope.READ_WRITE)
+
+    @staticmethod
+    def _plan_payload(**overrides):
+        from tests.fixtures.planning.fxt_plan_vallis import plan_data_vallis
+
+        return {
+            'plan_name': 'Keyed',
+            'planet_natural_id': 'OT-580b',
+            'plan_permits_used': 1,
+            'plan_corphq': False,
+            'plan_data': plan_data_vallis,
+            **overrides,
+        }
+
+    @staticmethod
+    def _header(key: str) -> dict[str, str]:
+        return {'HTTP_AUTHORIZATION': f'Api-Key {key}'}
+
+    def test_new_key_defaults_to_read(self, read_key):
+        assert read_key[0].scope == 'read'
+
+    def test_read_key_reads_but_cannot_write(self, api_client, read_key):
+
+        url = reverse('planning:plan')
+        assert api_client.get(url, **self._header(read_key[1])).status_code == 200
+
+        response = api_client.post(url, data=self._plan_payload(), format='json', **self._header(read_key[1]))
+
+        assert response.status_code == 403
+        assert response.json() == {
+            'detail': 'This API key is read-only. Create a read-write key to change data.',
+            'code': 'api_key_read_only',
+        }
+        assert not PlanningPlan.objects.exists()
+
+    def test_read_write_key_in_header_writes(self, api_client, write_key):
+        header = self._header(write_key[1])
+
+        created = api_client.post(reverse('planning:plan'), data=self._plan_payload(), format='json', **header)
+        assert created.status_code == 201
+        detail = reverse('planning:plan-detail', kwargs={'pk': created.json()['uuid']})
+        updated = api_client.put(detail, data=self._plan_payload(plan_name='Renamed'), format='json', **header)
+        assert updated.status_code == 200
+        assert api_client.delete(detail, **header).status_code == 204
+
+    def test_key_in_url_only_reads(self, api_client, write_key):
+
+        url = reverse('planning:plan')
+        query = f'{url}?api_key={write_key[1]}'
+        assert api_client.get(query).status_code == 200
+
+        response = api_client.post(query, data=self._plan_payload(), format='json')
+
+        assert (response.status_code, response.json()['code']) == (403, 'api_key_in_url')
+        assert not PlanningPlan.objects.exists()
+
+    @pytest.mark.parametrize('scope', ['read', 'read_write'])
+    @pytest.mark.parametrize(
+        'method, route, body',
+        [
+            ('get', 'user:user_apikey_list', None),
+            ('post', 'user:user_apikey_list', {'name': 'minted', 'scope': 'read_write'}),
+            ('delete', 'user:user_apikey_detail', None),
+            ('patch', 'user:user_profile', {'email': 'new@example.com', 'fio_apikey': ''}),
+            ('post', 'user:user_change_password', {'old_password': 'x', 'new_password': 'Xk7!qzR9pLm2'}),
+            ('post', 'user:user_request_email_verification', None),
+            ('post', 'user:user_verify_email', {'code': '12345678'}),
+        ],
+    )
+    def test_account_endpoints_refuse_every_key(self, api_client, user, scope, method, route, body):
+        api_key, key = UserAPIKey.objects.create_key(name='k', user=user, scope=scope)
+        url = reverse(route, kwargs={'pk': api_key.pk} if route.endswith('detail') else None)
+        before = (UserAPIKey.objects.count(), user.email, user.fio_apikey, user.password)
+
+        response = getattr(api_client, method)(url, data=body, format='json', **self._header(key))
+
+        assert (response.status_code, response.json()['code']) == (403, 'api_key_not_allowed')
+        user.refresh_from_db()
+        assert (UserAPIKey.objects.count(), user.email, user.fio_apikey, user.password) == before
+
+    def test_profile_hides_the_fio_key_from_a_key_only(self, api_client, user, read_key):
+        url = reverse('user:user_profile')
+
+        keyed = api_client.get(url, **self._header(read_key[1]))
+        jwt = api_client.get(url, HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+
+        assert (keyed.status_code, keyed.json()['fio_apikey']) == (200, None)
+        assert (jwt.status_code, jwt.json()['fio_apikey']) == (200, 'fio-secret')
+
+    def test_preferences_follow_the_scope(self, api_client, read_key, write_key):
+        url = reverse('user:user_preferences')
+        body = {'planOverrides': {}}
+
+        assert api_client.get(url, **self._header(read_key[1])).status_code == 200
+        assert api_client.patch(url, data=body, format='json', **self._header(read_key[1])).status_code == 403
+        assert api_client.patch(url, data=body, format='json', **self._header(write_key[1])).status_code == 200
+
+    def test_jwt_is_unaffected(self, api_client, user):
+        header = {'HTTP_AUTHORIZATION': f'Bearer {AccessToken.for_user(user)}'}
+
+        plan = api_client.post(reverse('planning:plan'), data=self._plan_payload(), format='json', **header)
+        assert plan.status_code == 201
+        created = api_client.post(reverse('user:user_apikey_list'), data={'name': 'n'}, format='json', **header)
+        assert (created.status_code, created.json()['scope']) == (201, 'read')
+        listed = api_client.get(reverse('user:user_apikey_list'), **header).json()
+        assert [k['scope'] for k in listed] == ['read']
+
+    def test_create_takes_a_scope_and_rejects_others(self, api_client, user):
+        header = {'HTTP_AUTHORIZATION': f'Bearer {AccessToken.for_user(user)}'}
+        url = reverse('user:user_apikey_list')
+
+        created = api_client.post(url, data={'name': 'w', 'scope': 'read_write'}, format='json', **header)
+        bad = api_client.post(url, data={'name': 'x', 'scope': 'admin'}, format='json', **header)
+
+        assert (created.status_code, created.json()['scope']) == (201, 'read_write')
+        assert UserAPIKey.objects.get(prefix=created.json()['prefix']).scope == 'read_write'
+        assert (bad.status_code, list(bad.json())) == (400, ['scope'])
+
+    @pytest.mark.parametrize(
+        'scope, via, code',
+        [
+            ('read', 'header', 'api_key_read_only'),
+            ('read_write', 'query', 'api_key_in_url'),
+            ('read_write', 'header', None),
+        ],
+    )
+    def test_request_finished_logs_scope_and_error(self, api_client, user, caplog, scope, via, code):
+        _, key = UserAPIKey.objects.create_key(name='k', user=user, scope=scope)
+        url = reverse('planning:plan')
+        kwargs = self._header(key) if via == 'header' else {}
+        if via == 'query':
+            url = f'{url}?api_key={key}'
+
+        api_client.post(url, data=self._plan_payload(), format='json', **kwargs)
+
+        (line,) = [r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'request_finished']
+        assert (line['api_key_scope'], line.get('auth_error')) == (scope, code)
+
+    def test_request_finished_logs_not_allowed(self, api_client, write_key, caplog):
+        api_client.get(reverse('user:user_apikey_list'), **self._header(write_key[1]))
+
+        (line,) = [r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'request_finished']
+        assert (line['api_key_scope'], line['auth_error']) == ('read_write', 'api_key_not_allowed')
+
+    def test_created_log_carries_the_scope(self, api_client, user, caplog):
+        header = {'HTTP_AUTHORIZATION': f'Bearer {AccessToken.for_user(user)}'}
+
+        api_client.post(reverse('user:user_apikey_list'), data={'name': 'n'}, format='json', **header)
+
+        (line,) = [r.msg for r in caplog.records if isinstance(r.msg, dict) and r.msg['event'] == 'api_key_created']
+        assert line['api_key_scope'] == 'read'
