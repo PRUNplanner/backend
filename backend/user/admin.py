@@ -165,7 +165,7 @@ class UserCXInline(ReadOnlyAdminMixin, TabularInline):
 
 class UserAPIKeyInline(ReadOnlyAdminMixin, TabularInline):
     model = UserAPIKey
-    fields = ['name', 'prefix', 'created', 'last_used', 'revoked']
+    fields = ['name', 'prefix', 'scope', 'created', 'last_used', 'revoked']
     readonly_fields = fields
     extra = 0
     can_delete = False
@@ -521,7 +521,8 @@ admin.site.unregister(Group)
 
 @admin.register(UserAPIKey)
 class UserAPIKeyAdmin(APIKeyAdmin):
-    list_display = [*APIKeyAdmin.list_display, 'user', 'last_used']
+    list_display = [*APIKeyAdmin.list_display, 'user', 'scope', 'last_used']
+    list_filter = [*APIKeyAdmin.list_filter, 'scope']
     list_select_related = ['user']
     search_fields = [*APIKeyAdmin.search_fields, 'user__username', 'user__email']
     autocomplete_fields = ['user']

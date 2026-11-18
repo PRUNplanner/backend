@@ -6202,6 +6202,16 @@ components:
         prefix:
           type: string
           readOnly: true
+        scope:
+          enum:
+          - read
+          - read_write
+          type: string
+          description: |-
+            * `read` - Read-only
+            * `read_write` - Read & write
+          x-spec-enum-id: 1d9e6cde97622e86
+          readOnly: true
         created:
           type: string
           format: date-time
@@ -6216,6 +6226,7 @@ components:
       - id
       - last_used
       - prefix
+      - scope
     UserAPIKeyCreate:
       type: object
       properties:
@@ -6227,6 +6238,16 @@ components:
           description: A free-form name for the API key. Need not be unique. 50 characters
             max.
           maxLength: 50
+        scope:
+          enum:
+          - read
+          - read_write
+          type: string
+          description: |-
+            * `read` - Read-only
+            * `read_write` - Read & write
+          x-spec-enum-id: 1d9e6cde97622e86
+          default: read
       required:
       - id
       - name
@@ -6242,11 +6263,21 @@ components:
           type: string
         prefix:
           type: string
+        scope:
+          enum:
+          - read
+          - read_write
+          type: string
+          description: |-
+            * `read` - Read-only
+            * `read_write` - Read & write
+          x-spec-enum-id: 1d9e6cde97622e86
       required:
       - api_key
       - id
       - name
       - prefix
+      - scope
     UserChangePassword:
       type: object
       properties:
