@@ -25,7 +25,8 @@ REST_FRAMEWORK = {
         'profile_update': '10/min',
         'auth_change_password': '10/min',
         'client_error': '30/min',
-        # per IP, data/cxpc/<ticker>/ and data/cxpc/<ticker>/<exchange>/ together; daily JSON and CSV together
+        # per IP (per user with a valid API key), data/cxpc/<ticker>/ and data/cxpc/<ticker>/<exchange>/ together;
+        # daily JSON and CSV together
         'cxpc_ticker': '120/min',
         'cxpc_daily': '30/min',
         # per IP on public endpoints, several times the busiest real IP-minute (30 days):

@@ -104,6 +104,23 @@ class UserAPIKeyAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed('Invalid API Key') from exc
 
 
+class OptionalAPIKeyAuthentication(UserAPIKeyAuthentication):
+    """
+    For public data whose throttle should count per user when a key comes along: a valid API key makes the
+    request its user's (scoped throttles key by user id, not IP); no key, or an invalid, revoked or expired one,
+    leaves it anonymous and counted per IP, never an error. Shared IPs (the MCP server, a sheet host) get one
+    budget per user this way, and a made-up key can't buy a fresh one.
+    """
+
+    def authenticate(self, request):
+        try:
+            return super().authenticate(request)
+        except exceptions.AuthenticationFailed:
+            # the request goes on anonymously: not an auth error in the request log
+            _mark(request, auth_error='')
+            return None
+
+
 class LoggedJWTAuthentication(JWTAuthentication):
     def authenticate(self, request):
         result = super().authenticate(request)

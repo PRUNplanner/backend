@@ -104,7 +104,8 @@ paths:
       operationId: exchange_cxpc_all
       description: One ticker's full history. For many tickers, use `/data/cxpc/daily/`
         (every ticker's daily bars in one request). Limited to 120 requests per minute
-        per IP across both per-ticker routes.
+        per IP across both per-ticker routes, per user instead when the request carries
+        a valid API key.
       summary: Get ticker CXPC data (All Exchanges)
       parameters:
       - in: path
@@ -128,7 +129,8 @@ paths:
       operationId: exchange_cxpc_specific
       description: One ticker's full history. For many tickers, use `/data/cxpc/daily/`
         (every ticker's daily bars in one request). Limited to 120 requests per minute
-        per IP across both per-ticker routes.
+        per IP across both per-ticker routes, per user instead when the request carries
+        a valid API key.
       summary: Get ticker CXPC data for specific Exchange
       parameters:
       - in: path
@@ -156,7 +158,7 @@ paths:
     get:
       operationId: exchange_cxpc_daily
       description: |-
-        Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either `days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with `exchange`, 7 days without. Limited to 30 requests per minute per IP, JSON and CSV together; one request per exchange is all a daily refresh needs.
+        Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either `days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with `exchange`, 7 days without. Limited to 30 requests per minute per IP (per user with a valid API key), JSON and CSV together; one request per exchange is all a daily refresh needs.
 
         Google Sheets: `=IMPORTDATA("https://api.prunplanner.org/data/cxpc/daily/csv/?days=7&exchange=AI1")`
 
@@ -215,7 +217,7 @@ paths:
     get:
       operationId: exchange_cxpc_daily_csv
       description: |-
-        Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either `days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with `exchange`, 7 days without. Limited to 30 requests per minute per IP, JSON and CSV together; one request per exchange is all a daily refresh needs.
+        Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either `days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with `exchange`, 7 days without. Limited to 30 requests per minute per IP (per user with a valid API key), JSON and CSV together; one request per exchange is all a daily refresh needs.
 
         Google Sheets: `=IMPORTDATA("https://api.prunplanner.org/data/cxpc/daily/csv/?days=7&exchange=AI1")`
 

@@ -75,6 +75,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from user.auth_apikey import OptionalAPIKeyAuthentication
 from user.models import GlobalConfigWebhook, User, WebhookSenderChoices
 
 logger = structlog.get_logger(__name__)
@@ -527,12 +528,14 @@ CXPC_FIELDS = ['ticker', 'exchange_code', 'date_epoch', 'open_p', 'close_p', 'hi
 
 CXPC_TICKER_DESCRIPTION = (
     "One ticker's full history. For many tickers, use `/data/cxpc/daily/` (every ticker's daily bars in one "
-    'request). Limited to 120 requests per minute per IP across both per-ticker routes.'
+    'request). Limited to 120 requests per minute per IP across both per-ticker routes, per user instead when the '
+    'request carries a valid API key.'
 )
 CXPC_DAILY_DESCRIPTION = (
     "Every ticker's daily bars of a range of UTC days, ordered by date_epoch, exchange_code, ticker. Give either "
     '`days` (the last N days up to today) or `since` (and optionally `until`, default today). At most 31 days with '
-    '`exchange`, 7 days without. Limited to 30 requests per minute per IP, JSON and CSV together; one request per '
+    '`exchange`, 7 days without. Limited to 30 requests per minute per IP (per user with a valid API key), JSON and '
+    'CSV together; one request per '
     'exchange is all a daily refresh needs.\n\n'
     'Google Sheets: `=IMPORTDATA("https://api.prunplanner.org/data/cxpc/daily/csv/?days=7&exchange=AI1")`\n\n'
     'curl: `curl "https://api.prunplanner.org/data/cxpc/daily/?since=2026-10-01&until=2026-10-07"`'
@@ -553,11 +556,13 @@ class ExchangeCXPCViewSet(viewsets.ReadOnlyModelViewSet):
 
     queryset = GameExchangeCXPC.objects.all()
     permission_classes = [AllowAny]
-    authentication_classes = []
+    # a valid API key counts the request per user instead of per IP (one budget per user behind a shared IP,
+    # such as the MCP server); a bad key stays anonymous, never a 401
+    authentication_classes = [OptionalAPIKeyAuthentication]
 
     @property
     def throttle_scope(self) -> str | None:
-        # per IP (no authentication here): a script walking every ticker hits it, Market Exploration never does
+        # per IP, or per user with an API key: a script walking every ticker hits it, Market Exploration never does
         if self.action in ('cxpc_ticker_data', 'cxpc_exchange_data'):
             return 'cxpc_ticker'
         if self.action in ('cxpc_daily', 'cxpc_daily_csv'):
