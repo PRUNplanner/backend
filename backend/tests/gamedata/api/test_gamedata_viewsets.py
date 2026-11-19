@@ -1230,3 +1230,46 @@ class TestEdgeCacheControl:
         assert storage.status_code == 200
         assert error.status_code == 400
         assert storage['Cache-Control'] == error['Cache-Control'] == 'private, no-cache'
+
+
+@pytest.mark.usefixtures('locmem_cache')
+class TestMarketHistoryThrottlePerKey:
+    """A valid API key counts market history per user, so users behind one IP (the MCP server) don't share."""
+
+    URL_KWARGS = {'ticker': 'RAT', 'exchange_code': 'NC1'}
+
+    def _url(self) -> str:
+        return reverse('data:cxpc-market-data-full', kwargs=self.URL_KWARGS)
+
+    def _keyed(self, user: User) -> APIClient:
+        _, key = UserAPIKey.objects.create_key(name='mcp', user=user)
+        return APIClient(REMOTE_ADDR='10.0.0.9', HTTP_AUTHORIZATION=f'Api-Key {key}')
+
+    def test_each_key_has_its_own_budget_behind_one_ip(self, user_factory: Callable[..., User]) -> None:
+        first, second = self._keyed(user_factory()), self._keyed(user_factory())
+        for _ in range(120):
+            assert first.get(self._url()).status_code == 200
+
+        assert first.get(self._url()).status_code == 429
+        assert second.get(self._url()).status_code == 200
+        # the IP's anonymous budget is untouched
+        assert APIClient(REMOTE_ADDR='10.0.0.9').get(self._url()).status_code == 200
+
+    @pytest.mark.parametrize('revoked', [False, True], ids=['unknown', 'revoked'])
+    def test_a_bad_key_is_anonymous_not_an_error(self, revoked: bool, user_factory: Callable[..., User]) -> None:
+        if revoked:
+            api_key, key = UserAPIKey.objects.create_key(name='old', user=user_factory())
+            api_key.revoked = True
+            api_key.save()
+        else:
+            key = 'abcd1234.not-a-key'
+        anonymous = APIClient(REMOTE_ADDR='10.0.0.8')
+        for _ in range(120):
+            assert anonymous.get(self._url()).status_code == 200
+
+        bad = APIClient(REMOTE_ADDR='10.0.0.8', HTTP_AUTHORIZATION=f'Api-Key {key}')
+        # counted with the IP: a made-up key buys no fresh budget
+        assert bad.get(self._url()).status_code == 429
+        assert (
+            APIClient(REMOTE_ADDR='10.0.0.7', HTTP_AUTHORIZATION=f'Api-Key {key}').get(self._url()).status_code == 200
+        )
