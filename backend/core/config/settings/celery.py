@@ -58,8 +58,10 @@ CELERY_TASK_ANNOTATIONS = {
     'gamedata_refresh_planet': {
         'priority': 5,
         'rate_limit': '2/s',
-        # just under the 9 s beat interval: a run that waited 5-8 s for a busy worker still refreshes its planet
-        'expires': 8,
+        # not just under the 9 s beat interval like the periodic tasks below: a tick is a work item (the most
+        # overdue planet), so a late one still runs. 60 s covers a worker held by one long task (the planet cache
+        # warm run, p95 51 s) and bounds the pile-up after a worker outage to about 7 ticks (backend#134)
+        'expires': 60,
     },
     'gamedata_refresh_planet_infrastructure': {
         'priority': 5,

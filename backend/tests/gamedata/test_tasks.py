@@ -717,6 +717,21 @@ class TestPendingLease:
     def test_failed_stays_excluded(self) -> None:
         assert self._picked(automation_refresh_status='failed') == []
 
+    def test_ticks_run_back_to_back_take_different_planets(self) -> None:
+        # backend#134: ticks that waited for a busy worker run one after another; the lease keeps them apart
+        baker.make('gamedata.GamePlanet', planet_natural_id=iter(['X', 'Y']), automation_error_count=0, _quantity=2)
+
+        with (
+            patch('gamedata.fio.importers.import_planet', return_value=True) as import_planet,
+            patch('gamedata.tasks.gamedata_refresh_planet_infrastructure.delay'),
+            patch('gamedata.tasks.gamedata_refresh_planet_plots.delay'),
+        ):
+            gamedata_refresh_planet()
+            gamedata_refresh_planet()
+            gamedata_refresh_planet()
+
+        assert sorted(call.args[0] for call in import_planet.call_args_list) == ['X', 'Y']
+
     def test_marking_pending_sets_a_one_hour_lease(self) -> None:
         planet: GamePlanet = baker.make('gamedata.GamePlanet', planet_natural_id='X', automation_error_count=0)
         seen: dict[str, object] = {}
