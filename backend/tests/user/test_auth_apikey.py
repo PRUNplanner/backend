@@ -360,6 +360,17 @@ class TestKeyScope:
         assert (keyed.status_code, keyed.json()['fio_apikey']) == (200, None)
         assert (jwt.status_code, jwt.json()['fio_apikey']) == (200, 'fio-secret')
 
+    def test_profile_says_the_keys_access(self, api_client, user, read_key, write_key):
+        url = reverse('user:user_profile')
+
+        read = api_client.get(url, **self._header(read_key[1]))
+        write = api_client.get(url, **self._header(write_key[1]))
+        jwt = api_client.get(url, HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+
+        assert read.json()['api_key_scope'] == 'read'
+        assert write.json()['api_key_scope'] == 'read_write'
+        assert jwt.json()['api_key_scope'] is None
+
     def test_preferences_follow_the_scope(self, api_client, read_key, write_key):
         url = reverse('user:user_preferences')
         body = {'planOverrides': {}}

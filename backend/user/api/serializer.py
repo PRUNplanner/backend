@@ -374,6 +374,9 @@ FIO_FIELDS = ('fio_apikey', 'prun_username')
 class UserProfileSerializer(serializers.ModelSerializer):
     fio_status = serializers.SerializerMethodField()
     fio_last_refreshed_at = serializers.SerializerMethodField()
+    # the access of the API key the request came with (read or read_write), null when logged in: lets a script or
+    # the MCP say up front whether it can change data
+    api_key_scope = serializers.SerializerMethodField()
     # required to change the email, see validate
     current_password = serializers.CharField(
         write_only=True, required=False, allow_blank=True, style={'input_type': 'password'}
@@ -390,6 +393,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'is_email_verified',
             'fio_status',
             'fio_last_refreshed_at',
+            'api_key_scope',
             'current_password',
         ]
         # username is admin-only, is_email_verified only set by a confirmed code
@@ -404,6 +408,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
         # one query for both fields
         self._fio = fio_connection(instance)
         return super().to_representation(instance)
+
+    @extend_schema_field(serializers.ChoiceField(choices=UserAPIKey.Scope.choices, allow_null=True))
+    def get_api_key_scope(self, instance: User) -> str | None:
+        request = self.context.get('request')
+        auth = getattr(request, 'auth', None)
+        return auth.scope if isinstance(auth, UserAPIKey) else None
 
     @extend_schema_field(serializers.ChoiceField(choices=FIO_STATUSES))
     def get_fio_status(self, instance: User) -> FioStatus:
