@@ -381,7 +381,7 @@ class UserProfileViewSet(viewsets.GenericViewSet):
     @extend_schema(summary='Get profile password')
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        data = UserProfileSerializer(instance).data
+        data = UserProfileSerializer(instance, context={'request': request}).data
         if isinstance(request.auth, UserAPIKey):
             # the FIO key is the user's secret for another service, not data a key needs
             data['fio_apikey'] = None

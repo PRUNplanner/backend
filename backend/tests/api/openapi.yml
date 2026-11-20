@@ -4022,6 +4022,18 @@ components:
           format: date-time
           nullable: true
           readOnly: true
+        api_key_scope:
+          enum:
+          - read
+          - read_write
+          - null
+          type: string
+          description: |-
+            * `read` - Read-only
+            * `read_write` - Read & write
+          x-spec-enum-id: 1d9e6cde97622e86
+          nullable: true
+          readOnly: true
         current_password:
           type: string
           writeOnly: true
@@ -6465,10 +6477,23 @@ components:
           format: date-time
           nullable: true
           readOnly: true
+        api_key_scope:
+          enum:
+          - read
+          - read_write
+          - null
+          type: string
+          description: |-
+            * `read` - Read-only
+            * `read_write` - Read & write
+          x-spec-enum-id: 1d9e6cde97622e86
+          nullable: true
+          readOnly: true
         current_password:
           type: string
           writeOnly: true
       required:
+      - api_key_scope
       - fio_last_refreshed_at
       - fio_status
       - id
