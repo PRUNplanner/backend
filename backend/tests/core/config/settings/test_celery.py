@@ -25,9 +25,9 @@ def test_every_task_has_a_time_limit_and_admin_imports_a_longer_one() -> None:
     assert admin['time_limit'] > admin['soft_time_limit']
 
 
-# beat intervals in production (Axiom, 2026-11-03); a queued run that outlives the next one is dropped
+# beat intervals in production (Axiom, 2026-11-03); a queued run that outlives the next one is dropped.
+# gamedata_refresh_planet (every 9 s) is not in here: its ticks are work items, see the test below
 BEAT_INTERVALS = {
-    'gamedata_refresh_planet': 9,
     'gamedata_warm_planet_caches': 10 * 60,
     'gamedata_dispatch_fio_updates': 12 * 60,
     'gamedata_refresh_exchanges': 30 * 60,
@@ -46,12 +46,14 @@ def test_periodic_tasks_expire_before_their_next_run() -> None:
         assert 0 < annotations[task]['expires'] < interval, task
 
 
-def test_planet_refresh_expires_just_before_the_next_tick() -> None:
-    # backend#124: 5 s dropped runs that had waited 5-8 s for a busy worker, losing ticks for nothing
-    assert (
-        settings.CELERY_TASK_ANNOTATIONS['gamedata_refresh_planet']['expires']
-        == BEAT_INTERVALS['gamedata_refresh_planet'] - 1
-    )
+# the planet cache warm run holds the single worker this long at p95 (Axiom, 2026-11-17 to 11-19)
+WARM_RUN_P95_SECONDS = 51
+
+
+def test_planet_refresh_tick_outlives_a_cache_warm_run() -> None:
+    # backend#134: with 8 s, every tick queued during a warm run was dropped (5 % of all ticks). A late tick
+    # still refreshes the most overdue planet, so it waits; 60 s caps the pile-up after a worker outage
+    assert WARM_RUN_P95_SECONDS < settings.CELERY_TASK_ANNOTATIONS['gamedata_refresh_planet']['expires'] <= 60
 
 
 def test_dead_config_is_gone() -> None:
